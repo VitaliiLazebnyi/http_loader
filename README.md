@@ -158,3 +158,47 @@ While CPU/Threading metrics hovered essentially permanently around `0.0%` over `
 * **HTTPS Overhead:** Introducing block ciphers and OpenSSL buffers exponentially explodes user RAM requirements payload. Handshakes natively forced the Client metrics out to `~166.3 KB` natively per socket, increasing overhead practically by **`2.3x`**.
 
 To securely hold 100,000 active HTTPS tunnels open smoothly utilizing this architecture, the host machine simply requires around `~18GB` to `~20GB` of available physical memory explicitly.
+
+---
+
+## 🔍 Network Diagnostics & Local Telemetry
+
+When tracking aggressive keep-alive behavior, native macOS/Linux Unix telemetry tools are required to ensure connections are actually held in memory and the OS isn't silently closing endpoints.
+
+### 1. Diagnosing Local Ports & Connection Status
+To view if your benchmark endpoints are genuinely active, use `lsof` (List Open Files) bounded strictly to our local test ports:
+```bash
+# Check if Falcon successfully bound to network edges:
+lsof -i :8080 -sTCP:LISTEN
+# View all established connections originating natively against the local server:
+lsof -iTCP -sTCP:ESTABLISHED | grep ruby
+```
+
+### 2. Checking Ephemeral Port Busyness (TIME_WAIT Exhaustion)
+As seen in extremely fast harness loops, macOS frequently traps abruptly killed sockets in `TIME_WAIT` to catch trailing packets. You can trace this exhaustion organically utilizing `netstat`:
+```bash
+# Get strict mathematical counts of all heavily exhausted Keep-Alive sockets on your machine natively:
+netstat -an | grep TIME_WAIT | wc -l
+
+# View precisely which tests are locking loopback ports:
+netstat -anpf inet | grep 8080
+```
+
+### 3. Monitoring Raw Connection Traffic 
+To observe underlying physical TCP/IP byte transfer rates and verify traffic flow explicitly, utilize the `nettop` (macOS native) or `ss` utilities:
+```bash
+# macOS native active interface inspector:
+nettop -m tcp -J state,bytes_in,bytes_out
+
+# Standard Linux Socket Statistics (SS) alternative:
+ss -tulpen | grep 8080
+```
+
+### 4. Intercepting Payload Data (Packet Sniffing)
+Because `rack/falcon` streams live TCP SSE lines across the loopback unencrypted (over HTTP on 8080), you can aggressively sniff and intercept the individual `PING/PONG` traffic payloads completely undetected at the kernel layer using `tcpdump`.
+```bash
+# Sniff strict ASCII payload headers and body bounds passing over local interface 0 mapping perfectly to the benchmark port:
+sudo tcpdump -i lo0 port 8080 -A
+```
+
+*Note: You cannot intercept HTTPS (port `8443`) natively with `tcpdump` because it leverages block-cipher encryption. To inspect TLS loads, you would need to proxy the Ruby client bindings organically through a platform like `mitmproxy` and natively dump the Root CA into your macOS keychain.*

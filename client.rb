@@ -51,17 +51,22 @@ Async do |task|
             end
           end
           
-          # If the endpoint is NOT a streaming endpoint (like our SSE server), 
-          # the response terminates instantly. To fulfill the "keep alive as long as possible" 
-          # directive, we hold the connection open artificially until the remote OS forces a timeout limit.
-          sleep
+          # Instead of blindly sleeping, we explicitly verify and control the keep-alive socket
+          # by generating a heartbeat ping to guarantee the connection is open and active
+          loop do
+            sleep 5
+            ping_request = Net::HTTP::Head.new(uri)
+            ping_request['Connection'] = 'keep-alive'
+            response = http.request(ping_request)
+            break unless response.is_a?(Net::HTTPSuccess) || response.is_a?(Net::HTTPRedirection)
+          end
         end
       rescue Errno::EMFILE => e
-        puts "[Client #{i}] ERROR_EMFILE: #{e.message} (Try running \`ulimit -n 4096\`)"
+        File.open("client.err", "a") { |f| f.puts "[Client #{i}] ERROR_EMFILE: #{e.message}" }
       rescue Errno::EADDRNOTAVAIL => e
-        puts "[Client #{i}] ERROR_EADDRNOTAVAIL: #{e.message} (Ephemeral port limit reached)"
+        File.open("client.err", "a") { |f| f.puts "[Client #{i}] ERROR_EADDRNOTAVAIL: Ephemeral port limit reached." }
       rescue => e
-        puts "[Client #{i}] ERROR_OTHER: #{e.message}"
+        File.open("client.err", "a") { |f| f.puts "[Client #{i}] ERROR_OTHER: #{e.message}" }
       end
     end
   end

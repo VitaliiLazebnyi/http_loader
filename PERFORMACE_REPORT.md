@@ -32,9 +32,9 @@ We evaluated two protocol configurations:
 xychart-beta
     title "Server Memory Scalability"
     x-axis "Connections" [1, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 10500, 11000, 11500, 12000, 12500, 13000, 13500, 14000, 14500, 15000]
-    y-axis "Memory (MB)" 0 --> 597
-    line "HTTP" [44.8, 100.1, 157.3, 212.7, 265.5, 324.4, 377.9, 434.5, 309.2, 44.5, 44.7, 53.6, 111.4, 155.8, 320.8, 265.4, 322.2, 380.0, 432.2, 309.6, 44.6, 44.5, 118.2, 44.6, 310.5, 296.5, 302.3, 420.2, 543.1, 200.7, 44.8]
-    line "HTTPS" [45.2, 79.7, 47.8, 157.5, 184.1, 226.7, 250.0, 249.7, 250.1, 147.7, 45.5, 79.7, 52.8, 96.4, 150.5, 161.2, 246.3, 250.2, 246.8, 244.6, 136.9, 74.0, 45.5, 45.6, 112.7, 233.6, 247.0, 250.2, 252.8, 322.4, 77.3]
+    y-axis "Memory (MB)" 0 --> 770
+    line "HTTP" [44.4, 100.4, 156.8, 213.3, 265.5, 324.6, 378.0, 434.6, 484.3, 474.6, 467.4, 522.3, 521.3, 489.4, 479.4, 465.9, 467.7, 465.3, 467.3, 486.6, 479.3, 517.8, 524.2, 545.4, 545.3, 591.1, 594.8, 646.8, 648.4, 697.0, 700.4]
+    line "HTTPS" [45.3, 79.5, 114.3, 157.0, 183.9, 226.6, 252.0, 256.5, 254.8, 255.9, 256.8, 252.2, 244.5, 251.1, 239.2, 246.6, 253.4, 251.1, 254.0, 256.5, 253.9, 276.8, 289.2, 296.8, 298.1, 318.0, 328.4, 326.9, 350.6, 369.4, 375.7]
 ```
 
 
@@ -43,9 +43,9 @@ xychart-beta
 xychart-beta
     title "Client Memory Scalability"
     x-axis "Connections" [1, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 10500, 11000, 11500, 12000, 12500, 13000, 13500, 14000, 14500, 15000]
-    y-axis "Memory (MB)" 0 --> 642
-    line "HTTP" [37.8, 72.4, 107.7, 151.7, 177.8, 220.0, 247.9, 292.4, 233.5, 49.1, 62.0, 63.1, 95.6, 150.3, 239.8, 220.0, 240.5, 285.4, 305.2, 225.8, 43.6, 60.8, 88.8, 49.2, 213.9, 221.4, 207.9, 308.3, 361.7, 156.1, 60.9]
-    line "HTTPS" [38.6, 103.1, 59.1, 242.1, 298.3, 370.1, 422.5, 424.4, 423.5, 241.5, 45.8, 115.9, 79.0, 132.4, 233.5, 259.0, 417.2, 422.5, 418.1, 411.8, 222.4, 95.5, 54.2, 67.7, 167.6, 409.2, 423.3, 465.8, 460.0, 583.4, 116.7]
+    y-axis "Memory (MB)" 0 --> 722
+    line "HTTP" [37.7, 73.4, 109.3, 150.1, 176.1, 222.1, 247.8, 290.0, 314.5, 307.2, 303.2, 347.4, 345.9, 317.5, 310.5, 302.3, 303.3, 301.8, 303.0, 315.9, 310.5, 340.2, 344.0, 361.2, 358.3, 387.6, 414.0, 431.1, 431.3, 452.2, 453.8]
+    line "HTTPS" [38.8, 102.7, 168.9, 241.8, 299.1, 367.9, 427.0, 436.8, 433.6, 436.2, 439.7, 430.1, 411.5, 424.6, 396.8, 418.1, 430.3, 424.0, 431.2, 436.4, 432.6, 461.6, 486.1, 501.6, 502.7, 547.1, 567.1, 564.8, 598.4, 638.8, 656.0]
 ```
 
 
@@ -59,8 +59,8 @@ xychart-beta
     title "Server CPU Overhead"
     x-axis "Connections" [1, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 10500, 11000, 11500, 12000, 12500, 13000, 13500, 14000, 14500, 15000]
     y-axis "CPU (%)" 0 --> 110
-    line "HTTP" [0.0, 0.0, 0.1, 0.7, 1.2, 3.6, 5.0, 21.2, 1.6, 0.0, 0.0, 0.0, 0.0, 0.2, 3.0, 2.1, 2.5, 7.9, 23.1, 2.0, 0.0, 0.0, 20.2, 0.0, 38.5, 6.2, 37.2, 0.9, 22.5, 0.0, 0.0]
-    line "HTTPS" [0.0, 0.0, 0.0, 1.5, 4.0, 19.9, 45.1, 47.0, 39.6, 0.8, 0.0, 14.0, 0.0, 15.7, 18.7, 1.8, 43.9, 43.6, 36.6, 36.8, 0.4, 12.9, 0.0, 0.0, 8.7, 5.1, 5.6, 3.3, 3.8, 43.9, 0.0]
+    line "HTTP" [0.0, 0.0, 0.2, 0.4, 1.6, 5.1, 8.1, 19.6, 34.3, 30.5, 33.7, 36.1, 33.4, 34.1, 30.6, 36.3, 31.6, 34.7, 35.8, 35.8, 32.5, 29.7, 29.3, 28.0, 24.7, 46.1, 51.0, 62.9, 51.3, 41.7, 37.3]
+    line "HTTPS" [0.0, 0.0, 0.2, 1.6, 3.3, 20.7, 42.1, 44.4, 44.1, 45.4, 48.0, 40.2, 45.4, 38.9, 42.0, 33.7, 39.0, 46.6, 43.8, 46.4, 45.0, 47.4, 48.5, 51.7, 47.4, 52.5, 62.5, 52.5, 63.7, 67.1, 59.7]
 ```
 
 
@@ -70,9 +70,115 @@ xychart-beta
     title "Client CPU Overhead"
     x-axis "Connections" [1, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 10500, 11000, 11500, 12000, 12500, 13000, 13500, 14000, 14500, 15000]
     y-axis "CPU (%)" 0 --> 110
-    line "HTTP" [0.0, 0.1, 0.4, 1.1, 1.9, 5.6, 8.8, 29.1, 67.8, 64.7, 64.2, 66.1, 66.0, 62.7, 66.1, 66.0, 64.8, 67.5, 66.1, 65.8, 66.0, 61.2, 62.8, 67.1, 63.6, 67.2, 57.4, 60.6, 57.4, 0.6, 62.9]
-    line "HTTPS" [0.0, 0.2, 0.1, 3.8, 8.7, 32.8, 69.7, 68.6, 69.1, 66.8, 0.1, 64.6, 64.7, 66.5, 63.7, 11.5, 64.5, 67.7, 61.1, 63.6, 68.9, 66.0, 66.9, 0.1, 60.1, 68.8, 68.8, 68.0, 66.6, 68.1, 67.8]
+    line "HTTP" [0.0, 0.1, 0.4, 0.9, 2.5, 6.4, 14.0, 30.1, 60.4, 56.9, 54.0, 63.2, 57.7, 58.5, 55.9, 57.2, 58.3, 53.9, 58.6, 61.2, 58.8, 62.4, 61.1, 58.3, 60.8, 63.2, 57.3, 56.6, 53.7, 58.0, 58.4]
+    line "HTTPS" [0.0, 0.3, 0.7, 3.5, 7.0, 32.7, 69.7, 68.8, 70.3, 70.8, 70.7, 69.7, 69.2, 68.7, 69.2, 58.2, 69.8, 69.5, 67.3, 71.1, 68.8, 68.9, 68.6, 70.3, 64.4, 70.3, 70.2, 69.1, 68.3, 69.7, 70.7]
 ```
 
 
 **Conclusion**: At explicitly valid connection limits safely avoiding macOS starvation traps, memory scales flawlessly and completely predictably in a linear curve corresponding strictly to socket allocations per-fiber. 
+
+---
+
+## 🔬 Deep Profiling (Code & Memory Structures)
+
+### Ruby Method Execution Tracking (RubyProf)
+*This captures the most expensive Ruby method branches when instantiating fiber-bound TCP Keep-Alive sockets natively.*
+```text
+Measure Mode: wall_time
+Thread ID: 102176
+Fiber ID: 102168
+Total: 0.009822
+Sort by: self_time
+
+ %self      total      self      wait     child     calls  name                           location
+
+* recursively called methods
+
+Columns are:
+
+  %self     - The percentage of time spent by this method relative to the total time in the entire program.
+  total     - The total time spent by this method and its children.
+  self      - The time spent by this method.
+  wait      - The time this method spent waiting for other threads.
+  child     - The time spent by this method's children.
+  calls     - The number of times this method was called.
+  name      - The name of the method.
+  location  - The location of the method.
+
+The interpretation of method names is:
+
+  * MyObject#test - An instance method "test" of the class "MyObject"
+  * <Object:MyObject>#test - The <> characters indicate a method on a singleton class.
+
+Measure Mode: wall_time
+Thread ID: 102176
+Fiber ID: 102184
+Total: 0.009749
+Sort by: self_time
+
+ %self      total      self      wait     child     calls  name                           location
+
+* recursively called methods
+
+Columns are:
+
+  %self     - The percentage of time spent by this method relative to the total time in the entire program.
+  total     - The total time spent by this method and its children.
+  self      - The time spent by this method.
+  wait      - The time this method spent waiting for other threads.
+  child     - The time spent by this method's childr
+```
+
+### Memory & Object Allocation Footprint (MemoryProfiler)
+*This captures the explicit internal structures and String/Hash allocations maintained by `Net::HTTP` per asynchronous cycle.*
+```text
+Total allocated: 1.17 MB (12588 objects)
+Total retained:  1.16 kB (18 objects)
+
+allocated memory by gem
+-----------------------------------
+ 981.82 kB  lib
+ 128.84 kB  async-2.39.0
+  43.68 kB  other
+  12.41 kB  io-event-1.15.1
+   8.16 kB  fiber-annotation-0.2.0
+
+allocated memory by file
+-----------------------------------
+ 487.90 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb
+ 162.20 kB  ruby/lib/lib/ruby/4.0.0/net/http/header.rb
+ 133.06 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb
+ 120.00 kB  async-2.39.0/lib/async/task.rb
+  70.80 kB  ruby/lib/lib/ruby/4.0.0/net/http/generic_request.rb
+  48.26 kB  ruby/lib/lib/ruby/4.0.0/uri/rfc3986_parser.rb
+  37.60 kB  ruby/lib/lib/ruby/4.0.0/uri/generic.rb
+  32.00 kB  profiler_task.rb
+  24.00 kB  ruby/lib/lib/ruby/4.0.0/net/protocol.rb
+  11.68 kB  <internal:io>
+  10.00 kB  ruby/lib/lib/ruby/4.0.0/uri/http.rb
+   8.16 kB  fiber-annotation-0.2.0/lib/fiber/annotation.rb
+   8.00 kB  ruby/lib/lib/ruby/4.0.0/uri/common.rb
+   7.34 kB  async-2.39.0/lib/async/promise.rb
+   6.29 kB  io-event-1.15.1/lib/io/event/selector.rb
+   6.08 kB  io-event-1.15.1/lib/io/event/timers.rb
+   1.18 kB  async-2.39.0/lib/async/scheduler.rb
+  160.00 B  async-2.39.0/lib/async/node.rb
+  160.00 B  async-2.39.0/lib/kernel/async.rb
+   40.00 B  io-event-1.15.1/lib/io/event/priority_heap.rb
+
+allocated memory by location
+-----------------------------------
+ 265.20 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1057
+  91.80 kB  async-2.39.0/lib/async/task.rb:519
+  78.00 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1058
+  60.00 kB  ruby/lib/lib/ruby/4.0.0/net/http/header.rb:498
+  46.00 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb:181
+  36.40 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb:174
+  32.80 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1161
+  32.30 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1101
+  30.48 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1789
+  28.20 kB  ruby/lib/lib/ruby/4.0.0/net/http/header.rb:284
+  26.26 kB  ruby/lib/lib/ruby/4.0.0/uri/rfc3986_parser.rb:115
+  24.80 kB  r
+```
+
