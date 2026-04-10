@@ -1,0 +1,17 @@
+#!/usr/bin/env ruby
+# typed: ignore
+# frozen_string_literal: true
+
+require 'bundler/setup'
+$LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
+require 'keep_alive/client'
+
+connections_arg = ARGV.find { |arg| arg.start_with?('--connections_count=') }
+connections = connections_arg ? connections_arg.split('=', 2)[1].to_i : 1000
+
+use_https = ARGV.include?('--https')
+target_url_arg = ARGV.find { |arg| arg.start_with?('--url=') }
+target_url = target_url_arg ? target_url_arg.split('=', 2)[1] : nil
+
+client = KeepAlive::Client.new(connections: connections, target_url: target_url, use_https: use_https)
+client.start

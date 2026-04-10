@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+# typed: ignore
+# frozen_string_literal: true
+
+require 'bundler/setup'
+$LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
+require 'keep_alive/server'
+
+use_https = ARGV.include?('--https')
+server = KeepAlive::Server.new
+server.start(use_https: use_https, port: use_https ? 8443 : 8080)
