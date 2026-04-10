@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# typed: ignore
+# typed: strong
 # frozen_string_literal: true
 
 require 'bundler/setup'
@@ -50,12 +50,17 @@ OptionParser.new do |opts|
   opts.on('--slowloris_delay=SECONDS', Float) { nil }
 end.parse!(ARGV)
 
-harness = KeepAlive::Harness.new(
-  connections: options[:connections],
-  target_urls: options[:target_urls],
-  use_https: options[:use_https],
-  client_args: original_args,
-  export_json: options[:export_json],
-  target_duration: options[:target_duration]
-)
-harness.start
+begin
+  harness = KeepAlive::Harness.new(
+    connections: options[:connections],
+    target_urls: options[:target_urls],
+    use_https: options[:use_https],
+    client_args: original_args,
+    export_json: options[:export_json],
+    target_duration: options[:target_duration]
+  )
+  harness.start
+rescue ArgumentError => e
+  warn "Configuration Error: #{e.message}"
+  exit(1)
+end

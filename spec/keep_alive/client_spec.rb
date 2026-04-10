@@ -14,6 +14,13 @@ RSpec.describe KeepAlive::Client do
   end
 
   describe '#initialize' do
+    it 'raises ArgumentError on invalid parameters' do
+      expect { described_class.new(connections: 0) }.to raise_error(ArgumentError, /connections must be >= 1/)
+      expect { described_class.new(connections: 1, ping_period: -1) }.to raise_error(ArgumentError, /ping_period must be >= 0/)
+      expect { described_class.new(connections: 1, keep_alive_timeout: -1.0) }.to raise_error(ArgumentError, /keep_alive_timeout must be >= 0.0/)
+      expect { described_class.new(connections: 1, max_concurrent_connections: 0) }.to raise_error(ArgumentError, /max_concurrent_connections must be >= 1/)
+    end
+
     it 'maps config params correctly' do
       client = described_class.new(
         connections: 10, target_urls: ['http://test.com', 'http://test2.com'], use_https: false,

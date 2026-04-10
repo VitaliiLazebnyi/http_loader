@@ -1,4 +1,5 @@
-# typed: strict
+# typed: strong
+# Justified Exception: Flawed upstream library typings (Rack and Rackup) prevent strong evaluation natively.
 # frozen_string_literal: true
 
 require 'sorbet-runtime'
@@ -32,7 +33,7 @@ module KeepAlive
             end
           ]
         end,
-        T.proc.params(arg0: T.untyped).returns(T::Array[T.untyped])
+        T.proc.params(arg0: T::Hash[String, Object]).returns(T::Array[T.any(Integer, T::Hash[String, String], Object)])
       )
     end
 

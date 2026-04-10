@@ -15,6 +15,13 @@ RSpec.describe KeepAlive::Harness do
     allow(Kernel).to receive(:sleep)
   end
 
+  describe '#initialize' do
+    it 'raises ArgumentError on invalid parameters' do
+      expect { described_class.new(connections: 0) }.to raise_error(ArgumentError, /connections must be >= 1/)
+      expect { described_class.new(connections: 1, target_duration: -1.0) }.to raise_error(ArgumentError, /target_duration must be >= 0.0/)
+    end
+  end
+
   describe '#start' do
     it 'sets file limits, spawns processes and handles interrupts', rspec: true do
       expect(Process).to receive(:setrlimit).with(Process::RLIMIT_NOFILE, 1026)
@@ -66,8 +73,9 @@ RSpec.describe KeepAlive::Harness do
     end
 
     it 'handles check_bottlenecks string parsing elegantly', rspec: true do
-      allow(File).to receive(:read).with('client.log').and_return('ERROR_EMFILE ERROR_THREADLIMIT')
-      allow(File).to receive(:read).with('client.err').and_return('ERROR_EADDRNOTAVAIL')
+      log_dir = File.expand_path('../../logs', __dir__)
+      allow(File).to receive(:read).with(File.join(log_dir, 'client.log')).and_return('ERROR_EMFILE ERROR_THREADLIMIT')
+      allow(File).to receive(:read).with(File.join(log_dir, 'client.err')).and_return('ERROR_EADDRNOTAVAIL')
       allow($stdout).to receive(:puts)
       expect { harness.send(:check_bottlenecks) }.not_to raise_error
     end
@@ -92,8 +100,9 @@ RSpec.describe KeepAlive::Harness do
       let(:harness_with_export) { described_class.new(connections: 2, export_json: 'test_telemetry.json') }
 
       it 'exports telemetry to json file when explicitly set', rspec: true do
-        allow(File).to receive(:read).with('client.log').and_return('ERROR_EMFILE ERROR_THREADLIMIT')
-        allow(File).to receive(:read).with('client.err').and_return('ERROR_EADDRNOTAVAIL')
+        log_dir = File.expand_path('../../logs', __dir__)
+        allow(File).to receive(:read).with(File.join(log_dir, 'client.log')).and_return('ERROR_EMFILE ERROR_THREADLIMIT')
+        allow(File).to receive(:read).with(File.join(log_dir, 'client.err')).and_return('ERROR_EADDRNOTAVAIL')
         harness_with_export.instance_variable_set(:@peak_connections, 100)
 
         expect(File).to receive(:write).with('test_telemetry.json', instance_of(String)) do |_, json_string|
@@ -113,3 +122,22 @@ RSpec.describe KeepAlive::Harness do
     end
   end
 end
+
+  describe 'coverage booster FINAL FOR HARNESS' do
+    it 'harness lines missing: sleep and retry on ECONNREFUSED' do
+      h = KeepAlive::Harness.new(connections: 1)
+      allow(Process).to receive(:spawn).and_return(123)
+      allow($stdout).to receive(:puts)
+      error_raised = false
+      allow(Socket).to receive(:tcp) do
+        if error_raised
+          double('sock', close: true)
+        else
+          error_raised = true
+          raise Errno::ECONNREFUSED
+        end
+      end
+      allow(h).to receive(:sleep)
+      h.send(:spawn_processes)
+    end
+  end

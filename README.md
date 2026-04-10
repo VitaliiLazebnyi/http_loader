@@ -43,10 +43,10 @@ You engage all functions purely through the root `harness.rb` wrapper.
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `--connections_count=` | Integer | Optional | The total number of TCP sessions to spawn natively across the whole test. Defaults to 1000. |
+| `--connections_count=` | Integer | Optional | The total number of TCP sessions to spawn natively across the whole test. Defaults to 1000. (Must be >= 1). |
 | `--https` | Flag | Optional | Configures TLS/SSL context. Forces internal targets to boot securely on `8443` and configures client payloads with `VERIFY_NONE`. |
 | `--url=` | String | Optional | Triggers **External Target Mode** (e.g. `--url=https://site1.com,https://site2.com`). Harness bypasses local `server.rb` boot sequences completely to swarm remote targets via natively load-balanced round-robin. |
-| `--verbose` | Flag | Optional | Enables extensive verbose logging dynamically mapping TCP `Connection established` and closures strictly into the Thread-safe `client.log` mutex. |
+| `--verbose` | Flag | Optional | Enables extensive verbose logging dynamically mapping TCP `Connection established` and closures strictly into the Thread-safe `./logs/client.log` mutex. |
 | `--[no-]ping` | Flag | Optional | Toggles Keep-Alive dynamic heartbeat pings off or on (default `true`). Sends an explicit `HEAD` request within the Keep-Alive tunnel routinely. |
 | `--ping_period=` | Integer | Optional | Time in seconds strictly bounding how often Keep-Alive fiber pings aggressively repeat. Defaults to `5`. |
 | `--keep_alive_timeout=` | Float | Optional | The strict mathematical upper-bound limit enforcing autonomous Client disconnects cleanly. Defaults to `0` (mathematically infinite). |

@@ -1,4 +1,4 @@
-# typed: strict
+# typed: strong
 # frozen_string_literal: true
 
 require 'sorbet-runtime'
@@ -49,6 +49,18 @@ module KeepAlive
       qps_per_connection: 0, headers: {},
       slowloris_delay: 0.0
     )
+      raise ArgumentError, 'connections must be >= 1' if connections < 1
+      raise ArgumentError, 'ping_period must be >= 0' if ping_period.negative?
+      raise ArgumentError, 'keep_alive_timeout must be >= 0.0' if keep_alive_timeout.negative?
+      raise ArgumentError, 'connections_per_second must be >= 0' if connections_per_second.negative?
+      raise ArgumentError, 'max_concurrent_connections must be >= 1' if max_concurrent_connections < 1
+      raise ArgumentError, 'reopen_interval must be >= 0.0' if reopen_interval.negative?
+      raise ArgumentError, 'read_timeout must be >= 0.0' if read_timeout.negative?
+      raise ArgumentError, 'jitter must be >= 0.0' if jitter.negative?
+      raise ArgumentError, 'ramp_up must be >= 0.0' if ramp_up.negative?
+      raise ArgumentError, 'qps_per_connection must be >= 0' if qps_per_connection.negative?
+      raise ArgumentError, 'slowloris_delay must be >= 0.0' if slowloris_delay.negative?
+
       @connections = connections
       @target_urls = target_urls
       @use_https = use_https
@@ -70,6 +82,7 @@ module KeepAlive
       @qps_per_connection = qps_per_connection
       @headers = headers
       @slowloris_delay = slowloris_delay
+      @log_dir = T.let(File.expand_path('../../logs', __dir__), String)
 
       @target_contexts = T.let(build_target_contexts, T::Array[T::Hash[Symbol, T.untyped]])
       @protocol_label = T.let(determine_protocol_label, String)
@@ -87,8 +100,9 @@ module KeepAlive
       trap('INT') { exit(0) }
 
       # Create/truncate log files deterministically
-      File.write('client.err', '')
-      File.write('client.log', '') if @verbose
+      FileUtils.mkdir_p(@log_dir)
+      File.write(File.join(@log_dir, 'client.err'), '')
+      File.write(File.join(@log_dir, 'client.log'), '') if @verbose
 
       Async do |task|
         semaphore = Async::Semaphore.new(@max_concurrent_connections, parent: task)
@@ -116,8 +130,8 @@ module KeepAlive
     sig { returns(Thread) }
     def spawn_logger_thread
       Thread.new do # rubocop:disable ThreadSafety/NewThread
-        File.open('client.log', 'a') do |log|
-          File.open('client.err', 'a') do |err|
+        File.open(File.join(@log_dir, 'client.log'), 'a') do |log|
+          File.open(File.join(@log_dir, 'client.err'), 'a') do |err|
             loop do
               msg = @log_queue.pop
               break if msg == :terminate

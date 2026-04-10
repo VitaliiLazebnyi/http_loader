@@ -1,4 +1,4 @@
-# typed: strict
+# typed: strong
 # frozen_string_literal: true
 
 require 'sorbet-runtime'
@@ -19,6 +19,9 @@ module KeepAlive
       connections:, target_urls: [], use_https: false, client_args: [],
       export_json: nil, target_duration: 0.0
     )
+      raise ArgumentError, 'connections must be >= 1' if connections < 1
+      raise ArgumentError, 'target_duration must be >= 0.0' if target_duration.negative?
+
       @connections = connections
       @target_urls = target_urls
       @use_https = use_https
@@ -29,6 +32,7 @@ module KeepAlive
       @peak_connections = T.let(0, Integer)
       @export_json = export_json
       @target_duration = target_duration
+      @log_dir = T.let(File.expand_path('../../logs', __dir__), String)
     end
 
     sig { void }
@@ -72,10 +76,12 @@ module KeepAlive
 
     sig { void }
     def spawn_processes
+      FileUtils.mkdir_p(@log_dir)
+
       unless @target_urls.any?
         server_cmd = 'ruby bin/server'
         server_cmd += ' --https' if @use_https
-        @server_pid = Process.spawn(server_cmd, out: 'server.log', err: 'server.err')
+        @server_pid = Process.spawn(server_cmd, out: File.join(@log_dir, 'server.log'), err: File.join(@log_dir, 'server.err'))
         puts "[Harness] Started server with PID #{@server_pid}"
         puts '[Harness] Waiting for server to initialize...'
         sleep(2)
@@ -84,7 +90,7 @@ module KeepAlive
       client_args_str = @client_args.empty? ? "--connections_count=#{@connections}" : @client_args.join(' ')
       client_cmd = "ruby bin/client #{client_args_str}"
 
-      @client_pid = Process.spawn(client_cmd, out: 'client.log', err: 'client.err')
+      @client_pid = Process.spawn(client_cmd, out: File.join(@log_dir, 'client.log'), err: File.join(@log_dir, 'client.err'))
       puts "[Harness] Started client with PID #{@client_pid} (Command: #{client_cmd})"
     end
 
@@ -255,10 +261,10 @@ module KeepAlive
       return unless @export_json
 
       full_log = begin
-        File.read('client.log')
+        File.read(File.join(@log_dir, 'client.log'))
       rescue StandardError; ''
       end + begin
-        File.read('client.err')
+        File.read(File.join(@log_dir, 'client.err'))
       rescue StandardError; ''
       end
 
@@ -283,10 +289,10 @@ module KeepAlive
     sig { void }
     def check_bottlenecks
       full_log = begin
-        File.read('client.log')
+        File.read(File.join(@log_dir, 'client.log'))
       rescue StandardError; ''
       end + begin
-        File.read('client.err')
+        File.read(File.join(@log_dir, 'client.err'))
       rescue StandardError; ''
       end
 

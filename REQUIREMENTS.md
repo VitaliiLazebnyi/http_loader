@@ -35,3 +35,5 @@ This document codifies the core architectural specifications and quality standar
 - **[REQ-CLI-020]** **Slowloris Exhaustion**: Client MUST orchestrate byte-by-byte malicious payload distributions mapping delays algorithmically via `--slowloris_delay` entirely skipping standard `Net::HTTP` protocol handlers.
 - **[REQ-CLI-021]** **JSON Telemetry Exporter**: Harness MUST format and export final execution telemetry and metrics recursively into a structured JSON file via `--export_json` natively upon completion.
 - **[REQ-CLI-022]** **Duration Limiter**: Harness MUST explicitly interrupt and shutdown identically all running test instances systematically via `--target_duration` if explicit limit reached.
+- **[REQ-CLI-023]** **Native Parameter Validation**: The interface edges MUST strictly evaluate numeric bounds linearly preventing initialization natively if variables map out of strict mathematical bounds safely.
+- **[REQ-SRV-002]** **Strict Log Centralization**: All subsystem logging streams (standard output and error outputs mapping respectively) MUST strictly be aggregated reliably exactly into absolute `./logs/` folder structures natively.
