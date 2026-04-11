@@ -3,3 +3,4 @@ logs/
 .gem/
 vendor/
 gems_unpacked/
+coverage/
