@@ -1,6 +1,6 @@
-logs
 *.pid
 .gem
-vendor
-gems_unpacked
 coverage
+gems_unpacked
+logs
+vendor
