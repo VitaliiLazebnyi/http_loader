@@ -1,4 +1,5 @@
 *.pid
+*.log
 .gem
 coverage
 gems_unpacked
