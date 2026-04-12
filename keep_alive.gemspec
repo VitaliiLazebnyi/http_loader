@@ -16,12 +16,16 @@ Gem::Specification.new do |spec|
   spec.metadata['source_code_uri']   = spec.homepage
   spec.metadata['rubygems_mfa_required'] = 'true'
 
+  # Justified Exception: RuboGems boilerplate enforces block-level Dir.chdir for resolving spec.files
+  # rubocop:disable ThreadSafety/DirChdir
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
     `git ls-files -z`.split("\x0").reject do |f|
       (f == __FILE__) ||
-        f.match(%r{\A(?:spec/|\.git)})
+        f.match(%r{\A(?:spec/|\.git)}) ||
+        f.end_with?('.gem')
     end
   end
+  # rubocop:enable ThreadSafety/DirChdir
   spec.bindir        = 'bin'
   spec.executables   = ['keep_alive']
   spec.require_paths = ['lib']

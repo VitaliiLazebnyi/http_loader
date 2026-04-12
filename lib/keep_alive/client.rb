@@ -10,86 +10,57 @@ require 'async'
 require 'async/semaphore'
 require 'time'
 require 'fileutils'
+require_relative 'client/config'
+
 module KeepAlive
+  # Client is the core engine responsible for establishing, maintaining, and tracking
+  # thousands of asynchronous connections. It handles protocol variations, timeouts, and logging.
   class Client
     extend T::Sig
 
-    sig do
-      params(
-        connections: Integer,
-        target_urls: T::Array[String],
-        use_https: T::Boolean,
-        verbose: T::Boolean,
-        ping: T::Boolean,
-        ping_period: Integer,
-        keep_alive_timeout: Float,
-        connections_per_second: Integer,
-        max_concurrent_connections: Integer,
-        reopen_closed_connections: T::Boolean,
-        reopen_interval: Float,
-        read_timeout: Float,
-        user_agent: String,
-        jitter: Float,
-        track_status_codes: T::Boolean,
-        ramp_up: Float,
-        bind_ips: T::Array[String],
-        proxy_pool: T::Array[String],
-        qps_per_connection: Integer,
-        headers: T::Hash[String, String],
-        slowloris_delay: Float
-      ).void
-    end
-    def initialize( # rubocop:disable Metrics/ParameterLists
-      connections:, target_urls: [], use_https: false,
-      verbose: false, ping: true, ping_period: 5,
-      keep_alive_timeout: 0.0, connections_per_second: 0,
-      max_concurrent_connections: 1000, reopen_closed_connections: false,
-      reopen_interval: 5.0, read_timeout: 0.0, user_agent: 'Keep-Alive Test',
-      jitter: 1.0, track_status_codes: false,
-      ramp_up: 0.0, bind_ips: [], proxy_pool: [],
-      qps_per_connection: 0, headers: {},
-      slowloris_delay: 0.0
-    )
-      raise ArgumentError, 'connections must be >= 1' if connections < 1
-      raise ArgumentError, 'ping_period must be >= 0' if ping_period.negative?
-      raise ArgumentError, 'keep_alive_timeout must be >= 0.0' if keep_alive_timeout.negative?
-      raise ArgumentError, 'connections_per_second must be >= 0' if connections_per_second.negative?
-      raise ArgumentError, 'max_concurrent_connections must be >= 1' if max_concurrent_connections < 1
-      raise ArgumentError, 'reopen_interval must be >= 0.0' if reopen_interval.negative?
-      raise ArgumentError, 'read_timeout must be >= 0.0' if read_timeout.negative?
-      raise ArgumentError, 'jitter must be >= 0.0' if jitter.negative?
-      raise ArgumentError, 'ramp_up must be >= 0.0' if ramp_up.negative?
-      raise ArgumentError, 'qps_per_connection must be >= 0' if qps_per_connection.negative?
-      raise ArgumentError, 'slowloris_delay must be >= 0.0' if slowloris_delay.negative?
+    sig { params(config: Config).void }
+    def initialize(config)
+      raise ArgumentError, 'connections must be >= 1' if config.connections < 1
+      raise ArgumentError, 'ping_period must be >= 0' if config.ping_period.negative?
+      raise ArgumentError, 'keep_alive_timeout must be >= 0.0' if config.keep_alive_timeout.negative?
+      raise ArgumentError, 'connections_per_second must be >= 0' if config.connections_per_second.negative?
+      raise ArgumentError, 'max_concurrent_connections must be >= 1' if config.max_concurrent_connections < 1
+      raise ArgumentError, 'reopen_interval must be >= 0.0' if config.reopen_interval.negative?
+      raise ArgumentError, 'read_timeout must be >= 0.0' if config.read_timeout.negative?
+      raise ArgumentError, 'jitter must be >= 0.0' if config.jitter.negative?
+      raise ArgumentError, 'ramp_up must be >= 0.0' if config.ramp_up.negative?
+      raise ArgumentError, 'qps_per_connection must be >= 0' if config.qps_per_connection.negative?
+      raise ArgumentError, 'slowloris_delay must be >= 0.0' if config.slowloris_delay.negative?
 
-      @connections = connections
-      @target_urls = target_urls
-      @use_https = use_https
-      @verbose = verbose
-      @ping = ping
-      @ping_period = ping_period
-      @keep_alive_timeout = keep_alive_timeout
-      @connections_per_second = connections_per_second
-      @max_concurrent_connections = max_concurrent_connections
-      @reopen_closed_connections = reopen_closed_connections
-      @reopen_interval = reopen_interval
-      @read_timeout = read_timeout
-      @user_agent = user_agent
-      @jitter = jitter
-      @track_status_codes = track_status_codes
-      @ramp_up = ramp_up
-      @bind_ips = bind_ips
-      @proxy_pool = proxy_pool
-      @qps_per_connection = qps_per_connection
-      @headers = headers
-      @slowloris_delay = slowloris_delay
+      @connections = config.connections
+      @target_urls = config.target_urls
+      @use_https = config.use_https
+      @verbose = config.verbose
+      @ping = config.ping
+      @ping_period = config.ping_period
+      @keep_alive_timeout = config.keep_alive_timeout
+      @connections_per_second = config.connections_per_second
+      @max_concurrent_connections = config.max_concurrent_connections
+      @reopen_closed_connections = config.reopen_closed_connections
+      @reopen_interval = config.reopen_interval
+      @read_timeout = config.read_timeout
+      @user_agent = config.user_agent
+      @jitter = config.jitter
+      @track_status_codes = config.track_status_codes
+      @ramp_up = config.ramp_up
+      @bind_ips = config.bind_ips
+      @proxy_pool = config.proxy_pool
+      @qps_per_connection = config.qps_per_connection
+      @headers = config.headers
+      @slowloris_delay = config.slowloris_delay
+
       @log_dir = T.let(File.expand_path('../../logs', __dir__), String)
 
       @target_contexts = T.let(build_target_contexts, T::Array[T::Hash[Symbol, T.untyped]])
       @protocol_label = T.let(determine_protocol_label, String)
 
       @log_queue = T.let(Queue.new, Queue)
-      @logger_thread = T.let(spawn_logger_thread, Thread)
+      @logger_task = T.let(nil, T.nilable(T.untyped))
     end
 
     sig { void }
@@ -106,6 +77,7 @@ module KeepAlive
       File.write(File.join(@log_dir, 'client.log'), '') if @verbose
 
       Async do |task|
+        run_logger_task(task)
         semaphore = Async::Semaphore.new(@max_concurrent_connections, parent: task)
         @connections.times do |i|
           delay = if @ramp_up.positive?
@@ -115,26 +87,56 @@ module KeepAlive
                   else
                     0.0
                   end
-          task.sleep(calculate_sleep(delay)) if delay.positive?
+          perform_sleep(calculate_sleep(delay), task: task) if delay.positive?
           semaphore.async do
             execute_connection(i)
           end
         end
       end
     ensure
-      @log_queue << :terminate
-      @logger_thread.join
+      # Process remainders synchronously before exit natively avoiding thread leaks
+      begin
+        File.open(File.join(@log_dir, 'client.log'), 'a') do |log|
+          File.open(File.join(@log_dir, 'client.err'), 'a') do |err|
+            loop do
+              msg = begin
+                @log_queue.pop(true)
+              rescue ThreadError
+                nil
+              end
+              break unless msg && msg != :terminate
+
+              target, content = msg
+              if target == :info
+                log.puts content
+                log.flush
+              elsif target == :error
+                err.puts content
+                err.flush
+              end
+            end
+          end
+        end
+      rescue StandardError => _e
+        nil
+      end
     end
 
     private
 
-    sig { returns(Thread) }
-    def spawn_logger_thread
-      Thread.new do # rubocop:disable ThreadSafety/NewThread
+    sig { params(task: T.untyped).void }
+    def run_logger_task(task)
+      @logger_task = task.async do
         File.open(File.join(@log_dir, 'client.log'), 'a') do |log|
           File.open(File.join(@log_dir, 'client.err'), 'a') do |err|
             loop do
-              msg = @log_queue.pop
+              msg = nil
+              begin
+                msg = @log_queue.pop(true)
+              rescue ThreadError
+                task.sleep(0.05)
+                next
+              end
               break if msg == :terminate
 
               target, content = msg
@@ -149,6 +151,11 @@ module KeepAlive
           end
         end
       end
+    end
+
+    sig { params(delay_amount: Float, task: T.untyped).void }
+    def perform_sleep(delay_amount, task: nil)
+      task ? task.sleep(delay_amount) : sleep(delay_amount)
     end
 
     sig { params(base_seconds: Float).returns(Float) }
@@ -257,7 +264,9 @@ module KeepAlive
                 res.read_body { |_chunk| nil }
               end
 
-              log_info("[Client #{client_index}] Upstream returned HTTP #{response.code}") if @track_status_codes && !response.is_a?(Net::HTTPSuccess) && !response.is_a?(Net::HTTPRedirection)
+              if @track_status_codes && !response.is_a?(Net::HTTPSuccess) && !response.is_a?(Net::HTTPRedirection)
+                log_info("[Client #{client_index}] Upstream returned HTTP #{response.code}")
+              end
 
               break unless response.is_a?(Net::HTTPSuccess) || response.is_a?(Net::HTTPRedirection)
             elsif @ping
@@ -268,7 +277,9 @@ module KeepAlive
               @headers.each { |k, v| ping_request[k] = v }
               response = http.request(ping_request)
 
-              log_info("[Client #{client_index}] Upstream returned HTTP #{response.code}") if @track_status_codes && !response.is_a?(Net::HTTPSuccess) && !response.is_a?(Net::HTTPRedirection)
+              if @track_status_codes && !response.is_a?(Net::HTTPSuccess) && !response.is_a?(Net::HTTPRedirection)
+                log_info("[Client #{client_index}] Upstream returned HTTP #{response.code}")
+              end
 
               break unless response.is_a?(Net::HTTPSuccess) || response.is_a?(Net::HTTPRedirection)
             else

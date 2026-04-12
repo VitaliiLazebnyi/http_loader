@@ -73,7 +73,7 @@ when 'client'
   options[:track_status_codes] ||= false
 
   begin
-    client = KeepAlive::Client.new(
+    config = KeepAlive::Client::Config.new(
       connections: options[:connections], target_urls: options[:target_urls], use_https: options[:use_https],
       verbose: options[:verbose], ping: options[:ping], ping_period: options[:ping_period],
       keep_alive_timeout: options[:keep_alive_timeout], connections_per_second: options[:connections_per_second],
@@ -83,6 +83,7 @@ when 'client'
       bind_ips: options[:bind_ips], proxy_pool: options[:proxy_pool], qps_per_connection: options[:qps_per_connection],
       headers: options[:headers], slowloris_delay: options[:slowloris_delay]
     )
+    client = KeepAlive::Client.new(config)
     client.start
   rescue ArgumentError => e
     warn "Configuration Error: #{e.message}"
@@ -129,7 +130,7 @@ when 'harness'
   end.parse!(ARGV)
 
   begin
-    harness = KeepAlive::Harness.new(
+    hconfig = KeepAlive::Harness::Config.new(
       connections: options[:connections],
       target_urls: options[:target_urls],
       use_https: options[:use_https],
@@ -137,6 +138,7 @@ when 'harness'
       export_json: options[:export_json],
       target_duration: options[:target_duration]
     )
+    harness = KeepAlive::Harness.new(hconfig)
     harness.start
   rescue ArgumentError => e
     warn "Configuration Error: #{e.message}"

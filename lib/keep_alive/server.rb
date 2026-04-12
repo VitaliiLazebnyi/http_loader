@@ -14,6 +14,8 @@ require 'falcon/server'
 require 'protocol/rack/adapter'
 
 module KeepAlive
+  # Server provides a lightweight, natively asynchronous HTTP/HTTPS mock endpoint
+  # using Falcon to rapidly absorb and echo load testing connection payloads securely.
   class Server
     extend T::Sig
 

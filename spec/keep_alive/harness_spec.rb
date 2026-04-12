@@ -4,7 +4,7 @@
 require 'spec_helper'
 
 RSpec.describe KeepAlive::Harness do
-  let(:harness) { described_class.new(connections: 2) }
+  let(:harness) { build_harness(connections: 2) }
 
   before do
     allow($stdout).to receive(:puts)
@@ -17,11 +17,11 @@ RSpec.describe KeepAlive::Harness do
 
   describe '#initialize' do
     it 'raises ArgumentError on invalid connections' do
-      expect { described_class.new(connections: 0) }.to raise_error(ArgumentError, /connections must be >= 1/)
+      expect { build_harness(connections: 0) }.to raise_error(ArgumentError, /connections must be >= 1/)
     end
 
     it 'raises ArgumentError on invalid target duration' do
-      expect { described_class.new(connections: 1, target_duration: -1.0) }.to raise_error(ArgumentError, /target_duration must be >= 0.0/)
+      expect { build_harness(connections: 1, target_duration: -1.0) }.to raise_error(ArgumentError, /target_duration must be >= 0.0/)
     end
   end
 
@@ -43,7 +43,7 @@ RSpec.describe KeepAlive::Harness do
       end
 
       it 'spawns server with https natively' do
-        h_https = described_class.new(connections: 1, use_https: true)
+        h_https = build_harness(connections: 1, use_https: true)
         allow(Process).to receive(:spawn)
         allow(h_https).to receive(:sleep)
         h_https.send(:spawn_processes)
@@ -51,7 +51,7 @@ RSpec.describe KeepAlive::Harness do
       end
 
       it 'spawns only client if target_urls is populated and maps strictly' do
-        h_tgt = described_class.new(connections: 1, target_urls: ['http://remote'], client_args: ['--custom=1'])
+        h_tgt = build_harness(connections: 1, target_urls: ['http://remote'], client_args: ['--custom=1'])
         allow(Process).to receive(:spawn)
         h_tgt.send(:spawn_processes)
         expect(Process).to have_received(:spawn).once
@@ -60,21 +60,21 @@ RSpec.describe KeepAlive::Harness do
 
     context 'with alternate target arguments' do
       it 'logs MULTIPLE TARGETS cleanly' do
-        h_multi = described_class.new(connections: 1, target_urls: ['http://t1', 'http://t2'])
+        h_multi = build_harness(connections: 1, target_urls: ['http://t1', 'http://t2'])
         allow(h_multi).to receive(:spawn_processes)
         allow(h_multi).to receive(:monitor_resources)
         expect { h_multi.start }.to output(/MULTIPLE TARGETS/).to_stdout
       end
 
       it 'logs EXTERNAL URL cleanly' do
-        h_ext = described_class.new(connections: 1, target_urls: ['http://t1'])
+        h_ext = build_harness(connections: 1, target_urls: ['http://t1'])
         allow(h_ext).to receive(:spawn_processes)
         allow(h_ext).to receive(:monitor_resources)
         expect { h_ext.start }.to output(/EXTERNAL URL/).to_stdout
       end
 
       it 'logs HTTPS cleanly' do
-        h_sec = described_class.new(connections: 1, use_https: true)
+        h_sec = build_harness(connections: 1, use_https: true)
         allow(h_sec).to receive(:spawn_processes)
         allow(h_sec).to receive(:monitor_resources)
         expect { h_sec.start }.to output(/HTTPS/).to_stdout
@@ -194,7 +194,10 @@ RSpec.describe KeepAlive::Harness do
         allow(File).to receive(:read).with('/proc/123/stat').and_raise(Errno::ENOENT)
         allow(Open3).to receive(:capture2).with('ps', '-o', '%cpu,rss', '-p', '123').and_return(["%CPU   RSS\n  5.5 10240\n", nil])
         allow(Open3).to receive(:capture2).with('ps -M -p 123').and_return([
-                                                                             "PID  TT  STAT      TIME COMMAND\n123  ??  S      0:00.01 ruby\n123  ??  S      0:00.01 ruby\n", nil
+                                                                             "PID  TT  STAT      TIME COMMAND\n" \
+                                                                             "123  ??  S      0:00.01 ruby\n" \
+                                                                             "123  ??  S      0:00.01 ruby\n",
+                                                                             nil
                                                                            ])
         harness.send(:process_stats, 123)
       end
@@ -296,7 +299,7 @@ RSpec.describe KeepAlive::Harness do
     end
 
     context 'when executing mathematically limited timeline loop directly' do
-      let(:harness_timed) { described_class.new(connections: 1, target_duration: 0.1) }
+      let(:harness_timed) { build_harness(connections: 1, target_duration: 0.1) }
 
       it 'reaches duration logically seamlessly exiting natively' do
         allow(harness_timed).to receive(:loop).and_yield
@@ -330,7 +333,7 @@ RSpec.describe KeepAlive::Harness do
     end
 
     context 'when testing external target dropping seamlessly' do
-      let(:h_target) { described_class.new(connections: 1, target_urls: ['http://remote']) }
+      let(:h_target) { build_harness(connections: 1, target_urls: ['http://remote']) }
 
       it 'logs gracefully that external target disconnected natively' do
         allow(h_target).to receive(:loop).and_yield
@@ -345,7 +348,7 @@ RSpec.describe KeepAlive::Harness do
 
   describe '#export_telemetry' do
     context 'when exporting telemetry correctly handles structurally missing files natively' do
-      let(:harness_export) { described_class.new(connections: 1, export_json: 'test.json') }
+      let(:harness_export) { build_harness(connections: 1, export_json: 'test.json') }
 
       it 'safely swallows IO errors generating blank telemetry logs gracefully' do
         allow(File).to receive(:read).with(/client\.log/).and_raise(StandardError)
@@ -358,7 +361,7 @@ RSpec.describe KeepAlive::Harness do
     end
 
     context 'when JSON explicitly set' do
-      let(:harness_export) { described_class.new(connections: 2, export_json: 'test_telemetry.json') }
+      let(:harness_export) { build_harness(connections: 2, export_json: 'test_telemetry.json') }
       let(:exported_json) do
         json_output = nil
         allow(File).to receive(:write).with('test_telemetry.json', instance_of(String)) { |_, string| json_output = string }
@@ -414,7 +417,7 @@ RSpec.describe KeepAlive::Harness do
   end
 
   describe '#spawn_processes boost' do
-    let(:harness_retry) { described_class.new(connections: 1) }
+    let(:harness_retry) { build_harness(connections: 1) }
 
     before do
       allow(Process).to receive(:spawn).and_return(123)

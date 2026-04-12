@@ -6,8 +6,7 @@ require 'open3'
 require 'fileutils'
 require 'json'
 # Justified Exception: E2E Integration tests organically require complex sequential process bootstrapping mathematically stretching isolated expectation boundaries.
-# rubocop:disable RSpec/DescribeClass
-RSpec.describe 'Keep-Alive E2E Integration Tests', :integration do
+RSpec.describe KeepAlive, type: :integration do
   let(:bin_path) { File.expand_path('../../bin/keep_alive', __dir__) }
   let(:log_dir) { File.expand_path('../../logs', __dir__) }
   let(:client_log) { File.join(log_dir, 'client.log') }
@@ -133,4 +132,3 @@ RSpec.describe 'Keep-Alive E2E Integration Tests', :integration do
     end
   end
 end
-# rubocop:enable RSpec/ExampleLength, RSpec/MultipleExpectations, RSpec/DescribeClass

@@ -5,34 +5,29 @@ require 'sorbet-runtime'
 require 'open3'
 require 'json'
 require 'fileutils'
+require_relative 'harness/config'
 
 module KeepAlive
+  # Harness orchestrates the entire load testing lifecycle by securely spawning and managing
+  # the isolated client and server processes, collecting realtime telemetry metrics.
   class Harness
     extend T::Sig
 
-    sig do
-      params(
-        connections: Integer, target_urls: T::Array[String], use_https: T::Boolean, client_args: T::Array[String],
-        export_json: T.nilable(String), target_duration: Float
-      ).void
-    end
-    def initialize( # rubocop:disable Metrics/ParameterLists
-      connections:, target_urls: [], use_https: false, client_args: [],
-      export_json: nil, target_duration: 0.0
-    )
-      raise ArgumentError, 'connections must be >= 1' if connections < 1
-      raise ArgumentError, 'target_duration must be >= 0.0' if target_duration.negative?
+    sig { params(config: Config).void }
+    def initialize(config)
+      raise ArgumentError, 'connections must be >= 1' if config.connections < 1
+      raise ArgumentError, 'target_duration must be >= 0.0' if config.target_duration.negative?
 
-      @connections = connections
-      @target_urls = target_urls
-      @use_https = use_https
-      @client_args = client_args
+      @connections = config.connections
+      @target_urls = config.target_urls
+      @use_https = config.use_https
+      @client_args = config.client_args
       @server_pid = T.let(nil, T.nilable(Integer))
       @client_pid = T.let(nil, T.nilable(Integer))
       @start_time = T.let(Time.now.utc, Time)
       @peak_connections = T.let(0, Integer)
-      @export_json = export_json
-      @target_duration = target_duration
+      @export_json = config.export_json
+      @target_duration = config.target_duration
       @log_dir = T.let(File.expand_path('../../logs', __dir__), String)
       @cpu_prev = T.let({}, T::Hash[Integer, T::Hash[Symbol, T.untyped]])
     end

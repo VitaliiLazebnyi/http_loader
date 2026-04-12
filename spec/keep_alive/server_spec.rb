@@ -10,11 +10,11 @@ RSpec.describe KeepAlive::Server do
     # Prevent stdout noise
     allow($stdout).to receive(:puts)
     allow(Rackup::Handler::Falcon).to receive(:run)
-    allow(IO::Endpoint).to receive(:tcp).and_return(double('tcp_endpoint'))
-    allow(IO::Endpoint::SSLEndpoint).to receive(:new).and_return(double('ssl_endpoint'))
-    allow(Protocol::Rack::Adapter).to receive(:new).and_return(double('adapter'))
-    mock_falcon = double('falcon')
-    allow(mock_falcon).to receive(:run).and_return(double('server_task', wait: true))
+    allow(IO::Endpoint).to receive(:tcp).and_return(instance_double(IO::Endpoint))
+    allow(IO::Endpoint::SSLEndpoint).to receive(:new).and_return(instance_double(IO::Endpoint::SSLEndpoint))
+    allow(Protocol::Rack::Adapter).to receive(:new).and_return(instance_double(Protocol::Rack::Adapter))
+    mock_falcon = instance_double(Falcon::Server)
+    allow(mock_falcon).to receive(:run).and_return(instance_double(Async::Task, wait: true))
     allow(Falcon::Server).to receive(:new).and_return(mock_falcon)
   end
 
@@ -28,7 +28,7 @@ RSpec.describe KeepAlive::Server do
       end
 
       it 'traps INT signal cleanly over generic Rackup layer', :rspec do
-        allow(Rackup::Handler::Falcon).to receive(:run).and_yield(double('mock_server'))
+        allow(Rackup::Handler::Falcon).to receive(:run).and_yield(instance_double(Object))
         allow(server).to receive(:trap).with('INT').and_yield
         allow(server).to receive(:exit)
         expect { server.start(use_https: false, port: 8080) }.to output(/Shutting down immediately/).to_stdout
@@ -44,7 +44,7 @@ RSpec.describe KeepAlive::Server do
       it 'traps INT signal securely alongside active SSLEndpoints natively', :rspec do
         allow(server).to receive(:trap).with('INT').and_yield
         allow(server).to receive(:exit)
-        task_mock = double('mock_task', stop: nil)
+        task_mock = instance_double(Async::Task, stop: nil)
         allow(server).to receive(:Sync).and_yield(task_mock)
         expect { server.start(use_https: true, port: 8443) }.to output(/Shutting down immediately/).to_stdout
       end

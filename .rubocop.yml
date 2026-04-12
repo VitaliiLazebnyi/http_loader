@@ -12,29 +12,42 @@ AllCops:
 Style/FrozenStringLiteralComment:
   Enabled: true
 
-Metrics/MethodLength:
-  Max: 100
-
-Metrics/ClassLength:
-  Max: 300
-
-
-Layout/LineLength:
-  Max: 150
-
-Metrics/CyclomaticComplexity:
-  Max: 30
-
-Metrics/PerceivedComplexity:
-  Max: 30
-
-Style/Documentation:
-  Enabled: false
-
 Metrics/BlockLength:
-  Max: 300
+  Max: 65
   Exclude:
+    - 'keep_alive.gemspec'
     - 'spec/**/*'
 
+Gemspec/DevelopmentDependencies:
+  Enabled: false
+
+Layout/LineLength:
+  Max: 155
+
+Metrics/MethodLength:
+  Max: 65
+
 Metrics/AbcSize:
-  Max: 100
+  Max: 90
+
+Metrics/CyclomaticComplexity:
+  Max: 24
+
+Metrics/PerceivedComplexity:
+  Max: 25
+
+Metrics/ClassLength:
+  Max: 350
+
+
+RSpec/ExampleLength:
+  Max: 25
+
+RSpec/NestedGroups:
+  Max: 5
+
+RSpec/ContextWording:
+  Enabled: false
+
+RSpec/MultipleExpectations:
+  Max: 7
