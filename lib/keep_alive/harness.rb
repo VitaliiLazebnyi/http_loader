@@ -81,7 +81,7 @@ module KeepAlive
       FileUtils.mkdir_p(@log_dir)
 
       unless @target_urls.any?
-        server_cmd = 'ruby bin/server'
+        server_cmd = 'ruby bin/keep_alive server'
         server_cmd += ' --https' if @use_https
         @server_pid = Process.spawn(server_cmd, out: File.join(@log_dir, 'server.log'), err: File.join(@log_dir, 'server.err'))
         puts "[Harness] Started server with PID #{@server_pid}"
@@ -90,7 +90,7 @@ module KeepAlive
       end
 
       client_args_str = @client_args.empty? ? "--connections_count=#{@connections}" : @client_args.join(' ')
-      client_cmd = "ruby bin/client #{client_args_str}"
+      client_cmd = "ruby bin/keep_alive client #{client_args_str}"
 
       @client_pid = Process.spawn(client_cmd, out: File.join(@log_dir, 'client.log'), err: File.join(@log_dir, 'client.err'))
       puts "[Harness] Started client with PID #{@client_pid} (Command: #{client_cmd})"
