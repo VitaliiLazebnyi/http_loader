@@ -81,7 +81,6 @@ RSpec.describe KeepAlive::Client do
         allow(client_rate).to receive(:execute_connection)
         allow(client_rate).to receive(:trap).with('INT')
         # Architectural limitation: Async::Task yielded internally
-        # rubocop:disable RSpec/AnyInstance
         allow_any_instance_of(Async::Task).to receive(:sleep)
         # rubocop:enable RSpec/AnyInstance
         client_rate.start
@@ -98,14 +97,12 @@ RSpec.describe KeepAlive::Client do
 
     context 'when testing sleep exactly' do
       # Architectural limitation: Async::Task yielded internally
-      # rubocop:disable RSpec/AnyInstance
       it 'sleeps correctly', :rspec do
         allow(client_rate).to receive(:execute_connection)
         allow(client_rate).to receive(:trap).with('INT')
         expect_any_instance_of(Async::Task).to receive(:sleep).with(0.1).twice
         client_rate.start
       end
-      # rubocop:enable RSpec/AnyInstance
     end
 
     context 'when providing ramp_up delay' do
@@ -117,7 +114,6 @@ RSpec.describe KeepAlive::Client do
       end
 
       # Architectural limitation: Async::Task mock needed
-      # rubocop:disable RSpec/AnyInstance
       it 'calculates delay properly overriding connections_per_second', :rspec do
         expect_any_instance_of(Async::Task).to receive(:sleep).with(2.5).exactly(4).times
         client_ramp.start
@@ -129,7 +125,6 @@ RSpec.describe KeepAlive::Client do
         client_ramp.start
         expect(client_ramp).to have_received(:execute_connection).exactly(4).times
       end
-      # rubocop:enable RSpec/AnyInstance
     end
 
     context 'when no ramp_up or rate limits configured' do
@@ -371,7 +366,9 @@ RSpec.describe KeepAlive::Client do
     end
 
     context 'when qps_per_connection receives server error' do
-      let(:client) { described_class.new(connections: 1, ping: false, keep_alive_timeout: 0.0, track_status_codes: true, qps_per_connection: 10, jitter: 0.0) }
+      let(:client) do
+        described_class.new(connections: 1, ping: false, keep_alive_timeout: 0.0, track_status_codes: true, qps_per_connection: 10, jitter: 0.0)
+      end
 
       before do
         mock_http = instance_double(Net::HTTP)
@@ -393,6 +390,7 @@ RSpec.describe KeepAlive::Client do
 
     context 'when qps connection executes cleanly sequentially seamlessly', :rspec do
       let(:client_qps) { described_class.new(connections: 1, ping: false, qps_per_connection: 10, keep_alive_timeout: 0.1, jitter: 0.0) }
+
       it 'loops successfully and hits mathematically target duration boundaries' do
         mock_http = instance_double(Net::HTTP)
         mock_success = instance_double(Net::HTTPSuccess, is_a?: true, read_body: nil)
@@ -459,10 +457,10 @@ RSpec.describe KeepAlive::Client do
 
     context 'when slowloris paths execute elegantly natively' do
       it 'returns natively seamlessly if socket is utterly missing mathematically' do
-         client_sl = described_class.new(connections: 1, slowloris_delay: 1.0, keep_alive_timeout: 0.1)
-         mock_http = instance_double(Net::HTTP)
-         allow(mock_http).to receive(:instance_variable_get).with(:@socket).and_return(nil)
-         expect { client_sl.send(:run_slowloris_session, 0, URI('/'), mock_http, Time.now) }.not_to raise_error
+        client_sl = described_class.new(connections: 1, slowloris_delay: 1.0, keep_alive_timeout: 0.1)
+        mock_http = instance_double(Net::HTTP)
+        allow(mock_http).to receive(:instance_variable_get).with(:@socket).and_return(nil)
+        expect { client_sl.send(:run_slowloris_session, 0, URI('/'), mock_http, Time.now) }.not_to raise_error
       end
 
       it 'maps paths solidly using literal endpoints resolving seamlessly', :rspec do
@@ -471,14 +469,14 @@ RSpec.describe KeepAlive::Client do
         mock_wrapper = double('SocketWrapper', io: mock_io)
         mock_http = instance_double(Net::HTTP)
         allow(mock_http).to receive(:instance_variable_get).with(:@socket).and_return(mock_wrapper)
-        
+
         time = Time.now
         allow(Time).to receive(:now).and_return(time, time, time + 0.5)
         allow(client_sl).to receive(:sleep)
-        
+
         uri = URI('http://local/test?a=1')
         client_sl.send(:run_slowloris_session, 0, uri, mock_http, time)
-        
+
         expect(mock_io).to have_received(:write).at_least(:once)
       end
     end
@@ -507,15 +505,16 @@ RSpec.describe KeepAlive::Client do
 
     context 'when ping actively succeeds cleanly natively', :rspec do
       let(:client_ping) { described_class.new(connections: 1, ping: true, ping_period: 1, keep_alive_timeout: 0.1, jitter: 0.0) }
+
       it 'loops perfectly returning HTTPSuccess naturally dropping out on duration break' do
-          mock_http = instance_double(Net::HTTP)
-          mock_success = instance_double(Net::HTTPSuccess, is_a?: true)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:request).and_return(mock_success)
-          allow(client_ping).to receive(:sleep)
-          time = Time.now
-          allow(Time).to receive(:now).and_return(time, time, time + 0.2)
-          expect { client_ping.send(:run_http_session, 0, time) }.not_to raise_error
+        mock_http = instance_double(Net::HTTP)
+        mock_success = instance_double(Net::HTTPSuccess, is_a?: true)
+        allow(Net::HTTP).to receive(:start).and_yield(mock_http)
+        allow(mock_http).to receive(:request).and_return(mock_success)
+        allow(client_ping).to receive(:sleep)
+        time = Time.now
+        allow(Time).to receive(:now).and_return(time, time, time + 0.2)
+        expect { client_ping.send(:run_http_session, 0, time) }.not_to raise_error
       end
     end
 
@@ -596,9 +595,9 @@ RSpec.describe KeepAlive::Client do
     it 'flushes info and error logs securely to file', :rspec do
       log_file_stub = instance_double(File, puts: nil, flush: nil)
       err_file_stub = instance_double(File, puts: nil, flush: nil)
-      allow(File).to receive(:open).with(/\/client\.log/, 'a').and_yield(log_file_stub)
-      allow(File).to receive(:open).with(/\/client\.err/, 'a').and_yield(err_file_stub)
-      
+      allow(File).to receive(:open).with(%r{/client\.log}, 'a').and_yield(log_file_stub)
+      allow(File).to receive(:open).with(%r{/client\.err}, 'a').and_yield(err_file_stub)
+
       verbose_client.instance_variable_get(:@log_queue) << [:info, 'test_info']
       verbose_client.instance_variable_get(:@log_queue) << [:error, 'test_error']
       verbose_client.instance_variable_get(:@log_queue) << [:unknown_type, 'ignored payload']

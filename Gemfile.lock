@@ -2,14 +2,12 @@ PATH
   remote: .
   specs:
     keep_alive (0.1.0)
-      async (~> 2)
-      async-http (~> 0.65)
-      falcon (~> 0.44)
-      memory_profiler
-      rack
-      rackup
-      ruby-prof
-      sorbet-runtime
+      async (~> 2.39)
+      async-http (~> 0.95)
+      falcon (~> 0.55)
+      rack (~> 3.2)
+      rackup (~> 2.3)
+      sorbet-runtime (~> 0.6)
 
 GEM
   remote: https://rubygems.org/
@@ -180,16 +178,18 @@ PLATFORMS
 
 DEPENDENCIES
   keep_alive!
-  rake
-  rspec (~> 3.12)
-  rubocop
-  rubocop-md
-  rubocop-performance
-  rubocop-rake
-  rubocop-rspec
-  rubocop-thread_safety
-  simplecov
-  sorbet
+  memory_profiler (~> 1.1)
+  rake (~> 13.3)
+  rspec (~> 3.13)
+  rubocop (~> 1.86)
+  rubocop-md (~> 2.0)
+  rubocop-performance (~> 1.26)
+  rubocop-rake (~> 0.7)
+  rubocop-rspec (~> 3.9)
+  rubocop-thread_safety (~> 0.7)
+  ruby-prof (~> 2.0)
+  simplecov (~> 0.22)
+  sorbet (~> 0.6)
 
 CHECKSUMS
   ast (2.4.3) sha256=954615157c1d6a382bc27d690d973195e79db7f55e9765ac7c481c60bdb4d383

@@ -47,7 +47,7 @@ RSpec.describe KeepAlive::Harness do
         allow(Process).to receive(:spawn)
         allow(h_https).to receive(:sleep)
         h_https.send(:spawn_processes)
-        expect(Process).to have_received(:spawn).with(include('--https'), anything)
+        expect(Process).to have_received(:spawn).with('ruby', 'bin/keep_alive', 'server', '--https', anything)
       end
 
       it 'spawns only client if target_urls is populated and maps strictly' do
@@ -130,18 +130,18 @@ RSpec.describe KeepAlive::Harness do
 
     context 'when on Linux with native /proc stats' do
       let(:proc_stat) { "123 (ruby) S 1 1 1 0 -1 0 0 0 0 0 100 200 0 0 20 0 1 0 12345 12345 10240 1 1 1\n" }
-      
+
       it 'calculates stats successfully bypassing fallback', :rspec do
         allow(File).to receive(:read).with('/proc/123/stat').and_return(proc_stat)
         allow(File).to receive(:read).with('/proc/123/statm').and_return("10240 2560 1 1 1 1 1\n")
         allow(File).to receive(:read).with('/proc/123/status').and_return("Threads:\t4\n")
-        
+
         allow(File).to receive(:exist?).with('/usr/bin/getconf').and_return(true)
         allow(Open3).to receive(:capture2).with('getconf PAGE_SIZE').and_return(['4096', nil])
 
         stats = harness.send(:process_stats, 123)
         expect(stats[3]).to eq(4)
-        
+
         # Second pass to cover CPU diff block successfully
         time = Time.now
         allow(Time).to receive(:now).and_return(time)
@@ -178,14 +178,14 @@ RSpec.describe KeepAlive::Harness do
         allow(File).to receive(:read).with('/proc/123/status').and_return("No threads\n")
         allow(File).to receive(:exist?).with('/usr/bin/getconf').and_return(true)
         allow(Open3).to receive(:capture2).with('getconf PAGE_SIZE').and_return(['-1', nil])
-        
+
         # also hit zero time diff
         time = Time.now
         allow(Time).to receive(:now).and_return(time)
         harness.send(:process_stats, 123)
         allow(Time).to receive(:now).and_return(time) # 0.0 diff
         stats = harness.send(:process_stats, 123)
-        expect(stats[0]).to eq("0.0")
+        expect(stats[0]).to eq('0.0')
       end
     end
 
@@ -193,7 +193,9 @@ RSpec.describe KeepAlive::Harness do
       let(:stats) do
         allow(File).to receive(:read).with('/proc/123/stat').and_raise(Errno::ENOENT)
         allow(Open3).to receive(:capture2).with('ps', '-o', '%cpu,rss', '-p', '123').and_return(["%CPU   RSS\n  5.5 10240\n", nil])
-        allow(Open3).to receive(:capture2).with('ps -M -p 123').and_return(["PID  TT  STAT      TIME COMMAND\n123  ??  S      0:00.01 ruby\n123  ??  S      0:00.01 ruby\n", nil])
+        allow(Open3).to receive(:capture2).with('ps -M -p 123').and_return([
+                                                                             "PID  TT  STAT      TIME COMMAND\n123  ??  S      0:00.01 ruby\n123  ??  S      0:00.01 ruby\n", nil
+                                                                           ])
         harness.send(:process_stats, 123)
       end
 
@@ -250,14 +252,14 @@ RSpec.describe KeepAlive::Harness do
       it 'rescues internally returning nil gracefully natively', :rspec do
         allow(harness).to receive(:check_bottlenecks).and_call_original
         allow(File).to receive(:read).and_raise(StandardError)
-        # We explicitly mock the Array creation or mock the outer rescue to force line 329. 
+        # We explicitly mock the Array creation or mock the outer rescue to force line 329.
         # But raising during File.read already hits lines 312 and 315.
         expect { harness.send(:check_bottlenecks) }.not_to raise_error
       end
 
       it 'safely rescues outer bounds entirely intrinsically', :rspec do
         allow(File).to receive(:read).and_return('')
-        allow($stdout).to receive(:puts).and_raise(StandardError) 
+        allow($stdout).to receive(:puts).and_raise(StandardError)
         allow(File).to receive(:read).with(File.join(File.expand_path('../../logs', __dir__), 'client.log')).and_return('ERROR_EMFILE')
         allow(File).to receive(:read).with(File.join(File.expand_path('../../logs', __dir__), 'client.err')).and_return('')
         expect { harness.send(:check_bottlenecks) }.not_to raise_error
@@ -300,8 +302,7 @@ RSpec.describe KeepAlive::Harness do
         allow(harness_timed).to receive(:loop).and_yield
         time = Time.now.utc
         allow(Time).to receive(:now).and_return(time, time + 0.2)
-        allow(harness_timed).to receive(:process_stats).and_return(['0.0', '1 MB', 1024, 1])
-        allow(harness_timed).to receive(:count_established_connections).and_return(1)
+        allow(harness_timed).to receive_messages(process_stats: ['0.0', '1 MB', 1024, 1], count_established_connections: 1)
         expect { harness_timed.send(:monitor_resources) }.to output(/Target duration mathematically reached/).to_stdout
       end
 
@@ -312,8 +313,7 @@ RSpec.describe KeepAlive::Harness do
         allow(Time).to receive(:now).and_return(time)
         harness_timed.instance_variable_set(:@server_pid, nil)
         harness_timed.instance_variable_set(:@client_pid, nil)
-        allow(harness_timed).to receive(:process_stats).and_return(['0.0', '1 MB', 1024, 1])
-        allow(harness_timed).to receive(:count_established_connections).and_return(1)
+        allow(harness_timed).to receive_messages(process_stats: ['0.0', '1 MB', 1024, 1], count_established_connections: 1)
         expect { harness_timed.send(:monitor_resources) }.to output(/EXTERNAL/).to_stdout
       end
 
@@ -324,8 +324,7 @@ RSpec.describe KeepAlive::Harness do
         allow(Time).to receive(:now).and_return(time)
         harness_timed.instance_variable_set(:@server_pid, 9999)
         harness_timed.instance_variable_set(:@client_pid, 8888)
-        allow(harness_timed).to receive(:process_stats).and_return(['0.0', '1 MB', 1024, 1])
-        allow(harness_timed).to receive(:count_established_connections).and_return(1)
+        allow(harness_timed).to receive_messages(process_stats: ['0.0', '1 MB', 1024, 1], count_established_connections: 1)
         expect { harness_timed.send(:monitor_resources) }.to output(/1024.0 KB/).to_stdout
       end
     end
@@ -338,8 +337,7 @@ RSpec.describe KeepAlive::Harness do
         h_target.instance_variable_set(:@peak_connections, 1)
         time = Time.now.utc
         allow(Time).to receive(:now).and_return(time, time + 0.5)
-        allow(h_target).to receive(:process_stats).and_return(['0.0', '1 MB', 1024, 1])
-        allow(h_target).to receive(:count_established_connections).and_return(0)
+        allow(h_target).to receive_messages(process_stats: ['0.0', '1 MB', 1024, 1], count_established_connections: 0)
         expect { h_target.send(:monitor_resources) }.to output(/EXTERNAL SERVER DISCONNECTED/).to_stdout
       end
     end
@@ -348,6 +346,7 @@ RSpec.describe KeepAlive::Harness do
   describe '#export_telemetry' do
     context 'when exporting telemetry correctly handles structurally missing files natively' do
       let(:harness_export) { described_class.new(connections: 1, export_json: 'test.json') }
+
       it 'safely swallows IO errors generating blank telemetry logs gracefully' do
         allow(File).to receive(:read).with(/client\.log/).and_raise(StandardError)
         allow(File).to receive(:read).with(/client\.err/).and_raise(StandardError)

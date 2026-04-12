@@ -12,9 +12,9 @@ Gem::Specification.new do |spec|
   spec.description   = 'A performance testing tool for HTTP/HTTPS.'
   spec.homepage      = 'https://github.com/VitaliiLazebnyi/keep-alive'
   spec.required_ruby_version = '>= 4.0'
-
   spec.metadata['allowed_push_host'] = 'https://rubygems.org'
   spec.metadata['source_code_uri']   = spec.homepage
+  spec.metadata['rubygems_mfa_required'] = 'true'
 
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
     `git ls-files -z`.split("\x0").reject do |f|

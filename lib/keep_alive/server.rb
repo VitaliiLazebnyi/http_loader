@@ -40,7 +40,7 @@ module KeepAlive
         puts "[Server] Binding natively to HTTPS over port #{port}"
         ssl_context = generate_ssl_context
 
-        T.unsafe(self).Sync do |task|
+        T.unsafe(self).send(:Sync) do |task|
           endpoint = T.unsafe(IO::Endpoint).tcp('0.0.0.0', port)
           secure_endpoint = T.unsafe(IO::Endpoint::SSLEndpoint).new(endpoint, ssl_context: ssl_context)
 

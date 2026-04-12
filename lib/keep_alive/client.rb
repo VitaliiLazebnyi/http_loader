@@ -257,9 +257,7 @@ module KeepAlive
                 res.read_body { |_chunk| nil }
               end
 
-              if @track_status_codes && !response.is_a?(Net::HTTPSuccess) && !response.is_a?(Net::HTTPRedirection)
-                log_info("[Client #{client_index}] Upstream returned HTTP #{response.code}")
-              end
+              log_info("[Client #{client_index}] Upstream returned HTTP #{response.code}") if @track_status_codes && !response.is_a?(Net::HTTPSuccess) && !response.is_a?(Net::HTTPRedirection)
 
               break unless response.is_a?(Net::HTTPSuccess) || response.is_a?(Net::HTTPRedirection)
             elsif @ping
@@ -270,9 +268,7 @@ module KeepAlive
               @headers.each { |k, v| ping_request[k] = v }
               response = http.request(ping_request)
 
-              if @track_status_codes && !response.is_a?(Net::HTTPSuccess) && !response.is_a?(Net::HTTPRedirection)
-                log_info("[Client #{client_index}] Upstream returned HTTP #{response.code}")
-              end
+              log_info("[Client #{client_index}] Upstream returned HTTP #{response.code}") if @track_status_codes && !response.is_a?(Net::HTTPSuccess) && !response.is_a?(Net::HTTPRedirection)
 
               break unless response.is_a?(Net::HTTPSuccess) || response.is_a?(Net::HTTPRedirection)
             else

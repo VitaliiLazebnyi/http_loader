@@ -144,6 +144,6 @@ when 'harness'
   end
 
 else
-  warn "Usage: keep_alive <client|server|harness> [options]"
+  warn 'Usage: keep_alive <client|server|harness> [options]'
   exit(1)
 end
