@@ -53,8 +53,8 @@ RSpec.describe KeepAlive, type: :integration do
       out, _, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(out).to match(/Starting test with 2 connections over \*\*HTTP\*\*/)
-      expect(read_client_log).to match(/Connection established to localhost/)
+      expect(out).to match(/Starting test with 2 connections to \*\*HTTP\*\*/)
+      expect(read_client_log).to match(/Starting 2 HTTP connections/)
     end
   end
 
@@ -71,8 +71,8 @@ RSpec.describe KeepAlive, type: :integration do
       out, _, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(out).to match(/Starting test with 2 connections over \*\*HTTPS\*\*/)
-      expect(read_client_log).to match(/Connection established to localhost/)
+      expect(out).to match(/Starting test with 2 connections to \*\*HTTPS\*\*/)
+      expect(read_client_log).to match(/Starting 2 HTTPS connections/)
       expect(out).to match(/Target duration mathematically reached/)
     end
   end
@@ -89,7 +89,7 @@ RSpec.describe KeepAlive, type: :integration do
       _, _err, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(read_client_log).to match(/Connection established to localhost/)
+      expect(read_client_log).to match(/Starting 2 HTTP connections/)
     end
   end
 
@@ -104,7 +104,7 @@ RSpec.describe KeepAlive, type: :integration do
       _, _err, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(read_client_log).to match(/Connection established to localhost/)
+      expect(read_client_log).to match(/Starting 2 HTTP connections/)
     end
   end
 

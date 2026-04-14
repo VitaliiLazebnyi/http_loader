@@ -29,7 +29,7 @@ RSpec.describe KeepAlive::Server do
 
       it 'traps INT signal cleanly over generic Rackup layer', :rspec do
         allow(Rackup::Handler::Falcon).to receive(:run).and_yield(instance_double(Object))
-        allow(server).to receive(:trap).with('INT').and_yield
+        allow(server).to receive(:trap).with('INT').and_yield('INT')
         allow(server).to receive(:exit)
         expect { server.start(use_https: false, port: 8080) }.to output(/Shutting down immediately/).to_stdout
       end
@@ -42,7 +42,7 @@ RSpec.describe KeepAlive::Server do
       end
 
       it 'traps INT signal securely alongside active SSLEndpoints natively', :rspec do
-        allow(server).to receive(:trap).with('INT').and_yield
+        allow(server).to receive(:trap).with('INT').and_yield('INT')
         allow(server).to receive(:exit)
         task_mock = instance_double(Async::Task, stop: nil)
         allow(server).to receive(:Sync).and_yield(task_mock)

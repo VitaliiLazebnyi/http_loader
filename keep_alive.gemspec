@@ -6,7 +6,7 @@ Gem::Specification.new do |spec|
   spec.name          = 'keep_alive'
   spec.version       = KeepAlive::VERSION
   spec.authors       = ['Vitalii Lazebnyi']
-  spec.email         = ['author@example.com']
+  spec.email         = ['vitalii.lazebnyi.github@gmail.com']
 
   spec.summary       = 'Keep-Alive High Concurrency Load Testing Framework'
   spec.description   = 'A performance testing tool for HTTP/HTTPS.'
@@ -16,16 +16,13 @@ Gem::Specification.new do |spec|
   spec.metadata['source_code_uri']   = spec.homepage
   spec.metadata['rubygems_mfa_required'] = 'true'
 
-  # Justified Exception: RuboGems boilerplate enforces block-level Dir.chdir for resolving spec.files
-  # rubocop:disable ThreadSafety/DirChdir
-  spec.files = Dir.chdir(File.expand_path(__dir__)) do
-    `git ls-files -z`.split("\x0").reject do |f|
-      (f == __FILE__) ||
-        f.match(%r{\A(?:spec/|\.git)}) ||
-        f.end_with?('.gem')
-    end
+  spec.files = %w[
+    README.md
+    PERFORMANCE_REPORT.md
+    Gemfile
+  ] + Dir.glob('{lib,bin}/**/*', base: __dir__).select do |f|
+    File.file?(File.expand_path(f, __dir__))
   end
-  # rubocop:enable ThreadSafety/DirChdir
   spec.bindir        = 'bin'
   spec.executables   = ['keep_alive']
   spec.require_paths = ['lib']

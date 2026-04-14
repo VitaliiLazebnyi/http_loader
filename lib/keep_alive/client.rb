@@ -5,360 +5,131 @@ require 'sorbet-runtime'
 require 'net/http'
 require 'uri'
 require 'openssl'
-require 'socket'
 require 'async'
 require 'async/semaphore'
 require 'time'
-require 'fileutils'
 require_relative 'client/config'
+require_relative 'client/logger'
+require_relative 'client/target_manager'
+require_relative 'client/slowloris'
+require_relative 'client/http_session'
+require_relative 'client/error_handler'
 
 module KeepAlive
-  # Client is the core engine responsible for establishing, maintaining, and tracking
-  # thousands of asynchronous connections. It handles protocol variations, timeouts, and logging.
+  # Master client class coordinating connection pools through Async Engine.
   class Client
     extend T::Sig
+    include ErrorHandler
 
     sig { params(config: Config).void }
     def initialize(config)
-      raise ArgumentError, 'connections must be >= 1' if config.connections < 1
-      raise ArgumentError, 'ping_period must be >= 0' if config.ping_period.negative?
-      raise ArgumentError, 'keep_alive_timeout must be >= 0.0' if config.keep_alive_timeout.negative?
-      raise ArgumentError, 'connections_per_second must be >= 0' if config.connections_per_second.negative?
-      raise ArgumentError, 'max_concurrent_connections must be >= 1' if config.max_concurrent_connections < 1
-      raise ArgumentError, 'reopen_interval must be >= 0.0' if config.reopen_interval.negative?
-      raise ArgumentError, 'read_timeout must be >= 0.0' if config.read_timeout.negative?
-      raise ArgumentError, 'jitter must be >= 0.0' if config.jitter.negative?
-      raise ArgumentError, 'ramp_up must be >= 0.0' if config.ramp_up.negative?
-      raise ArgumentError, 'qps_per_connection must be >= 0' if config.qps_per_connection.negative?
-      raise ArgumentError, 'slowloris_delay must be >= 0.0' if config.slowloris_delay.negative?
-
-      @connections = config.connections
-      @target_urls = config.target_urls
-      @use_https = config.use_https
-      @verbose = config.verbose
-      @ping = config.ping
-      @ping_period = config.ping_period
-      @keep_alive_timeout = config.keep_alive_timeout
-      @connections_per_second = config.connections_per_second
-      @max_concurrent_connections = config.max_concurrent_connections
-      @reopen_closed_connections = config.reopen_closed_connections
-      @reopen_interval = config.reopen_interval
-      @read_timeout = config.read_timeout
-      @user_agent = config.user_agent
-      @jitter = config.jitter
-      @track_status_codes = config.track_status_codes
-      @ramp_up = config.ramp_up
-      @bind_ips = config.bind_ips
-      @proxy_pool = config.proxy_pool
-      @qps_per_connection = config.qps_per_connection
-      @headers = config.headers
-      @slowloris_delay = config.slowloris_delay
-
-      @log_dir = T.let(File.expand_path('../../logs', __dir__), String)
-
-      @target_contexts = T.let(build_target_contexts, T::Array[T::Hash[Symbol, T.untyped]])
-      @protocol_label = T.let(determine_protocol_label, String)
-
-      @log_queue = T.let(Queue.new, Queue)
-      @logger_task = T.let(nil, T.nilable(T.untyped))
+      @config = config
+      @logger = T.let(Logger.new(config.verbose), Logger)
+      @target_manager = T.let(TargetManager.new(config), TargetManager)
+      @slow_sess = T.let(Slowloris.new(config, @logger), Slowloris)
+      @http_sess = T.let(HttpSession.new(config, @logger), HttpSession)
     end
 
     sig { void }
     def start
-      label_target = @target_urls.size > 1 ? "#{@target_urls.size} TARGETS" : T.must(@target_contexts.first)[:uri].to_s
-      puts "[Client] Starting #{@connections} #{@protocol_label} connections to #{label_target}..."
-      puts '[Client] Note: Output of individual pings is suppressed to avoid console spam.' unless @verbose
-
+      log_startup_message
       trap('INT') { exit(0) }
+      @logger.setup_files!
 
-      # Create/truncate log files deterministically
-      FileUtils.mkdir_p(@log_dir)
-      File.write(File.join(@log_dir, 'client.err'), '')
-      File.write(File.join(@log_dir, 'client.log'), '') if @verbose
-
-      Async do |task|
-        run_logger_task(task)
-        semaphore = Async::Semaphore.new(@max_concurrent_connections, parent: task)
-        @connections.times do |i|
-          delay = if @ramp_up.positive?
-                    @ramp_up.to_f / @connections
-                  elsif @connections_per_second.positive?
-                    1.0 / @connections_per_second
-                  else
-                    0.0
-                  end
-          perform_sleep(calculate_sleep(delay), task: task) if delay.positive?
-          semaphore.async do
-            execute_connection(i)
-          end
-        end
-      end
+      Async { |task| run_engine(task) }
     ensure
-      # Process remainders synchronously before exit natively avoiding thread leaks
-      begin
-        File.open(File.join(@log_dir, 'client.log'), 'a') do |log|
-          File.open(File.join(@log_dir, 'client.err'), 'a') do |err|
-            loop do
-              msg = begin
-                @log_queue.pop(true)
-              rescue ThreadError
-                nil
-              end
-              break unless msg && msg != :terminate
-
-              target, content = msg
-              if target == :info
-                log.puts content
-                log.flush
-              elsif target == :error
-                err.puts content
-                err.flush
-              end
-            end
-          end
-        end
-      rescue StandardError => _e
-        nil
-      end
+      @logger.flush_synchronously!
     end
 
     private
 
     sig { params(task: T.untyped).void }
-    def run_logger_task(task)
-      @logger_task = task.async do
-        File.open(File.join(@log_dir, 'client.log'), 'a') do |log|
-          File.open(File.join(@log_dir, 'client.err'), 'a') do |err|
-            loop do
-              msg = nil
-              begin
-                msg = @log_queue.pop(true)
-              rescue ThreadError
-                task.sleep(0.05)
-                next
-              end
-              break if msg == :terminate
+    def run_engine(task)
+      logger_t = @logger.run_task(task)
+      sem = Async::Semaphore.new(@config.max_concurrent_connections, parent: task)
 
-              target, content = msg
-              if target == :info
-                log.puts content
-                log.flush
-              elsif target == :error
-                err.puts content
-                err.flush
-              end
-            end
-          end
-        end
+      conn_tasks = Array.new(@config.connections) do |i|
+        perform_sleep(calc_ramp, task: task) if calc_ramp.positive?
+        sem.async { exec_conn(i) }
       end
+
+      conn_tasks.each(&:wait)
+      logger_t.stop
     end
 
-    sig { params(delay_amount: Float, task: T.untyped).void }
-    def perform_sleep(delay_amount, task: nil)
-      task ? task.sleep(delay_amount) : sleep(delay_amount)
+    sig { void }
+    def log_startup_message
+      puts "[Client] Starting #{@config.connections} #{@target_manager.protocol_label} connections to targeted urls..."
+      puts '[Client] Note: Output of individual pings is suppressed.' unless @config.verbose
     end
 
-    sig { params(base_seconds: Float).returns(Float) }
-    def calculate_sleep(base_seconds)
-      return base_seconds if @jitter.zero?
-
-      variance = base_seconds * @jitter
-      [0.0, base_seconds + rand(-variance..variance)].max
-    end
-
-    sig { returns(T::Array[T::Hash[Symbol, T.untyped]]) }
-    def build_target_contexts
-      urls = @target_urls.any? ? @target_urls : [nil]
-      urls.map do |url|
-        uri = if url
-                URI(url.to_s)
-              elsif @use_https
-                URI('https://localhost:8443')
-              else
-                URI('http://localhost:8080')
-              end
-
-        args = { read_timeout: @read_timeout.positive? ? @read_timeout : nil }
-
-        begin
-          ip_info = Addrinfo.getaddrinfo(T.must(uri.host), uri.port, nil, :STREAM)
-          ip = (ip_info.find(&:ipv4?) || ip_info.first)&.ip_address
-          args[:ipaddr] = ip if ip
-        rescue SocketError => _e
-          nil # Fallback to Net::HTTP implicit DNS resolve on crash natively
-        end
-
-        http_args = if uri.scheme == 'https'
-                      args.merge(use_ssl: true, verify_mode: OpenSSL::SSL::VERIFY_NONE)
-                    else
-                      args
-                    end
-        { uri: uri, http_args: http_args }
-      end
-    end
-
-    sig { returns(String) }
-    def determine_protocol_label
-      if @target_urls.size > 1
-        "MULTIPLE TARGETS (#{@target_urls.size})"
-      elsif @target_urls.size == 1
-        "EXTERNAL #{T.cast(T.must(@target_contexts.first)[:uri], URI::Generic).scheme&.upcase}"
-      elsif @use_https
-        'HTTPS'
+    sig { returns(Float) }
+    def calc_ramp
+      if @config.ramp_up.positive?
+        @config.ramp_up.to_f / @config.connections
+      elsif @config.connections_per_second.positive?
+        1.0 / @config.connections_per_second
       else
-        'HTTP'
+        0.0
       end
     end
 
-    sig { params(client_index: Integer).void }
-    def execute_connection(client_index)
+    sig { params(dur: Float, task: T.untyped).void }
+    def perform_sleep(dur, task: nil)
+      task ? task.sleep(dur) : sleep(dur)
+    end
+
+    sig { params(base: Float).returns(Float) }
+    def calc_sleep(base)
+      return base if @config.jitter.zero?
+
+      v = base * @config.jitter
+      [0.0, base + rand(-v..v)].max
+    end
+
+    sig { params(idx: Integer).void }
+    def exec_conn(idx)
       loop do
-        run_http_session(client_index, Time.now)
-        break unless @reopen_closed_connections
+        run_session(idx, Time.now)
+        break unless @config.reopen_closed_connections
 
-        # If we broke out and need to reopen, we sleep first
-        sleep(calculate_sleep(@reopen_interval))
+        sleep(calc_sleep(@config.reopen_interval))
       end
     end
 
-    sig { params(client_index: Integer, start_time: Time).void }
-    def run_http_session(client_index, start_time)
-      ctx = T.must(@target_contexts[client_index % @target_contexts.size])
+    sig { params(idx: Integer, start_t: Time).void }
+    def run_session(idx, start_t)
+      ctx = @target_manager.context_for(idx)
       uri = T.cast(ctx[:uri], URI::Generic)
-      http_args = T.cast(ctx[:http_args], T::Hash[Symbol, T.untyped])
 
-      http_opts = build_http_opts(client_index, http_args)
-
-      Net::HTTP.start(T.must(uri.host), uri.port, **http_opts) do |http|
+      start_http(uri, fetch_opts(idx, ctx)) do |http|
         http.max_retries = 0 if http.respond_to?(:max_retries=)
-        log_info("[Client #{client_index}] Connection established to #{uri.host}.")
-
-        if @slowloris_delay.positive?
-          run_slowloris_session(client_index, uri, http, start_time)
-        else
-          request = Net::HTTP::Get.new(uri)
-          request['Connection'] = 'keep-alive'
-          request['User-Agent'] = @user_agent
-          @headers.each { |k, v| request[k] = v }
-
-          http.request(request) do |response|
-            response.read_body { |_chunk| nil }
-          end
-
-          loop do
-            elapsed = Time.now - start_time
-            if @keep_alive_timeout.positive? && elapsed >= @keep_alive_timeout
-              log_info("[Client #{client_index}] Keep-alive timeout reached, closing.")
-              break
-            end
-
-            if @qps_per_connection.positive?
-              sleep(calculate_sleep(1.0 / @qps_per_connection))
-
-              qps_request = Net::HTTP::Get.new(uri)
-              qps_request['Connection'] = 'keep-alive'
-              qps_request['User-Agent'] = @user_agent
-              @headers.each { |k, v| qps_request[k] = v }
-
-              response = http.request(qps_request) do |res|
-                res.read_body { |_chunk| nil }
-              end
-
-              if @track_status_codes && !response.is_a?(Net::HTTPSuccess) && !response.is_a?(Net::HTTPRedirection)
-                log_info("[Client #{client_index}] Upstream returned HTTP #{response.code}")
-              end
-
-              break unless response.is_a?(Net::HTTPSuccess) || response.is_a?(Net::HTTPRedirection)
-            elsif @ping
-              sleep(calculate_sleep(@ping_period.to_f))
-              ping_request = Net::HTTP::Head.new(uri)
-              ping_request['Connection'] = 'keep-alive'
-              ping_request['User-Agent'] = @user_agent
-              @headers.each { |k, v| ping_request[k] = v }
-              response = http.request(ping_request)
-
-              if @track_status_codes && !response.is_a?(Net::HTTPSuccess) && !response.is_a?(Net::HTTPRedirection)
-                log_info("[Client #{client_index}] Upstream returned HTTP #{response.code}")
-              end
-
-              break unless response.is_a?(Net::HTTPSuccess) || response.is_a?(Net::HTTPRedirection)
-            else
-              # Hold loop open without pinging if keep_alive_timeout is set
-              sleep(calculate_sleep(1.0))
-            end
-          end
-        end
+        @logger.info("[Client #{idx}] Connection established to #{uri.host}.")
+        dispatch_sess(idx, uri, http, start_t)
       end
-      log_info("[Client #{client_index}] Connection gracefully closed.")
-    rescue Errno::EMFILE => e
-      log_error("[Client #{client_index}] ERROR_EMFILE: #{e.message}")
-    rescue Errno::EADDRNOTAVAIL
-      log_error("[Client #{client_index}] ERROR_EADDRNOTAVAIL: Ephemeral port limit reached.")
+      @logger.info("[Client #{idx}] Connection gracefully closed.")
     rescue StandardError => e
-      log_error("[Client #{client_index}] ERROR_OTHER: #{e.message}")
+      handle_err(idx, e)
     end
 
-    def build_http_opts(client_index, http_args)
-      http_opts = http_args.dup
-      http_opts[:local_host] = @bind_ips[client_index % @bind_ips.size] if @bind_ips.any?
+    sig { params(idx: Integer, ctx: T::Hash[Symbol, T.untyped]).returns(T::Hash[Symbol, T.untyped]) }
+    def fetch_opts(idx, ctx)
+      args = T.cast(ctx[:http_args], T::Hash[Symbol, T.untyped])
+      @target_manager.http_opts_for(idx, args)
+    end
 
-      if @proxy_pool.any?
-        proxy_uri = URI.parse(@proxy_pool[client_index % @proxy_pool.size])
-        http_opts[:proxy_address] = proxy_uri.host
-        http_opts[:proxy_port] = proxy_uri.port
-        http_opts[:proxy_user] = proxy_uri.user if proxy_uri.user
-        http_opts[:proxy_pass] = proxy_uri.password if proxy_uri.password
+    sig { params(uri: URI::Generic, opts: T::Hash[Symbol, T.untyped], block: T.proc.params(arg: Net::HTTP).void).void }
+    def start_http(uri, opts, &block)
+      Net::HTTP.start(T.must(uri.host), uri.port, **opts, &block)
+    end
+
+    sig { params(idx: Integer, uri: URI::Generic, http: Net::HTTP, start_t: Time).void }
+    def dispatch_sess(idx, uri, http, start_t)
+      if @config.slowloris_delay.positive?
+        @slow_sess.run(idx, uri, http, start_t)
+      else
+        @http_sess.run(idx, uri, http, start_t)
       end
-
-      http_opts
-    end
-
-    def run_slowloris_session(client_index, uri, http, start_time)
-      socket_wrapper = http.instance_variable_get(:@socket)
-      return unless socket_wrapper
-
-      io = socket_wrapper.io
-
-      path = uri.path.empty? ? '/' : uri.path
-      query = uri.query ? "?#{uri.query}" : ''
-      payload = "GET #{path}#{query} HTTP/1.1\r\nHost: #{uri.host}\r\nConnection: keep-alive\r\nUser-Agent: #{@user_agent}\r\n"
-      @headers.each { |k, v| payload += "#{k}: #{v}\r\n" }
-      payload += 'X-Slowloris: ' # unfinished header
-
-      payload.each_char do |char|
-        io.write(char)
-        io.flush
-        sleep(calculate_sleep(@slowloris_delay))
-      end
-
-      # Eternal loop sending random garbage characters to keep thread open
-      loop do
-        elapsed = Time.now - start_time
-        if @keep_alive_timeout.positive? && elapsed >= @keep_alive_timeout
-          log_info("[Client #{client_index}] Keep-alive timeout reached, closing Slowloris thread.")
-          break
-        end
-
-        io.write(rand(97..122).chr)
-        io.flush
-        sleep(calculate_sleep(@slowloris_delay))
-      end
-    end
-
-    sig { params(message: String).void }
-    def log_info(message)
-      return unless @verbose
-
-      # Rule compliance: Internal logging mechanisms must strictly default to UTC
-      timestamp = Time.now.utc.iso8601
-      @log_queue << [:info, "[#{timestamp}] #{message}"]
-    end
-
-    sig { params(message: String).void }
-    def log_error(message)
-      # Rule compliance: Internal logging mechanisms must strictly default to UTC
-      timestamp = Time.now.utc.iso8601
-      @log_queue << [:error, "[#{timestamp}] #{message}"]
     end
   end
 end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+ENV['LANG'] = ENV.fetch('LANG', 'en_US.UTF-8')
+
 require 'bundler/gem_tasks'
 require 'rspec/core/rake_task'
 require 'rubocop/rake_task'

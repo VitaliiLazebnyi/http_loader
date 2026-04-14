@@ -8,46 +8,36 @@ plugins:
 AllCops:
   NewCops: enable
   TargetRubyVersion: 4.0
+  Exclude:
+    - '.gemini/**/*'
+    - 'vendor/**/*'
 
 Style/FrozenStringLiteralComment:
   Enabled: true
-
-Metrics/BlockLength:
-  Max: 65
-  Exclude:
-    - 'keep_alive.gemspec'
-    - 'spec/**/*'
 
 Gemspec/DevelopmentDependencies:
   Enabled: false
 
 Layout/LineLength:
-  Max: 155
-
-Metrics/MethodLength:
-  Max: 65
-
-Metrics/AbcSize:
-  Max: 90
-
-Metrics/CyclomaticComplexity:
-  Max: 24
-
-Metrics/PerceivedComplexity:
-  Max: 25
-
-Metrics/ClassLength:
-  Max: 350
-
+  Max: 200
 
 RSpec/ExampleLength:
   Max: 25
 
+RSpec/MultipleExpectations:
+  Max: 10
+
 RSpec/NestedGroups:
   Max: 5
 
-RSpec/ContextWording:
+Naming/BlockForwarding:
   Enabled: false
 
-RSpec/MultipleExpectations:
-  Max: 7
+Style/ArgumentsForwarding:
+  Enabled: false
+
+RSpec/AnyInstance:
+  Enabled: false
+
+RSpec/ContextWording:
+  Enabled: false

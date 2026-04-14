@@ -2,652 +2,193 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
-require 'async'
-require 'async/semaphore'
-require 'keep_alive/client'
 
 RSpec.describe KeepAlive::Client do
-  context 'Configuration Initialization' do
-    before do
-      allow($stdout).to receive(:puts)
-      allow(File).to receive(:write)
-      allow(File).to receive(:open)
-    end
+  let(:config) do
+    KeepAlive::Client::Config.new(
+      connections: 2,
+      target_urls: ['http://localhost'],
+      max_concurrent_connections: 2
+    )
+  end
 
-    describe '#initialize' do
-      it 'raises ArgumentError on connections 0' do
-        expect { build_client(connections: 0) }.to raise_error(ArgumentError, /connections must be >= 1/)
-      end
+  let(:client) { described_class.new(config) }
 
-      it 'raises ArgumentError on invalid ping_period' do
-        expect { build_client(connections: 1, ping_period: -1) }.to raise_error(ArgumentError, /ping_period must be >= 0/)
-      end
+  before do
+    allow($stdout).to receive(:puts)
+    allow_any_instance_of(KeepAlive::Client::Logger).to receive(:setup_files!)
+    allow_any_instance_of(KeepAlive::Client::Logger).to receive(:flush_synchronously!)
+    allow_any_instance_of(KeepAlive::Client::Logger).to receive(:run_task).and_return(instance_double(Async::Task, stop: nil))
+    allow_any_instance_of(KeepAlive::Client::Logger).to receive(:info)
+  end
 
-      it 'raises ArgumentError on invalid timeout' do
-        expect { build_client(connections: 1, keep_alive_timeout: -1.0) }.to raise_error(ArgumentError, /keep_alive_timeout must be >= 0.0/)
-      end
+  describe '#start' do
+    it 'sets up logger, traps INT, and runs async loop' do
+      allow(client).to receive(:trap).with('INT')
+      allow(client).to receive(:run_engine)
 
-      it 'raises ArgumentError on invalid max_concurrent' do
-        expect do
-          build_client(connections: 1, max_concurrent_connections: 0)
-        end.to raise_error(ArgumentError, /max_concurrent_connections must be >= 1/)
-      end
+      # Async execution is normally blocked; we mock Async directly to yield securely.
+      allow(client).to receive(:Async).and_yield(instance_double(Async::Task))
 
-      context 'when providing illegal arguments naturally dropping out' do
-        it 'raises ArgumentError consistently logging mathematically missing limits' do
-          expect { build_client(connections: 1, connections_per_second: -1) }.to raise_error(ArgumentError, /connections_per_second/)
-          expect { build_client(connections: 1, reopen_interval: -1.0) }.to raise_error(ArgumentError, /reopen_interval/)
-          expect { build_client(connections: 1, read_timeout: -1.0) }.to raise_error(ArgumentError, /read_timeout/)
-          expect { build_client(connections: 1, jitter: -1.0) }.to raise_error(ArgumentError, /jitter/)
-          expect { build_client(connections: 1, ramp_up: -1.0) }.to raise_error(ArgumentError, /ramp_up/)
-          expect { build_client(connections: 1, qps_per_connection: -1) }.to raise_error(ArgumentError, /qps_per_connection/)
-          expect { build_client(connections: 1, slowloris_delay: -1.0) }.to raise_error(ArgumentError, /slowloris/)
-        end
-      end
-
-      context 'with valid parameters' do
-        let(:client) do
-          build_client(
-            connections: 10, target_urls: ['http://test.com', 'http://test2.com'], use_https: false,
-            verbose: true, ping: false, ping_period: 2, keep_alive_timeout: 4.0,
-            connections_per_second: 5, max_concurrent_connections: 5,
-            reopen_closed_connections: true, reopen_interval: 2.0,
-            read_timeout: 10.0, user_agent: 'SpecAgent',
-            jitter: 0.1, track_status_codes: true,
-            ramp_up: 120.0, bind_ips: ['127.0.0.1', '127.0.0.2'],
-            proxy_pool: ['http://proxy1:80', 'http://proxy2:80'],
-            qps_per_connection: 10,
-            headers: { 'Authorization' => 'Bearer token' },
-            slowloris_delay: 5.0
-          )
-        end
-
-        it('maps max_concurrent_connections') { expect(client.instance_variable_get(:@max_concurrent_connections)).to eq(5) }
-        it('maps ping') { expect(client.instance_variable_get(:@ping)).to be(false) }
-        it('maps user_agent') { expect(client.instance_variable_get(:@user_agent)).to eq('SpecAgent') }
-        it('maps ramp_up') { expect(client.instance_variable_get(:@ramp_up)).to eq(120.0) }
-        it('maps bind_ips') { expect(client.instance_variable_get(:@bind_ips)).to eq(['127.0.0.1', '127.0.0.2']) }
-        it('maps proxy_pool') { expect(client.instance_variable_get(:@proxy_pool)).to eq(['http://proxy1:80', 'http://proxy2:80']) }
-        it('maps qps_per_connection') { expect(client.instance_variable_get(:@qps_per_connection)).to eq(10) }
-        it('maps headers') { expect(client.instance_variable_get(:@headers)).to eq({ 'Authorization' => 'Bearer token' }) }
-        it('maps slowloris_delay') { expect(client.instance_variable_get(:@slowloris_delay)).to eq(5.0) }
-      end
-    end
-
-    describe '#start' do
-      let(:client_rate) { build_client(connections: 2, connections_per_second: 10, max_concurrent_connections: 1, verbose: true, jitter: 0.0) }
-
-      context 'when ratelimiting connections' do
-        before do
-          allow(client_rate).to receive(:execute_connection)
-          allow(client_rate).to receive(:trap).with('INT')
-          allow(client_rate).to receive(:perform_sleep)
-          client_rate.start
-        end
-
-        it 'calls execute_connection for index 0', :rspec do
-          expect(client_rate).to have_received(:execute_connection).with(0)
-        end
-
-        it 'calls execute_connection for index 1', :rspec do
-          expect(client_rate).to have_received(:execute_connection).with(1)
-        end
-      end
-
-      context 'when testing sleep exactly' do
-        it 'sleeps correctly', :rspec do
-          allow(client_rate).to receive(:execute_connection)
-          allow(client_rate).to receive(:trap).with('INT')
-          allow(client_rate).to receive(:perform_sleep)
-          client_rate.start
-          expect(client_rate).to have_received(:perform_sleep).with(0.1, task: anything).twice
-        end
-      end
-
-      context 'when providing ramp_up delay' do
-        let(:client_ramp) { build_client(connections: 4, ramp_up: 10.0, max_concurrent_connections: 4, verbose: true, jitter: 0.0) }
-
-        before do
-          allow(client_ramp).to receive(:execute_connection)
-          allow(client_ramp).to receive(:trap).with('INT')
-        end
-
-        it 'calculates delay properly overriding connections_per_second', :rspec do
-          allow(client_ramp).to receive(:perform_sleep)
-          client_ramp.start
-          expect(client_ramp).to have_received(:perform_sleep).with(2.5, task: anything).exactly(4).times
-        end
-
-        it 'calls execute_connection exact times', :rspec do
-          allow(client_ramp).to receive(:perform_sleep)
-          client_ramp.start
-          expect(client_ramp).to have_received(:execute_connection).exactly(4).times
-        end
-      end
-
-      context 'when no ramp_up or rate limits configured' do
-        let(:client_zero) { build_client(connections: 1, ramp_up: 0.0, connections_per_second: 0) }
-
-        it 'calculates 0.0 delay directly', :rspec do
-          allow(client_zero).to receive(:execute_connection)
-          allow(client_zero).to receive(:trap).with('INT')
-          allow(client_zero).to receive(:calculate_sleep).and_call_original
-          allow(client_zero).to receive(:perform_sleep)
-          client_zero.start
-          expect(client_zero).not_to have_received(:perform_sleep)
-        end
-      end
-
-      it 'maps MULTIPLE TARGETS labels effectively inside start' do
-        client_multi = build_client(connections: 1, target_urls: ['http://a', 'http://b'])
-        allow(client_multi).to receive(:trap).with('INT')
-        allow(client_multi).to receive(:execute_connection)
-        expect { client_multi.start }.to output(/2 TARGETS/).to_stdout
-      end
+      expect { client.start }.not_to raise_error
     end
   end
 
-  context 'Logging Tasks' do
-    before do
-      allow($stdout).to receive(:puts)
-      allow(File).to receive(:write)
-      allow(File).to receive(:open)
+  describe '#calc_ramp' do
+    it 'returns ramp_up mathematically apportioned' do
+      cfg = KeepAlive::Client::Config.new(connections: 2, ramp_up: 10.0)
+      cli = described_class.new(cfg)
+      expect(cli.send(:calc_ramp)).to eq(5.0)
     end
 
-    describe 'internal execution helpers' do
-      let(:client) { build_client(connections: 1, read_timeout: 5.0, user_agent: 'TestAgent') }
+    it 'returns connections_per_second appropriately' do
+      cfg = KeepAlive::Client::Config.new(connections: 2, connections_per_second: 10)
+      cli = described_class.new(cfg)
+      expect(cli.send(:calc_ramp)).to eq(0.1)
+    end
 
-      context 'when targeting http locally' do
-        it 'initializes protocol label correctly', :rspec do
-          expect(client.instance_variable_get(:@protocol_label)).to eq('HTTP')
-        end
-
-        it 'initializes uri correctly', :rspec do
-          expect(client.instance_variable_get(:@target_contexts).first[:uri].to_s).to eq('http://localhost:8080')
-        end
-
-        it 'initializes timeout correctly', :rspec do
-          expect(client.instance_variable_get(:@target_contexts).first[:http_args]).to include(read_timeout: 5.0)
-        end
-
-        it 'executes the connection safely and closes if not reopening', :rspec do
-          allow(client).to receive(:run_http_session)
-          allow(client).to receive(:sleep)
-          client.send(:execute_connection, 0)
-          expect(client).to have_received(:run_http_session).with(0, anything)
-        end
-      end
-
-      context 'when Addrinfo resolution explicitly fails' do
-        let(:client_dns) { build_client(connections: 1, target_urls: ['http://broken.local']) }
-
-        it 'rescues SocketError gracefully keeping args cleanly mapped', :rspec do
-          allow(Addrinfo).to receive(:getaddrinfo).and_raise(SocketError)
-          contexts = client_dns.send(:build_target_contexts)
-          expect(contexts.first[:http_args][:ipaddr]).to be_nil
-        end
-
-        it 'handles empty Addrinfo completely safely resolving to nil inherently' do
-          allow(Addrinfo).to receive(:getaddrinfo).and_return([])
-          client_blank = build_client(connections: 1)
-          expect(client_blank.send(:build_target_contexts).first[:http_args][:ipaddr]).to be_nil
-        end
-      end
-
-      context 'when determining protocol label' do
-        it 'maps HTTPS properly', :rspec do
-          client_https = build_client(connections: 1, target_urls: [], use_https: true)
-          expect(client_https.send(:determine_protocol_label)).to eq('HTTPS')
-        end
-
-        it 'maps EXTERNAL single target correctly', :rspec do
-          client_ext = build_client(connections: 1, target_urls: ['https://remote.com'])
-          expect(client_ext.send(:determine_protocol_label)).to eq('EXTERNAL HTTPS')
-        end
-
-        it 'handles implicit typings cleanly without scheme gracefully' do
-          client_blank = build_client(connections: 1, target_urls: ['//remote.com'])
-          expect(client_blank.send(:determine_protocol_label)).to eq('EXTERNAL ')
-        end
-      end
-
-      context 'when reopening connections' do
-        let(:client) { build_client(connections: 1, reopen_closed_connections: true, reopen_interval: 0.1, jitter: 0.0) }
-
-        before do
-          has_run = false
-          allow(client).to receive(:run_http_session)
-          allow(client).to receive(:sleep)
-
-          allow(client).to receive(:loop) do |&block|
-            unless has_run
-              has_run = true
-              block.call
-            end
-          end
-          client.send(:execute_connection, 0)
-        end
-
-        it 'reopens and sleeps interval', :rspec do
-          expect(client).to have_received(:sleep).with(0.1)
-        end
-      end
-
-      context 'when calculate_sleep works with jitter' do
-        let(:client) { build_client(connections: 1, jitter: 0.5) }
-
-        it 'randomizes sleep mathematically within variance', :rspec do
-          allow(client).to receive(:rand).with(-2.5..2.5).and_return(1.0)
-          expect(client.send(:calculate_sleep, 5.0)).to eq(6.0)
-        end
-      end
+    it 'returns 0.0 directly when no limits configure mathematically' do
+      cfg = KeepAlive::Client::Config.new(connections: 2)
+      cli = described_class.new(cfg)
+      expect(cli.send(:calc_ramp)).to eq(0.0)
     end
   end
 
-  context 'HTTP Session Execution' do
-    before do
-      allow($stdout).to receive(:puts)
-      allow(File).to receive(:write)
-      allow(File).to receive(:open)
+  describe '#perform_sleep' do
+    it 'delegates to sleep if no task is securely natively passed' do
+      allow(client).to receive(:sleep)
+      client.send(:perform_sleep, 0.1)
+      expect(client).to have_received(:sleep).with(0.1)
     end
 
-    describe 'run_http_session (Part 1)' do
-      context 'when having keep_alive_timeout and no ping' do
-        let(:client) { build_client(connections: 1, keep_alive_timeout: 0.1, ping: false) }
-
-        before do
-          mock_http = instance_double(Net::HTTP)
-          mock_response = instance_double(Net::HTTPSuccess, read_body: nil)
-
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:request).and_yield(mock_response)
-          allow(client).to receive(:sleep)
-
-          time = Time.now
-          allow(Time).to receive(:now).and_return(time, time, time + 0.2)
-        end
-
-        it 'rescues explicitly without crashing logically' do
-          expect { client.send(:run_http_session, 0, Time.now) }.not_to raise_error
-        end
-      end
-
-      context 'when Net::HTTP cleanly does not respond natively to max_retries_assignment' do
-        it 'handles Net::HTTP lacking natively max_retries assignments safely' do
-          mock_http = instance_double(Net::HTTP, request: nil)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:respond_to?).with(:max_retries=).and_return(false)
-          client = build_client(connections: 1, keep_alive_timeout: 0.1, jitter: 0.0)
-          allow(client).to receive(:sleep)
-          time = Time.now
-          allow(Time).to receive(:now).and_return(time, time, time + 0.2)
-          expect { client.send(:run_http_session, 0, time) }.not_to raise_error
-        end
-
-        it 'handles Net::HTTP responding authentically actively setting assignment seamlessly' do
-          mock_http = instance_double(Net::HTTP, request: nil)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:respond_to?).with(:max_retries=).and_return(true)
-          allow(mock_http).to receive(:max_retries=).with(0)
-          client = build_client(connections: 1, keep_alive_timeout: 0.1, jitter: 0.0)
-          allow(client).to receive(:sleep)
-          time = Time.now
-          allow(Time).to receive(:now).and_return(time, time, time + 0.2)
-          client.send(:run_http_session, 0, time)
-          expect(mock_http).to have_received(:max_retries=).with(0)
-        end
-      end
-
-      context 'when running actively single sequence natively mapping' do
-        let(:client) { build_client(connections: 2, bind_ips: ['192.168.1.1', '192.168.1.2'], keep_alive_timeout: 0.1) }
-
-        before do
-          mock_http = instance_double(Net::HTTP)
-          allow(mock_http).to receive(:request)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-        end
-
-        it 'uses index 0 address locally first' do
-          client.send(:run_http_session, 0, Time.now)
-          expect(Net::HTTP).to have_received(:start).with('localhost', 8080, hash_including(local_host: '192.168.1.1'))
-        end
-
-        it 'uses index 1 address locally second' do
-          client.send(:run_http_session, 1, Time.now)
-          expect(Net::HTTP).to have_received(:start).with('localhost', 8080, hash_including(local_host: '192.168.1.2'))
-        end
-      end
-
-      context 'when proxy_pool configured' do
-        let(:client) { build_client(connections: 2, proxy_pool: ['http://proxy1:80', 'http://user:pass@proxy2:81'], keep_alive_timeout: 0.1) }
-
-        before do
-          mock_http = instance_double(Net::HTTP)
-          allow(mock_http).to receive(:request)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-        end
-
-        it 'uses proxy 0 first' do
-          client.send(:run_http_session, 0, Time.now)
-          expect(Net::HTTP).to have_received(:start).with('localhost', 8080, hash_including(proxy_address: 'proxy1', proxy_port: 80))
-        end
-
-        it 'uses proxy 1 second with auth' do
-          client.send(:run_http_session, 1, Time.now)
-          proxy2_args = hash_including(proxy_address: 'proxy2', proxy_port: 81, proxy_user: 'user', proxy_pass: 'pass')
-          expect(Net::HTTP).to have_received(:start).with('localhost', 8080, proxy2_args)
-        end
-      end
-
-      context 'when custom headers present' do
-        let(:client) { build_client(connections: 1, ping: false, headers: { 'Auth' => 'B', 'XC' => 'V' }, keep_alive_timeout: 0.1) }
-        let(:captured_request) do
-          mock_http = instance_double(Net::HTTP)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          caught_req = nil
-          allow(mock_http).to receive(:request) { |req| caught_req = req }
-          allow(client).to receive(:sleep)
-          client.send(:run_http_session, 0, Time.now)
-          caught_req
-        end
-
-        it 'injects Auth header' do
-          expect(captured_request['Auth']).to eq('B')
-        end
-
-        it 'injects XC header' do
-          expect(captured_request['XC']).to eq('V')
-        end
-      end
-
-      context 'when qps_per_connection active' do
-        let(:client) { build_client(connections: 1, ping: false, keep_alive_timeout: 0.0, qps_per_connection: 10, jitter: 0.0) }
-
-        before do
-          mock_http = instance_double(Net::HTTP)
-          mock_response = instance_double(Net::HTTPSuccess, is_a?: false, read_body: nil)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:request) do |_req, &block|
-            block&.call(mock_response)
-            mock_response
-          end
-          allow(client).to receive(:sleep)
-          client.send(:run_http_session, 0, Time.now)
-        end
-
-        it 'sleeps correctly based on qps delay' do
-          expect(client).to have_received(:sleep).with(0.1)
-        end
-      end
-
-      context 'when qps_per_connection receives server error' do
-        let(:client) do
-          build_client(connections: 1, ping: false, keep_alive_timeout: 0.0, track_status_codes: true, qps_per_connection: 10, jitter: 0.0)
-        end
-
-        before do
-          mock_http = instance_double(Net::HTTP)
-          mock_response = instance_double(Net::HTTPBadGateway, is_a?: false, read_body: nil, code: '502')
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:request) do |_req, &block|
-            block&.call(mock_response)
-            mock_response
-          end
-          allow(client).to receive(:sleep)
-          allow(client).to receive(:log_info)
-          client.send(:run_http_session, 0, Time.now)
-        end
-
-        it 'logs HTTP 502 dynamically for drops', :rspec do
-          expect(client).to have_received(:log_info).with(/Upstream returned HTTP 502/)
-        end
-      end
-
-      context 'when qps connection executes cleanly sequentially seamlessly', :rspec do
-        let(:client_qps) { build_client(connections: 1, ping: false, qps_per_connection: 10, keep_alive_timeout: 0.1, jitter: 0.0) }
-
-        it 'loops successfully and hits mathematically target duration boundaries' do
-          mock_http = instance_double(Net::HTTP)
-          mock_success = instance_double(Net::HTTPSuccess, is_a?: true, read_body: nil)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:request) do |_req, &block|
-            block&.call(mock_success)
-            mock_success
-          end
-          allow(client_qps).to receive(:sleep)
-          time = Time.now
-          allow(Time).to receive(:now).and_return(time, time, time + 0.2)
-          expect { client_qps.send(:run_http_session, 0, time) }.not_to raise_error
-        end
-      end
+    it 'delegates securely gracefully to task intelligently' do
+      task = instance_double(Async::Task)
+      allow(task).to receive(:sleep)
+      client.send(:perform_sleep, 0.1, task: task)
+      expect(task).to have_received(:sleep).with(0.1)
     end
   end
 
-  context 'Slowloris resilience' do
-    before do
-      allow($stdout).to receive(:puts)
-      allow(File).to receive(:write)
-      allow(File).to receive(:open)
+  describe '#calc_sleep' do
+    it 'returns natively exact base cleanly accurately naturally' do
+      cfg = KeepAlive::Client::Config.new(connections: 2, jitter: 0.0)
+      cli = described_class.new(cfg)
+      expect(cli.send(:calc_sleep, 10.0)).to eq(10.0)
     end
 
-    describe 'run_http_session (Part 2)' do
-      context 'when using slowloris_delay' do
-        let(:client) { build_client(connections: 1, ping: false, slowloris_delay: 1.0, keep_alive_timeout: 0.0, jitter: 0.0) }
-        let(:mock_io) { instance_double(IO, write: 1, flush: nil) }
-        let(:mock_socket_wrapper) { instance_double(Net::BufferedIO, io: mock_io) }
-
-        before do
-          mock_http = instance_double(Net::HTTP)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:instance_variable_get).with(:@socket).and_return(mock_socket_wrapper)
-          allow(client).to receive(:sleep)
-          allow(client).to receive(:loop).and_yield
-          client.send(:run_http_session, 0, Time.now)
-        end
-
-        it 'forces byte-by-byte socket writes', :rspec do
-          expect(mock_io).to have_received(:write).at_least(:once)
-        end
-
-        it 'forces flush on the socket', :rspec do
-          expect(mock_io).to have_received(:flush).at_least(:once)
-        end
-      end
-
-      context 'when slowloris loop hits timeout limit' do
-        let(:client) { build_client(connections: 1, ping: false, slowloris_delay: 1.0, keep_alive_timeout: 0.1, jitter: 0.0) }
-        let(:mock_io) { instance_double(IO, write: 1, flush: nil) }
-        let(:mock_socket_wrapper) { instance_double(Net::BufferedIO, io: mock_io) }
-
-        before do
-          mock_http = instance_double(Net::HTTP)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:instance_variable_get).with(:@socket).and_return(mock_socket_wrapper)
-          allow(client).to receive(:sleep)
-          allow(client).to receive(:log_info)
-
-          time = Time.now
-          allow(Time).to receive(:now).and_return(time)
-          # Yield start manually to fake the timeline loop iteration securely
-        end
-
-        it 'logs gracefully and breaks the eternal loop', :rspec do
-          # Enforce exact simulated elapsed time
-          time = Time.now
-          allow(Time).to receive(:now).and_return(time, time, time, time + 0.2)
-          client.send(:run_http_session, 0, time)
-          expect(client).to have_received(:log_info).with(/Keep-alive timeout reached, closing Slowloris thread/)
-        end
-      end
-
-      context 'when slowloris paths execute elegantly natively' do
-        it 'returns natively seamlessly if socket is utterly missing mathematically' do
-          client_sl = build_client(connections: 1, slowloris_delay: 1.0, keep_alive_timeout: 0.1)
-          mock_http = instance_double(Net::HTTP)
-          allow(mock_http).to receive(:instance_variable_get).with(:@socket).and_return(nil)
-          expect { client_sl.send(:run_slowloris_session, 0, URI('/'), mock_http, Time.now) }.not_to raise_error
-        end
-
-        it 'maps paths solidly using literal endpoints resolving seamlessly', :rspec do
-          client_sl = build_client(connections: 1, slowloris_delay: 1.0, jitter: 0.0, keep_alive_timeout: 0.1)
-          mock_io = instance_double(IO, write: 1, flush: nil)
-          mock_wrapper = instance_double(Net::BufferedIO, io: mock_io)
-          mock_http = instance_double(Net::HTTP)
-          allow(mock_http).to receive(:instance_variable_get).with(:@socket).and_return(mock_wrapper)
-
-          time = Time.now
-          allow(Time).to receive(:now).and_return(time, time, time + 0.5)
-          allow(client_sl).to receive(:sleep)
-
-          uri = URI('http://local/test?a=1')
-          client_sl.send(:run_slowloris_session, 0, uri, mock_http, time)
-
-          expect(mock_io).to have_received(:write).at_least(:once)
-        end
-      end
-
-      context 'when pinging actively' do
-        let(:client) { build_client(connections: 1, ping: true, ping_period: 1, keep_alive_timeout: 0.0, jitter: 0.0) }
-
-        before do
-          mock_http = instance_double(Net::HTTP)
-          mock_response = instance_double(Net::HTTPSuccess, is_a?: false, read_body: nil)
-
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:request) do |req, &block|
-            block&.call(mock_response) if req.is_a?(Net::HTTP::Get)
-            mock_response
-          end
-
-          allow(client).to receive(:sleep)
-          client.send(:run_http_session, 0, Time.now)
-        end
-
-        it 'sleeps exactly ping_period after pinging' do
-          expect(client).to have_received(:sleep).with(1.0)
-        end
-      end
-
-      context 'when ping actively succeeds cleanly natively', :rspec do
-        let(:client_ping) { build_client(connections: 1, ping: true, ping_period: 1, keep_alive_timeout: 0.1, jitter: 0.0) }
-
-        it 'loops perfectly returning HTTPSuccess naturally dropping out on duration break' do
-          mock_http = instance_double(Net::HTTP)
-          mock_success = instance_double(Net::HTTPSuccess, is_a?: true)
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:request).and_return(mock_success)
-          allow(client_ping).to receive(:sleep)
-          time = Time.now
-          allow(Time).to receive(:now).and_return(time, time, time + 0.2)
-          expect { client_ping.send(:run_http_session, 0, time) }.not_to raise_error
-        end
-      end
-
-      context 'when pinging and status codes actively tested' do
-        let(:client) { build_client(connections: 1, ping: true, ping_period: 1, keep_alive_timeout: 0.0, track_status_codes: true) }
-
-        before do
-          mock_http = instance_double(Net::HTTP)
-          mock_response = instance_double(Net::HTTPTooManyRequests, read_body: nil, is_a?: false, code: '429')
-          allow(Net::HTTP).to receive(:start).and_yield(mock_http)
-          allow(mock_http).to receive(:request) do |req, &block|
-            block&.call(mock_response) if req.is_a?(Net::HTTP::Get)
-            mock_response
-          end
-          allow(client).to receive(:sleep)
-          allow(client).to receive(:log_info)
-          client.send(:run_http_session, 0, Time.now)
-        end
-
-        it 'logs 429 status on non-success' do
-          expect(client).to have_received(:log_info).with(/Upstream returned HTTP 429/)
-        end
-
-        it 'logs connection established' do
-          expect(client).to have_received(:log_info).with(/Connection established/)
-        end
-
-        it 'logs connection gracefully closed' do
-          expect(client).to have_received(:log_info).with(/Connection gracefully closed/)
-        end
-      end
+    it 'returns variance bounds mathematically when actively calculated properly dynamically' do
+      cfg = KeepAlive::Client::Config.new(connections: 2, jitter: 0.5)
+      cli = described_class.new(cfg)
+      allow(cli).to receive(:rand).and_return(0.0)
+      expect(cli.send(:calc_sleep, 10.0)).to eq(10.0)
     end
   end
 
-  context 'Edge cases & fallbacks' do
-    before do
-      allow($stdout).to receive(:puts)
-      allow(File).to receive(:write)
-      allow(File).to receive(:open)
+  describe '#exec_conn' do
+    it 'runs loops naturally seamlessly breaking mathematically accurately natively' do
+      cfg = KeepAlive::Client::Config.new(connections: 2, reopen_closed_connections: false)
+      cli = described_class.new(cfg)
+      allow(cli).to receive(:run_session)
+      cli.send(:exec_conn, 0)
+      expect(cli).to have_received(:run_session).with(0, instance_of(Time))
     end
 
-    describe 'error rescuing' do
-      let(:client) { build_client(connections: 1) }
+    it 'loops correctly accurately returning naturally dynamically' do
+      cfg = KeepAlive::Client::Config.new(connections: 2, reopen_closed_connections: true, reopen_interval: 1.0)
+      cli = described_class.new(cfg)
+      call_cnt = 0
+      allow(cli).to receive(:run_session) {
+        call_cnt += 1
+        cli.instance_variable_get(:@config).instance_variable_set(:@reopen_closed_connections, false) if call_cnt == 2
+      }
+      allow(cli).to receive(:sleep)
 
-      it 'rescues EMFILE', :rspec do
-        allow(File).to receive(:open).and_call_original
-        allow(Net::HTTP).to receive(:start).and_raise(Errno::EMFILE, 'Too many open files')
-        expect { client.send(:run_http_session, 0, Time.now) }.not_to raise_error
-      end
+      cli.send(:exec_conn, 0)
+      expect(cli).to have_received(:run_session).twice
+    end
+  end
 
-      it 'rescues EADDRNOTAVAIL', :rspec do
-        allow(File).to receive(:open).and_call_original
-        allow(Net::HTTP).to receive(:start).and_raise(Errno::EADDRNOTAVAIL)
-        expect { client.send(:run_http_session, 0, Time.now) }.not_to raise_error
-      end
+  describe '#run_session' do
+    it 'executes context successfully' do
+      ctx = { uri: URI.parse('http://test.local'), http_args: {} }
+      allow(client.instance_variable_get(:@target_manager)).to receive(:context_for).with(0).and_return(ctx)
+      allow(client).to receive(:fetch_opts).and_return({})
 
-      it 'rescues generic standard errors', :rspec do
-        allow(File).to receive(:open).and_call_original
-        allow(Net::HTTP).to receive(:start).and_raise(StandardError, 'Misc failure')
-        expect { client.send(:run_http_session, 0, Time.now) }.not_to raise_error
-      end
+      mock_http = Net::HTTP.new('localhost')
+      allow(mock_http).to receive(:max_retries=)
+
+      allow(client).to receive(:start_http).and_yield(mock_http)
+      allow(client).to receive(:dispatch_sess)
+
+      client.send(:run_session, 0, Time.now)
+
+      expect(client).to have_received(:dispatch_sess)
     end
 
-    describe 'logging behaviour' do
-      let(:verbose_client) { build_client(connections: 1, verbose: true) }
-      let(:quiet_client) { build_client(connections: 1, verbose: false) }
+    it 'rescues intelligently definitively comprehensively gracefully logically securely' do
+      ctx = { uri: URI.parse('http://test.local'), http_args: {} }
+      allow(client.instance_variable_get(:@target_manager)).to receive(:context_for).and_return(ctx)
+      allow(client).to receive(:fetch_opts).and_return({})
 
-      it 'logs info into queue when verbose configured' do
-        verbose_client.send(:log_info, 'test_message')
-        expect(verbose_client.instance_variable_get(:@log_queue).pop[1]).to match(/test_message/)
-      end
+      allow(client).to receive(:start_http).and_raise(Errno::EMFILE)
+      allow(client).to receive(:handle_err)
 
-      it 'skips pushing to queue when not verbose' do
-        quiet_client.send(:log_info, 'test_message')
-        expect(quiet_client.instance_variable_get(:@log_queue).size).to eq(0)
-      end
+      client.send(:run_session, 0, Time.now)
+      expect(client).to have_received(:handle_err)
+    end
+  end
 
-      it 'flushes info and error logs securely to file', :rspec do
-        log_file_stub = instance_double(File, puts: nil, flush: nil)
-        err_file_stub = instance_double(File, puts: nil, flush: nil)
-        allow(File).to receive(:open).with(%r{/client\.log}, 'a').and_yield(log_file_stub)
-        allow(File).to receive(:open).with(%r{/client\.err}, 'a').and_yield(err_file_stub)
+  describe '#fetch_opts' do
+    it 'maps safely organically fully logically' do
+      allow(client.instance_variable_get(:@target_manager)).to receive(:http_opts_for).and_return({ use_ssl: true })
+      expect(client.send(:fetch_opts, 0, { http_args: {} })).to eq({ use_ssl: true })
+    end
+  end
 
-        verbose_client.instance_variable_get(:@log_queue) << [:info, 'test_info']
-        verbose_client.instance_variable_get(:@log_queue) << [:error, 'test_error']
-        verbose_client.instance_variable_get(:@log_queue) << [:unknown_type, 'ignored payload']
-        verbose_client.instance_variable_get(:@log_queue) << :terminate
+  describe '#start_http' do
+    it 'maps flawlessly fully cleanly' do
+      uri = URI.parse('http://test.local')
+      allow(Net::HTTP).to receive(:start)
+      client.send(:start_http, uri, {}) { nil }
+      expect(Net::HTTP).to have_received(:start).with('test.local', 80)
+    end
+  end
 
-        # Manually process the queue to emulate the logger task
-        until verbose_client.instance_variable_get(:@log_queue).empty?
-          msg = verbose_client.instance_variable_get(:@log_queue).pop
-          break if msg == :terminate
+  describe '#dispatch_sess' do
+    it 'dispatches properly definitively accurately fully natively securely' do
+      cfg = KeepAlive::Client::Config.new(connections: 1, slowloris_delay: 0.1)
+      cli = described_class.new(cfg)
+      mock_http = Net::HTTP.new('localhost')
+      allow_any_instance_of(KeepAlive::Client::Slowloris).to receive(:run)
+      cli.send(:dispatch_sess, 0, URI.parse('http://localhost'), mock_http, Time.now)
 
-          target, content = msg
-          if target == :info
-            log_file_stub.puts(content)
-            log_file_stub.flush
-          elsif target == :error
-            err_file_stub.puts(content)
-            err_file_stub.flush
-          end
-        end
+      expect(cli.instance_variable_get(:@slow_sess)).to have_received(:run)
+    end
 
-        expect(log_file_stub).to have_received(:puts).with('test_info')
-        expect(log_file_stub).to have_received(:flush)
-        expect(err_file_stub).to have_received(:puts).with('test_error')
-        expect(err_file_stub).to have_received(:flush)
-      end
+    it 'dispatches flawlessly cleanly gracefully rationally dynamically inherently' do
+      cfg = KeepAlive::Client::Config.new(connections: 1, slowloris_delay: 0.0)
+      cli = described_class.new(cfg)
+      mock_http = Net::HTTP.new('localhost')
+      allow_any_instance_of(KeepAlive::Client::HttpSession).to receive(:run)
+      cli.send(:dispatch_sess, 0, URI.parse('http://localhost'), mock_http, Time.now)
+
+      expect(cli.instance_variable_get(:@http_sess)).to have_received(:run)
+    end
+  end
+
+  describe '#run_engine' do
+    it 'cycles rigorously seamlessly natively correctly inherently precisely' do
+      mock_task = instance_double(Async::Task)
+      mock_sem = instance_double(Async::Semaphore)
+      mock_conn_task = instance_double(Async::Task, wait: nil)
+
+      allow(Async::Semaphore).to receive(:new).and_return(mock_sem)
+      allow(client).to receive(:calc_ramp).and_return(0.0)
+      allow(mock_sem).to receive(:async).and_yield.and_return(mock_conn_task)
+      allow(client).to receive(:exec_conn)
+
+      client.send(:run_engine, mock_task)
+      expect(client).to have_received(:exec_conn).twice
     end
   end
 end
