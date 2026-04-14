@@ -19,6 +19,11 @@ jobs:
           ruby-version: '4.0.2'
           bundler-cache: true
 
+      - name: Set Release Version
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          sed -i "s/VERSION = '.*'/VERSION = '$TAG_VERSION'/" lib/keep_alive/version.rb
+
       - name: Build Gem
         run: gem build keep_alive.gemspec
 
