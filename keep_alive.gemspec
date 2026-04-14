@@ -11,6 +11,7 @@ Gem::Specification.new do |spec|
   spec.summary       = 'Keep-Alive High Concurrency Load Testing Framework'
   spec.description   = 'A performance testing tool for HTTP/HTTPS.'
   spec.homepage      = 'https://github.com/VitaliiLazebnyi/keep-alive'
+  spec.license       = 'MIT'
   spec.required_ruby_version = '>= 4.0'
   spec.metadata['allowed_push_host'] = 'https://rubygems.org'
   spec.metadata['source_code_uri']   = spec.homepage
@@ -20,6 +21,7 @@ Gem::Specification.new do |spec|
     README.md
     PERFORMANCE_REPORT.md
     Gemfile
+    LICENSE.txt
   ] + Dir.glob('{lib,bin}/**/*', base: __dir__).select do |f|
     File.file?(File.expand_path(f, __dir__))
   end
