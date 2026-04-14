@@ -18,10 +18,13 @@ Gem::Specification.new do |spec|
   spec.metadata['rubygems_mfa_required'] = 'true'
 
   spec.files = %w[
-    README.md
-    PERFORMANCE_REPORT.md
+    BUGS.md
     Gemfile
     LICENSE.txt
+    PERFORMANCE_REPORT.md
+    README.md
+    REQUIREMENTS.md
+    keep_alive.gemspec
   ] + Dir.glob('{lib,bin}/**/*', base: __dir__).select do |f|
     File.file?(File.expand_path(f, __dir__))
   end
