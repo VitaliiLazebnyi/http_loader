@@ -9,4 +9,3 @@ vendor
 *.json
 *.out
 rspec_output.txt
-.bundle/
