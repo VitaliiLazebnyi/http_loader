@@ -22,7 +22,7 @@ jobs:
       - name: Set Release Version
         run: |
           TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          sed -i "s/VERSION = '.*'/VERSION = '$TAG_VERSION'/" lib/keep_alive/version.rb
+          sed -i "s/VERSION = '.*'/VERSION = '$TAG_VERSION'/" lib/http_loader/version.rb
 
       - name: Setup Gem Signing
         env:
