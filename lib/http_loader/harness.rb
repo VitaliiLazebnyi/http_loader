@@ -9,7 +9,7 @@ require_relative 'harness/telemetry'
 require_relative 'harness/process_manager'
 require_relative 'harness/formatter'
 
-module KeepAlive
+module HttpLoader
   # Harness orchestrates the entire load testing lifecycle seamlessly and securely.
   class Harness
     extend T::Sig

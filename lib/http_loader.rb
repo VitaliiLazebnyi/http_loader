@@ -2,11 +2,11 @@
 # frozen_string_literal: true
 
 require 'sorbet-runtime'
-require_relative 'keep_alive/version'
-require_relative 'keep_alive/server'
-require_relative 'keep_alive/client'
-require_relative 'keep_alive/harness'
+require_relative 'http_loader/version'
+require_relative 'http_loader/server'
+require_relative 'http_loader/client'
+require_relative 'http_loader/harness'
 
-# KeepAlive is the main namespace for the high-concurrency Ruby load testing framework.
-module KeepAlive
+# HttpLoader is the main namespace for the high-concurrency Ruby load testing framework.
+module HttpLoader
 end

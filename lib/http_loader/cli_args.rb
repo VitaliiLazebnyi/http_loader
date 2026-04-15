@@ -3,7 +3,7 @@
 
 require 'sorbet-runtime'
 
-module KeepAlive
+module HttpLoader
   # Extracted arguments parsers for strict metric compliance.
   module CliArgs
     # ClientParser configures OptionParser mapping specifically for Client configurations
@@ -27,7 +27,7 @@ module KeepAlive
       end
 
       def self.parse_timeouts(opts, options)
-        opts.on('--keep_alive_timeout=S', Float, 'Keep') { |v| options[:keep_alive_timeout] = v }
+        opts.on('--http_loader_timeout=S', Float, 'Keep') { |v| options[:http_loader_timeout] = v }
         opts.on('--connections_per_second=R', Integer, 'Rate') { |v| options[:connections_per_second] = v }
         opts.on('--max_concurrent_connections=C', Integer, 'Max') { |v| options[:max_concurrent_connections] = v }
         parse_advanced(opts, options)
@@ -87,7 +87,7 @@ module KeepAlive
         opts.on('--verbose') { nil }
         opts.on('--[no-]ping') { nil }
         opts.on('--ping_period=S', Integer) { nil }
-        opts.on('--keep_alive_timeout=S', Float) { nil }
+        opts.on('--http_loader_timeout=S', Float) { nil }
         opts.on('--connections_per_second=R', Integer) { nil }
         ignore_time_args(opts)
       end

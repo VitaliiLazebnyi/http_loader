@@ -6,7 +6,7 @@ plugins:
   - rubocop-md
 
 require:
-  - ./lib/rubocop/cop/keep_alive/adverb_spam.rb
+  - ./lib/rubocop/cop/ai/adverb_spam.rb
 
 AllCops:
   NewCops: enable
@@ -45,7 +45,5 @@ RSpec/AnyInstance:
 RSpec/ContextWording:
   Enabled: false
 
-KeepAlive/AdverbSpam:
+AI/AdverbSpam:
   Enabled: true
-  Include:
-    - 'lib/**/*.rb'

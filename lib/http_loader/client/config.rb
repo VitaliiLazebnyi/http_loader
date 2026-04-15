@@ -3,7 +3,7 @@
 
 require 'sorbet-runtime'
 
-module KeepAlive
+module HttpLoader
   class Client
     # Config parameters for Client connections.
     class Config < T::Struct
@@ -13,7 +13,7 @@ module KeepAlive
       const :verbose, T::Boolean, default: false
       const :ping, T::Boolean, default: true
       const :ping_period, Integer, default: 5
-      const :keep_alive_timeout, Float, default: 0.0
+      const :http_loader_timeout, Float, default: 0.0
       const :connections_per_second, Integer, default: 0
       const :max_concurrent_connections, Integer, default: 1000
       const :reopen_closed_connections, T::Boolean, default: false

@@ -4,7 +4,7 @@
 require 'sorbet-runtime'
 require 'open3'
 
-module KeepAlive
+module HttpLoader
   class Harness
     # Monitors CPU, memory, and established connections for running processes.
     class ResourceMonitor

@@ -3,7 +3,7 @@
 
 require 'sorbet-runtime'
 
-module KeepAlive
+module HttpLoader
   class Client
     # Handles deliberate thread-hogging Slowloris tactics.
     class Slowloris
@@ -58,7 +58,7 @@ module KeepAlive
       def maintain_hold(client_index, io, start_time)
         loop do
           elapsed = Time.now - start_time
-          if @config.keep_alive_timeout.positive? && elapsed >= @config.keep_alive_timeout
+          if @config.http_loader_timeout.positive? && elapsed >= @config.http_loader_timeout
             @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing Slowloris thread.")
             break
           end

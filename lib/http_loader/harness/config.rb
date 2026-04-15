@@ -3,7 +3,7 @@
 
 require 'sorbet-runtime'
 
-module KeepAlive
+module HttpLoader
   class Harness
     # Config parameters for Harness manager execution natively.
     class Config < T::Struct

@@ -3,7 +3,7 @@
 
 require 'sorbet-runtime'
 
-module KeepAlive
+module HttpLoader
   class Harness
     # Manages child process lifecycles natively and checks status dynamically.
     class ProcessManager
@@ -12,7 +12,7 @@ module KeepAlive
       sig { returns(T.nilable(Integer)) }
       attr_reader :server_pid, :client_pid
 
-      sig { params(config: KeepAlive::Harness::Config).void }
+      sig { params(config: HttpLoader::Harness::Config).void }
       def initialize(config)
         @config = config
         @server_pid = T.let(nil, T.nilable(Integer))
@@ -51,7 +51,7 @@ module KeepAlive
 
       sig { void }
       def spawn_server
-        server_cmd = ['ruby', 'bin/keep_alive', 'server']
+        server_cmd = ['ruby', 'bin/http_loader', 'server']
         server_cmd << '--https' if @config.use_https
         @server_pid = Process.spawn(*server_cmd, out: File.join(@log_dir, 'server.log'),
                                                  err: File.join(@log_dir, 'server.err'))
@@ -61,7 +61,7 @@ module KeepAlive
 
       sig { void }
       def spawn_client
-        client_cmd = ['ruby', 'bin/keep_alive', 'client']
+        client_cmd = ['ruby', 'bin/http_loader', 'client']
         client_cmd += @config.client_args.empty? ? ["--connections_count=#{@config.connections}"] : @config.client_args
 
         @client_pid = Process.spawn(*client_cmd, out: File.join(@log_dir, 'client.log'),

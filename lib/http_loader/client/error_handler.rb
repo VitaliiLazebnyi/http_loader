@@ -3,14 +3,14 @@
 
 require 'sorbet-runtime'
 
-module KeepAlive
+module HttpLoader
   class Client
     # ErrorHandler provides error handling strategies natively.
     module ErrorHandler
       extend T::Sig
       extend T::Helpers
 
-      requires_ancestor { KeepAlive::Client }
+      requires_ancestor { HttpLoader::Client }
 
       sig { params(idx: Integer, err: StandardError).void }
       def handle_err(idx, err)

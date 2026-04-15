@@ -67,7 +67,7 @@ You engage all functions purely through the `http_loader` executable command int
 | `--verbose` | Flag | Optional | Enables extensive verbose logging dynamically mapping TCP `Connection established` and closures strictly into the Thread-safe `./logs/client.log` mutex. |
 | `--[no-]ping` | Flag | Optional | Toggles Keep-Alive dynamic heartbeat pings off or on (default `true`). Sends an explicit `HEAD` request within the Keep-Alive tunnel routinely. |
 | `--ping_period=` | Integer | Optional | Time in seconds strictly bounding how often Keep-Alive fiber pings aggressively repeat. Defaults to `5`. |
-| `--keep_alive_timeout=` | Float | Optional | The strict mathematical upper-bound limit enforcing autonomous Client disconnects cleanly. Defaults to `0` (mathematically infinite). |
+| `--http_loader_timeout=` | Float | Optional | The strict mathematical upper-bound limit enforcing autonomous Client disconnects cleanly. Defaults to `0` (mathematically infinite). |
 | `--bind_ips=` | String | Optional | Comma separated loopback or generic networking interfaces to sequentially map outgoing sockets against. (E.g. `127.0.0.1,127.0.0.2`). |
 | `--proxy_pool=` | String | Optional | Comma separated proxy URIs (e.g. `http://proxy1:8080,http://user:pass@proxy2:8080`) to multiplex connections through. |
 | `--headers=` | String | Optional | Comma separated `Key:Value` mapping of custom authorization or edge cache-bust headers injected strictly bypassing CDNs. |

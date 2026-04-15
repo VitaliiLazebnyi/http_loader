@@ -5,7 +5,7 @@ require 'sorbet-runtime'
 require 'fileutils'
 require 'time'
 
-module KeepAlive
+module HttpLoader
   class Client
     # Handles asynchronous file logging to prevent blocking main connections.
     class Logger

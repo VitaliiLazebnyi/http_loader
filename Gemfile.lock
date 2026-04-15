@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    keep_alive (0.1.0)
+    http_loader (0.1.0)
       async (~> 2.39)
       async-http (~> 0.95)
       falcon (~> 0.55)
@@ -170,6 +170,10 @@ GEM
     unicode-display_width (3.2.0)
       unicode-emoji (~> 4.1)
     unicode-emoji (4.2.0)
+    yard (0.9.41)
+    yard-sorbet (0.9.0)
+      sorbet-runtime
+      yard
 
 PLATFORMS
   aarch64-linux
@@ -177,7 +181,7 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
-  keep_alive!
+  http_loader!
   memory_profiler (~> 1.1)
   rake (~> 13.3)
   rspec (~> 3.13)
@@ -190,6 +194,8 @@ DEPENDENCIES
   ruby-prof (~> 2.0)
   simplecov (~> 0.22)
   sorbet (~> 0.6)
+  yard (~> 0.9)
+  yard-sorbet (~> 0.8)
 
 CHECKSUMS
   ast (2.4.3) sha256=954615157c1d6a382bc27d690d973195e79db7f55e9765ac7c481c60bdb4d383
@@ -208,11 +214,11 @@ CHECKSUMS
   fiber-annotation (0.2.0) sha256=7abfadf1d119f508867d4103bf231c0354d019cc39a5738945dec2edadaf6c03
   fiber-local (1.1.0) sha256=c885f94f210fb9b05737de65d511136ea602e00c5105953748aa0f8793489f06
   fiber-storage (1.0.1) sha256=f48e5b6d8b0be96dac486332b55cee82240057065dc761c1ea692b2e719240e1
+  http_loader (0.1.0)
   io-endpoint (0.17.2) sha256=3feaf766c116b35839c11fac68b6aaadc47887bb488902a57bf8e1d288fb3338
   io-event (1.15.1) sha256=c644cdcf48254015d63f558bf4492f35471f5bb204a42180ea49752be59b30cc
   io-stream (0.11.1) sha256=fa5f551fcff99581c1757b9d1cee2c37b124f07d2ca4f40b756a05ab9bd21b87
   json (2.19.3) sha256=289b0bb53052a1fa8c34ab33cc750b659ba14a5c45f3fcf4b18762dc67c78646
-  keep_alive (0.1.0)
   language_server-protocol (3.17.0.5) sha256=fd1e39a51a28bf3eec959379985a72e296e9f9acfce46f6a79d31ca8760803cc
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
   localhost (1.7.0) sha256=09b32819537f914ccdf0a7c595fab162517401b6ef644a2afd3708d943c4547f
@@ -263,6 +269,8 @@ CHECKSUMS
   traces (0.18.2) sha256=80f1649cb4daace1d7174b81f3b3b7427af0b93047759ba349960cb8f315e214
   unicode-display_width (3.2.0) sha256=0cdd96b5681a5949cdbc2c55e7b420facae74c4aaf9a9815eee1087cb1853c42
   unicode-emoji (4.2.0) sha256=519e69150f75652e40bf736106cfbc8f0f73aa3fb6a65afe62fefa7f80b0f80f
+  yard (0.9.41) sha256=2fad2f362bceb63101f37aeb81d35cfc50b4ae1c11cf22f54b8d46626877a89f
+  yard-sorbet (0.9.0) sha256=03d1aa461b9e9c82b886919a13aa3e09fcf4d1852239d2967ed97e92723ffe21
 
 RUBY VERSION
   ruby 4.0.2

@@ -15,7 +15,7 @@ require_relative 'client/slowloris'
 require_relative 'client/http_session'
 require_relative 'client/error_handler'
 
-module KeepAlive
+module HttpLoader
   # Master client class coordinating connection pools through Async Engine.
   class Client
     extend T::Sig

@@ -4,7 +4,7 @@
 require 'sorbet-runtime'
 require 'json'
 
-module KeepAlive
+module HttpLoader
   class Harness
     # Exports telemetry and logs bottlenecks asynchronously and synchronously at termination.
     class Telemetry

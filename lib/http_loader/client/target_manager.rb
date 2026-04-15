@@ -5,7 +5,7 @@ require 'sorbet-runtime'
 require 'uri'
 require 'socket'
 
-module KeepAlive
+module HttpLoader
   class Client
     # Manages URI contexts, IPs, proxies, and HTTPS resolution.
     class TargetManager

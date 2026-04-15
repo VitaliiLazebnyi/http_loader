@@ -3,14 +3,14 @@
 
 require 'sorbet-runtime'
 
-module KeepAlive
+module HttpLoader
   class Harness
     # Formatter handles printing load test statistics dynamically and robustly.
     module Formatter
       extend T::Sig
       extend T::Helpers
 
-      requires_ancestor { KeepAlive::Harness }
+      requires_ancestor { HttpLoader::Harness }
 
       sig { void }
       def print_startup_banner

@@ -4,7 +4,7 @@
 require 'sorbet-runtime'
 require 'net/http'
 
-module KeepAlive
+module HttpLoader
   class Client
     # Handles normal and QPS-driven HTTP keep-alive connections.
     class HttpSession
@@ -42,7 +42,7 @@ module KeepAlive
       def maintain_keepalive(client_index, uri, http, start_time)
         loop do
           elapsed = Time.now - start_time
-          if @config.keep_alive_timeout.positive? && elapsed >= @config.keep_alive_timeout
+          if @config.http_loader_timeout.positive? && elapsed >= @config.http_loader_timeout
             @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing.")
             break
           end

@@ -13,7 +13,7 @@ require 'async'
 require 'falcon/server'
 require 'protocol/rack/adapter'
 
-module KeepAlive
+module HttpLoader
   # Server provides a lightweight, natively asynchronous HTTP/HTTPS mock endpoint
   class Server
     extend T::Sig
