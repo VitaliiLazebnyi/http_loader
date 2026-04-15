@@ -17,6 +17,9 @@ Gem::Specification.new do |spec|
   spec.metadata['source_code_uri']   = spec.homepage
   spec.metadata['rubygems_mfa_required'] = 'true'
 
+  spec.cert_chain  = ['certs/keep_alive-public_cert.pem']
+  spec.signing_key = File.expand_path('~/.gem/gem-private_key.pem') if $PROGRAM_NAME =~ /gem\z/
+
   spec.files = %w[
     BUGS.md
     Gemfile
@@ -25,7 +28,7 @@ Gem::Specification.new do |spec|
     README.md
     REQUIREMENTS.md
     keep_alive.gemspec
-  ] + Dir.glob('{lib,bin}/**/*', base: __dir__).select do |f|
+  ] + Dir.glob('{lib,bin,certs}/**/*', base: __dir__).select do |f|
     File.file?(File.expand_path(f, __dir__))
   end
   spec.bindir        = 'bin'

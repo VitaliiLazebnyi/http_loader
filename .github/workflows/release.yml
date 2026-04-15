@@ -24,6 +24,14 @@ jobs:
           TAG_VERSION=${GITHUB_REF#refs/tags/v}
           sed -i "s/VERSION = '.*'/VERSION = '$TAG_VERSION'/" lib/keep_alive/version.rb
 
+      - name: Setup Gem Signing
+        env:
+          GEM_PRIVATE_KEY: ${{ secrets.GEM_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.gem
+          echo "$GEM_PRIVATE_KEY" > ~/.gem/gem-private_key.pem
+          chmod 0600 ~/.gem/gem-private_key.pem
+
       - name: Build Gem
         run: gem build keep_alive.gemspec
 
