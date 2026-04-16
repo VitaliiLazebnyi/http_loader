@@ -1,8 +1,10 @@
+# typed: strong
 # frozen_string_literal: true
 
 # rubocop:disable AI/AdverbSpam -- Architectural Limitation: This cop's own documentation must deliberately breach the rule to provide a negative example.
 
 require 'rubocop'
+require 'sorbet-runtime'
 
 # Top-level RuboCop namespace.
 module RuboCop
@@ -20,19 +22,21 @@ module RuboCop
       #
       #   # good
       #   # @param c_m [String] the properly formatted parameter
-      class AdverbSpam < RuboCop::Cop::Base
-        extend AutoCorrector
+      class AdverbSpam < ::RuboCop::Cop::Base
+        extend T::Sig
+        extend ::RuboCop::Cop::AutoCorrector
 
         # Detailed explanation of what the cop expects to find and correct when triggered.
-        MSG = 'Avoid AI-generated spam inside comments (excessive adverbs/meaningless words).'
+        MSG = T.let('Avoid AI-generated spam inside comments (excessive adverbs/meaningless words).', String)
 
         # Triggered for each new file/investigation to scan comments for invalid documentation spam.
         #
         # @return [void]
+        sig { void }
         def on_new_investigation
           # Pattern to match sequences of 2 or more words ending in 'ly'
           # including optional spaces and punctuation in between (but NOT newlines).
-          pattern = /(?:[ \t]*\b[a-zA-Z]+ly\b[ \t,.]*){2,}/i
+          pattern = T.let(/(?:[ \t]*\b[a-zA-Z]+ly\b[ \t,.]*){2,}/i, Regexp)
 
           processed_source.comments.each do |comment|
             text = comment.text

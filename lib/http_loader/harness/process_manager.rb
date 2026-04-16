@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'sorbet-runtime'
+require 'shellwords'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -41,11 +42,11 @@ module HttpLoader
       sig { void }
       def cleanup
         begin
-          Process.kill('INT', T.must(@server_pid)) if @server_pid
+          Process.kill('INT', @server_pid) if @server_pid
         rescue StandardError; nil
         end
         begin
-          Process.kill('INT', T.must(@client_pid)) if @client_pid
+          Process.kill('INT', @client_pid) if @client_pid
         rescue StandardError; nil
         end
       end
@@ -70,7 +71,7 @@ module HttpLoader
       def spawn_server
         server_cmd = ['ruby', 'bin/http_loader', 'server']
         server_cmd << '--https' if @config.use_https
-        @server_pid = Process.spawn(*server_cmd, out: File.join(@log_dir, 'server.log'),
+        @server_pid = Process.spawn(Shellwords.join(server_cmd), out: File.join(@log_dir, 'server.log'),
                                                  err: File.join(@log_dir, 'server.err'))
         puts "[Harness] Started server with PID #{@server_pid}"
         sleep(2)
@@ -84,7 +85,7 @@ module HttpLoader
         client_cmd = ['ruby', 'bin/http_loader', 'client']
         client_cmd += @config.client_args.empty? ? ["--connections_count=#{@config.connections}"] : @config.client_args
 
-        @client_pid = Process.spawn(*client_cmd, out: File.join(@log_dir, 'client.log'),
+        @client_pid = Process.spawn(Shellwords.join(client_cmd), out: File.join(@log_dir, 'client.log'),
                                                  err: File.join(@log_dir, 'client.err'))
         puts "[Harness] Started client with PID #{@client_pid}"
       end

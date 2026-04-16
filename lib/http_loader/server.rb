@@ -28,7 +28,7 @@ module HttpLoader
         proc do |_env|
           [200, { 'Content-Type' => 'text/plain', 'Content-Length' => '2' }, ['OK']]
         end,
-        T.proc.params(arg0: T::Hash[String, Object]).returns(T::Array[T.any(Integer, T::Hash[String, String], Object)])
+        T.proc.params(arg0: T::Hash[String, T.untyped]).returns(T::Array[T.any(Integer, T::Hash[String, String], T.untyped)])
       )
     end
 
@@ -57,8 +57,8 @@ module HttpLoader
       puts "[Server] Binding natively to HTTPS over port #{port}"
       ssl_context = generate_ssl_context
 
-      T.unsafe(self).send(:Sync) do |task|
-        run_falcon(task, port, ssl_context)
+      send(:Sync) do |raw_task|
+        run_falcon(T.cast(raw_task, Async::Task), port, ssl_context)
       end
     end
 
@@ -68,9 +68,10 @@ module HttpLoader
     # @param port [Integer] physical OS boundary target identifier
     # @param context [OpenSSL::SSL::SSLContext] verified generated payload map
     # @return [void]
-    sig { params(task: T.untyped, port: Integer, context: OpenSSL::SSL::SSLContext).void }
+    sig { params(task: Async::Task, port: Integer, context: OpenSSL::SSL::SSLContext).void }
     def run_falcon(task, port, context)
-      server_task = build_falcon_server(port, context).run
+      server = build_falcon_server(port, context)
+      server_task = T.cast(server.run, Async::Task)
       setup_interrupt do
         task.stop
         exit(0)
@@ -82,14 +83,14 @@ module HttpLoader
     #
     # @param port [Integer] target
     # @param context [OpenSSL::SSL::SSLContext] populated encryption mappings
-    # @return [Falcon::Server, Object] internally mapped untyped interface natively wrapping the app
-    sig { params(port: Integer, context: OpenSSL::SSL::SSLContext).returns(T.untyped) }
+    # @return [Falcon::Server, T.untyped] internally mapped untyped interface natively wrapping the app
+    sig { params(port: Integer, context: OpenSSL::SSL::SSLContext).returns(::Falcon::Server) }
     def build_falcon_server(port, context)
-      endpoint = T.unsafe(IO::Endpoint).tcp('0.0.0.0', port)
-      secure = T.unsafe(IO::Endpoint::SSLEndpoint).new(endpoint, ssl_context: context)
-      adapter = T.unsafe(::Protocol::Rack::Adapter).new(@app)
-      T.unsafe(::Falcon::Server).new(
-        adapter, secure, protocol: T.unsafe(Async::HTTP::Protocol::HTTP1), scheme: 'https'
+      endpoint = ::IO::Endpoint.tcp('0.0.0.0', port)
+      secure = ::IO::Endpoint::SSLEndpoint.new(endpoint, ssl_context: context)
+      adapter = ::Protocol::Rack::Adapter.new(@app)
+      ::Falcon::Server.new(
+        adapter, secure, protocol: ::Async::HTTP::Protocol::HTTP1, scheme: 'https'
       )
     end
 
@@ -122,7 +123,7 @@ module HttpLoader
     # @return [OpenSSL::SSL::SSLContext] fully integrated validation context mapping
     sig { returns(OpenSSL::SSL::SSLContext) }
     def generate_ssl_context
-      rsa = OpenSSL::PKey::RSA.new(2048)
+      rsa = T.cast(OpenSSL::PKey::RSA.new(2048), OpenSSL::PKey::RSA)
       cert = build_cert(rsa)
 
       ssl_context = OpenSSL::SSL::SSLContext.new

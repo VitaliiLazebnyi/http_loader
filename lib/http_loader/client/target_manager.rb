@@ -78,7 +78,7 @@ module HttpLoader
       sig { params(opts: T::Hash[Symbol, T.untyped], client_index: Integer).void }
       def apply_proxy!(opts, client_index)
         pool = @config.proxy_pool
-        proxy_uri = URI.parse(pool[client_index % pool.size])
+        proxy_uri = URI.parse(T.must(pool[client_index % pool.size]))
         opts[:proxy_address] = proxy_uri.host
         opts[:proxy_port] = proxy_uri.port
         opts[:proxy_user] = proxy_uri.user if proxy_uri.user
@@ -95,7 +95,8 @@ module HttpLoader
         urls = @config.target_urls.any? ? @config.target_urls : [nil]
         urls.map do |url|
           uri = parse_uri(url)
-          args = { read_timeout: @config.read_timeout.positive? ? @config.read_timeout : nil }
+          timeout = @config.read_timeout
+          args = { read_timeout: timeout > 0.0 ? timeout : nil }
           args[:ipaddr] = resolve_ip(uri)
           { uri: uri, http_args: secure_opts(uri, args) }
         end
@@ -118,8 +119,9 @@ module HttpLoader
       # @return [String, nil] pure textual Internet protocol network target coordinates
       sig { params(uri: URI::Generic).returns(T.nilable(String)) }
       def resolve_ip(uri)
-        ip_info = Addrinfo.getaddrinfo(T.must(uri.host), uri.port, nil, :STREAM)
-        (ip_info.find(&:ipv4?) || ip_info.first)&.ip_address
+        # ! SORBET BYPASS: Addrinfo returns T.untyped
+        ip_info = T.cast(Addrinfo.getaddrinfo(T.must(uri.host), uri.port, nil, :STREAM), T::Array[Addrinfo])
+        T.cast((ip_info.find(&:ipv4?) || ip_info.first)&.ip_address, T.nilable(String))
       rescue SocketError
         nil
       end

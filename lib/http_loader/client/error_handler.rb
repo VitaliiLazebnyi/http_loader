@@ -21,13 +21,14 @@ module HttpLoader
       # @return [void]
       sig { params(idx: Integer, err: StandardError).void }
       def handle_err(idx, err)
+        client = T.cast(self, HttpLoader::Client)
         case err
         when Errno::EMFILE
-          @logger.error("[Client #{idx}] ERROR_EMFILE: #{err.message}")
+          client.logger.error("[Client #{idx}] ERROR_EMFILE: #{err.message}")
         when Errno::EADDRNOTAVAIL
-          @logger.error("[Client #{idx}] ERROR_EADDRNOTAVAIL: Ephemeral port limit reached.")
+          client.logger.error("[Client #{idx}] ERROR_EADDRNOTAVAIL: Ephemeral port limit reached.")
         else
-          @logger.error("[Client #{idx}] ERROR_OTHER: #{err.message}")
+          client.logger.error("[Client #{idx}] ERROR_OTHER: #{err.message}")
         end
       end
     end

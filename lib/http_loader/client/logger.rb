@@ -21,7 +21,7 @@ module HttpLoader
         @verbose = verbose
         @log_dir = T.let(File.expand_path('../../../logs', __dir__), String)
         @log_queue = T.let(Queue.new, Queue)
-        @logger_task = T.let(nil, T.nilable(T.untyped))
+        @logger_task = T.let(nil, Object)
       end
 
       # Prepares the filesystem by creating necessary log files and clearing previous logs.
@@ -36,9 +36,9 @@ module HttpLoader
 
       # Spins up an async listener mapping log queues to the underlying file descriptors.
       #
-      # @param task [Async::Task] the orchestration asynchronous task
-      # @return [Async::Task] the running logger task yielding IO operations
-      sig { params(task: T.untyped).returns(T.untyped) }
+      # @param task [Object] the orchestration asynchronous task
+      # @return [Object] the running logger task yielding IO operations
+      sig { params(task: Async::Task).returns(Async::Task) }
       def run_task(task)
         @logger_task = task.async do
           File.open(File.join(@log_dir, 'client.log'), 'a') do |log|
@@ -47,6 +47,7 @@ module HttpLoader
             end
           end
         end
+        T.cast(@logger_task, Async::Task)
       end
 
       # Safely drains remaining log entries to disk synchronously when engine exits.
@@ -70,7 +71,7 @@ module HttpLoader
       sig { params(message: String).void }
       def info(message)
         return unless @verbose
-
+        # ! SORBET BYPASS: Queue push allows Object
         @log_queue << [:info, "[#{Time.now.utc.iso8601}] #{message}"]
       end
 
@@ -80,6 +81,7 @@ module HttpLoader
       # @return [void]
       sig { params(message: String).void }
       def error(message)
+        # ! SORBET BYPASS: Queue push allows Object
         @log_queue << [:error, "[#{Time.now.utc.iso8601}] #{message}"]
       end
 
@@ -87,18 +89,18 @@ module HttpLoader
 
       # Consumes queue actively via block polling using async sleeping paradigms.
       #
-      # @param task [Async::Task] the orchestrator bound task
+      # @param task [Object] the orchestrator bound task
       # @param log [File] descriptor targeting the info/debug log
       # @param err [File] descriptor targeting the error log
       # @return [void]
-      sig { params(task: T.untyped, log: File, err: File).void }
+      sig { params(task: Async::Task, log: File, err: File).void }
       def poll_queue(task, log, err)
         loop do
           msg = fetch_message(task)
           next unless msg
           break if msg == :terminate
 
-          write_msg(msg, log, err)
+          write_msg(T.cast(msg, T::Array[T.any(Symbol, String)]), log, err)
         end
       end
 
@@ -110,24 +112,29 @@ module HttpLoader
       sig { params(log: File, err: File).void }
       def drain_queue(log, err)
         loop do
-          msg = begin
+          popped = begin
             @log_queue.pop(true)
           rescue ThreadError
             nil
           end
-          break unless msg && msg != :terminate
+          msg_raw = T.cast(popped, T.nilable(T.any(Symbol, T::Array[T.any(Symbol, String)])))
+          break unless msg_raw
 
-          write_msg(msg, log, err)
+          msg = msg_raw
+          break if msg == :terminate
+
+          write_msg(T.cast(msg, T::Array[T.any(Symbol, String)]), log, err)
         end
       end
 
       # Tries popping elements off execution queues non-blockingly, sleeping async if empty.
       #
-      # @param task [Async::Task] the async orchestrator task
-      # @return [Array, Symbol, nil] the payload tuple, termination symbol, or nil
-      sig { params(task: T.untyped).returns(T.untyped) }
+      # @param task [Object] the async orchestrator task
+      # @return [T.nilable(T.any(Symbol, T::Array[T.any(Symbol, String)]))] the payload tuple, termination symbol, or nil
+      sig { params(task: Async::Task).returns(T.nilable(T.any(Symbol, T::Array[T.any(Symbol, String)]))) }
       def fetch_message(task)
-        @log_queue.pop(true)
+        msg_raw = @log_queue.pop(true)
+        T.cast(msg_raw, T.any(Symbol, T::Array[T.any(Symbol, String)]))
       rescue ThreadError
         task.sleep(0.05)
         nil
@@ -135,18 +142,20 @@ module HttpLoader
 
       # Evaluates payload structure formatting raw string to physical IO devices.
       #
-      # @param msg [Array] the log level tuple targeting IO
+      # @param msg [Array<T.any(Symbol, String)>] the log level tuple targeting IO
       # @param log [File] descriptor targeting the info/debug log
       # @param err [File] descriptor targeting the error log
       # @return [void]
-      sig { params(msg: T::Array[T.untyped], log: File, err: File).void }
+      sig { params(msg: T::Array[T.any(Symbol, String)], log: File, err: File).void }
       def write_msg(msg, log, err)
         target, content = msg
+        target = T.cast(target, Symbol)
+        content_str = T.cast(content, String)
         if target == :info
-          log.puts content
+          log.puts content_str
           log.flush
         elsif target == :error
-          err.puts content
+          err.puts content_str
           err.flush
         end
       end

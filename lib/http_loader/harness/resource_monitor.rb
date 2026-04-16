@@ -33,7 +33,7 @@ module HttpLoader
           fallback_ps_stats(pid)
         end
       rescue StandardError
-        fallback_ps_stats(pid)
+        fallback_ps_stats(T.must(pid))
       end
 
       # Aggregates physical network sockets representing valid ESTABLISHED system patterns cleanly without collision.
@@ -103,7 +103,7 @@ module HttpLoader
         return 4096 unless File.exist?('/usr/bin/getconf')
 
         out, _s = Open3.capture2('getconf PAGE_SIZE')
-        out.to_i.positive? ? out.to_i : 4096
+        out.to_i> 0.0 ? out.to_i : 4096
       rescue StandardError
         4096
       end
@@ -119,12 +119,17 @@ module HttpLoader
         now = Time.now.utc
         cpu_perc = 0.0
 
-        if prev && (time_diff = now - prev[:time]).positive?
-          cpu_perc = (((total_ticks - prev[:ticks]) / 100.0) / time_diff * 100).round(1)
+        if prev
+          prev_time = T.cast(prev[:time], Time)
+          prev_ticks = T.cast(prev[:ticks], Float)
+          time_diff = now - prev_time
+          if time_diff> 0.0
+            cpu_perc = (((total_ticks - prev_ticks) / 100.0) / time_diff * 100).round(1)
+          end
         end
 
         @cpu_prev[pid] = { ticks: total_ticks, time: now }
-        cpu_perc
+        T.cast(cpu_perc, Float)
       end
 
       # Evaluates older fallback UNIX command line execution structures safely yielding basic analysis outputs.

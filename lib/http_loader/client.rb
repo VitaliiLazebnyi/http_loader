@@ -22,13 +22,16 @@ module HttpLoader
     extend T::Sig
     include ErrorHandler
 
+    sig { returns(HttpLoader::Client::Logger) }
+    attr_reader :logger
+
     # Initializes a new Client instance.
     #
     # @param config [Config] the strongly typed configuration object
     # @return [void]
     sig { params(config: Config).void }
     def initialize(config)
-      @config = config
+      @config = T.let(config, Config)
       @logger = T.let(Logger.new(config.verbose), Logger)
       @target_manager = T.let(TargetManager.new(config), TargetManager)
       @slow_sess = T.let(Slowloris.new(config, @logger), Slowloris)
@@ -44,7 +47,7 @@ module HttpLoader
       trap('INT') { exit(0) }
       @logger.setup_files!
 
-      Async { |task| run_engine(task) }
+      Async { |raw_task| run_engine(T.cast(raw_task, Async::Task)) }
     ensure
       @logger.flush_synchronously!
     end
@@ -55,14 +58,16 @@ module HttpLoader
     #
     # @param task [Async::Task] the async orchestration task
     # @return [void]
-    sig { params(task: T.untyped).void }
+    sig { params(task: Async::Task).void }
     def run_engine(task)
       logger_t = @logger.run_task(task)
       sem = Async::Semaphore.new(@config.max_concurrent_connections, parent: task)
 
-      conn_tasks = Array.new(@config.connections) do |i|
-        perform_sleep(calc_ramp, task: task) if calc_ramp.positive?
-        sem.async { exec_conn(i) }
+      conn_tasks = T.let([], T::Array[Async::Task])
+      @config.connections.times do |raw_i|
+        i = raw_i
+        perform_sleep(calc_ramp, task: task) if calc_ramp > 0
+        conn_tasks << sem.async { exec_conn(i) }
       end
 
       conn_tasks.each(&:wait)
@@ -83,9 +88,9 @@ module HttpLoader
     # @return [Float] the calculated ramp sleep duration
     sig { returns(Float) }
     def calc_ramp
-      if @config.ramp_up.positive?
+      if @config.ramp_up> 0
         @config.ramp_up.to_f / @config.connections
-      elsif @config.connections_per_second.positive?
+      elsif @config.connections_per_second> 0
         1.0 / @config.connections_per_second
       else
         0.0
@@ -97,7 +102,7 @@ module HttpLoader
     # @param dur [Float] the duration to sleep
     # @param task [Async::Task, nil] the async task if running within engine
     # @return [void]
-    sig { params(dur: Float, task: T.untyped).void }
+    sig { params(dur: Float, task: T.nilable(Async::Task)).void }
     def perform_sleep(dur, task: nil)
       task ? task.sleep(dur) : sleep(dur)
     end
@@ -179,7 +184,7 @@ module HttpLoader
     # @return [void]
     sig { params(idx: Integer, uri: URI::Generic, http: Net::HTTP, start_t: Time).void }
     def dispatch_sess(idx, uri, http, start_t)
-      if @config.slowloris_delay.positive?
+      if @config.slowloris_delay> 0
         @slow_sess.run(idx, uri, http, start_t)
       else
         @http_sess.run(idx, uri, http, start_t)

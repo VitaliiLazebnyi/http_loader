@@ -18,8 +18,8 @@ module HttpLoader
       # @return [void]
       sig { params(config: Config, logger: Logger).void }
       def initialize(config, logger)
-        @config = config
-        @logger = logger
+        @config = T.let(config, Config)
+        @logger = T.let(logger, Logger)
       end
 
       # Executes a standard compliant keep-alive pipeline.
@@ -31,7 +31,7 @@ module HttpLoader
       # @return [void]
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, start_time: Time).void }
       def run(client_index, uri, http, start_time)
-        return if @config.slowloris_delay.positive?
+        return if @config.slowloris_delay> 0
 
         fire_initial_request(uri, http)
         maintain_keepalive(client_index, uri, http, start_time)
@@ -51,7 +51,8 @@ module HttpLoader
         request['User-Agent'] = @config.user_agent
         @config.headers.each { |k, v| request[k] = v }
 
-        http.request(request) do |response|
+        http.request(request) do |raw_response|
+          response = T.cast(raw_response, Net::HTTPResponse)
           response.read_body { |_chunk| nil }
         end
       end
@@ -67,7 +68,7 @@ module HttpLoader
       def maintain_keepalive(client_index, uri, http, start_time)
         loop do
           elapsed = Time.now - start_time
-          if @config.http_loader_timeout.positive? && elapsed >= @config.http_loader_timeout
+          if @config.http_loader_timeout> 0 && elapsed >= @config.http_loader_timeout
             @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing.")
             break
           end
@@ -84,7 +85,7 @@ module HttpLoader
       # @return [Boolean] returns true to perpetuate cycle, false to break and exit
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP).returns(T::Boolean) }
       def process_heartbeat?(client_index, uri, http)
-        if @config.qps_per_connection.positive?
+        if @config.qps_per_connection> 0
           perform_qps?(client_index, uri, http)
         elsif @config.ping
           perform_ping?(client_index, uri, http)
@@ -105,9 +106,13 @@ module HttpLoader
         sleep(calculate_sleep(1.0 / @config.qps_per_connection))
         req = build_request(Net::HTTP::Get.new(uri))
 
-        res = http.request(req) do |r|
-          r.read_body { |_c| nil }
-        end
+        res = T.cast(
+          http.request(req) do |raw_r|
+            r = T.cast(raw_r, Net::HTTPResponse)
+            r.read_body { |_c| nil }
+          end,
+          Net::HTTPResponse
+        )
         log_status(client_index, res)
         success?(res)
       end
@@ -123,7 +128,7 @@ module HttpLoader
         sleep(calculate_sleep(@config.ping_period.to_f))
         req = build_request(Net::HTTP::Head.new(uri))
 
-        res = http.request(req)
+        res = T.cast(http.request(req), Net::HTTPResponse)
         log_status(client_index, res)
         success?(res)
       end
