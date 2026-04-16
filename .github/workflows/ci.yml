@@ -34,7 +34,7 @@ jobs:
       run: bundle exec rspec
 
     - name: Run Sorbet Type Checks
-      run: bundle exec srb tc
+      run: bundle exec srb tc --typed strong
 
     - name: Generate YARD Documentation
       run: bundle exec yardoc
