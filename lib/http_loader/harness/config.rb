@@ -3,9 +3,11 @@
 
 require 'sorbet-runtime'
 
+# Primary namespace for the load testing framework.
 module HttpLoader
+  # Harness orchestrates the entire load testing lifecycle seamlessly and securely.
   class Harness
-    # Config parameters for Harness manager execution natively.
+    # Config parameters for Harness manager execution natively validated structurally via Sorbet.
     class Config < T::Struct
       const :connections, Integer
       const :target_urls, T::Array[String], default: []

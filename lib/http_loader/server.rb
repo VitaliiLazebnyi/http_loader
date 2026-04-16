@@ -13,11 +13,15 @@ require 'async'
 require 'falcon/server'
 require 'protocol/rack/adapter'
 
+# Primary namespace for the load testing framework.
 module HttpLoader
   # Server provides a lightweight, natively asynchronous HTTP/HTTPS mock endpoint
   class Server
     extend T::Sig
 
+    # Allocates the Rack mapped mock layer simulating an identical, ultra-efficient mock endpoint.
+    #
+    # @return [void]
     sig { void }
     def initialize
       @app = T.let(
@@ -28,6 +32,11 @@ module HttpLoader
       )
     end
 
+    # Hooks native asynchronous server to bound TCP ports.
+    #
+    # @param use_https [Boolean] enables OpenSSL validation mapping natively
+    # @param port [Integer] targeted OS listen port
+    # @return [void]
     sig { params(use_https: T::Boolean, port: Integer).void }
     def start(use_https: false, port: 8080)
       if use_https
@@ -39,6 +48,10 @@ module HttpLoader
 
     private
 
+    # Binds securely over HTTPS natively bypassing normal HTTP routing constraints dynamically.
+    #
+    # @param port [Integer] local physical OS target port
+    # @return [void]
     sig { params(port: Integer).void }
     def start_secure(port)
       puts "[Server] Binding natively to HTTPS over port #{port}"
@@ -49,6 +62,12 @@ module HttpLoader
       end
     end
 
+    # Orchestrates asynchronous falcon execution within local async boundary.
+    #
+    # @param task [Async::Task] async orchestrator closure bound variable
+    # @param port [Integer] physical OS boundary target identifier
+    # @param context [OpenSSL::SSL::SSLContext] verified generated payload map
+    # @return [void]
     sig { params(task: T.untyped, port: Integer, context: OpenSSL::SSL::SSLContext).void }
     def run_falcon(task, port, context)
       server_task = build_falcon_server(port, context).run
@@ -59,6 +78,11 @@ module HttpLoader
       server_task.wait
     end
 
+    # Interlinks raw async descriptors configuring a strictly asynchronous HTTP1 web socket.
+    #
+    # @param port [Integer] target
+    # @param context [OpenSSL::SSL::SSLContext] populated encryption mappings
+    # @return [Falcon::Server, Object] internally mapped untyped interface natively wrapping the app
     sig { params(port: Integer, context: OpenSSL::SSL::SSLContext).returns(T.untyped) }
     def build_falcon_server(port, context)
       endpoint = T.unsafe(IO::Endpoint).tcp('0.0.0.0', port)
@@ -69,6 +93,10 @@ module HttpLoader
       )
     end
 
+    # Initializes native Rack bindings strictly wrapping Rackup fallback mechanisms.
+    #
+    # @param port [Integer] mapped integer binding OS constraints
+    # @return [void]
     sig { params(port: Integer).void }
     def start_plaintext(port)
       puts "[Server] Binding natively to plaintext HTTP over port #{port}"
@@ -77,6 +105,10 @@ module HttpLoader
       end
     end
 
+    # Abstracts UNIX interrupt traps correctly resolving anonymous code closures cleanly.
+    #
+    # @yield to caller upon catching OS interaction interruption manually.
+    # @return [void]
     sig { params('&': T.proc.void).void }
     def setup_interrupt(&)
       trap('INT') do |_signo|
@@ -85,6 +117,9 @@ module HttpLoader
       end
     end
 
+    # Assembles an ephemeral RSA asymmetric signing layer satisfying secure validation without CA dependencies naturally.
+    #
+    # @return [OpenSSL::SSL::SSLContext] fully integrated validation context mapping
     sig { returns(OpenSSL::SSL::SSLContext) }
     def generate_ssl_context
       rsa = OpenSSL::PKey::RSA.new(2048)
@@ -96,6 +131,10 @@ module HttpLoader
       ssl_context
     end
 
+    # Implements strict OpenSSL x509 bindings to dynamically minted, single-use keys safely.
+    #
+    # @param rsa [OpenSSL::PKey::RSA] private token implementation map
+    # @return [OpenSSL::X509::Certificate] signed local payload identity matrix
     sig { params(rsa: OpenSSL::PKey::RSA).returns(OpenSSL::X509::Certificate) }
     def build_cert(rsa)
       cert = OpenSSL::X509::Certificate.new
@@ -107,6 +146,10 @@ module HttpLoader
       cert
     end
 
+    # Mutates metadata associated with x509 structures natively verifying localhost assertions.
+    #
+    # @param cert [OpenSSL::X509::Certificate] target instance mapped internally
+    # @return [void]
     sig { params(cert: OpenSSL::X509::Certificate).void }
     def parse_cert_info(cert)
       cert.subject = cert.issuer = OpenSSL::X509::Name.parse('/CN=localhost')

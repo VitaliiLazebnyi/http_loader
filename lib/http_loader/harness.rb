@@ -9,12 +9,17 @@ require_relative 'harness/telemetry'
 require_relative 'harness/process_manager'
 require_relative 'harness/formatter'
 
+# Primary namespace for the load testing framework.
 module HttpLoader
   # Harness orchestrates the entire load testing lifecycle seamlessly and securely.
   class Harness
     extend T::Sig
     include Formatter
 
+    # Instantiates the orchestration layer configuring monitoring, telemetry, and processes.
+    #
+    # @param config [Config] orchestration parameters resolving telemetry
+    # @return [void]
     sig { params(config: Config).void }
     def initialize(config)
       @config = config
@@ -26,6 +31,9 @@ module HttpLoader
       @monitor = T.let(ResourceMonitor.new, ResourceMonitor)
     end
 
+    # Bootstraps the harness pipeline, overrides OS limits natively, and binds interrupts.
+    #
+    # @return [void]
     sig { void }
     def start
       $stdout.sync = true
@@ -37,6 +45,9 @@ module HttpLoader
 
     private
 
+    # Orchestrates process lifecycle, binding trap behaviors, and triggers active resource monitoring.
+    #
+    # @return [void]
     sig { void }
     def run_lifecycle
       @pm.spawn_processes
@@ -51,6 +62,9 @@ module HttpLoader
       @pm.cleanup
     end
 
+    # Blocks the main execution thread actively querying and evaluating subsystem statuses periodically.
+    #
+    # @return [void]
     sig { void }
     def monitor_resources
       print_table_header
@@ -67,6 +81,9 @@ module HttpLoader
       end
     end
 
+    # Validates if the optional global timer constraint has elapsed terminating orchestrator naturally.
+    #
+    # @return [Boolean] evaluation if runtime duration has violated constraints
     sig { returns(T::Boolean) }
     def duration_exceeded?
       elapsed = Time.now.utc - @start_time
@@ -76,6 +93,9 @@ module HttpLoader
       true
     end
 
+    # Evaluates the instantaneous point-in-time statistical frame against failure parameters.
+    #
+    # @return [Boolean] true implying fatal failure requiring immediate test abort
     sig { returns(T::Boolean) }
     def tick_failed?
       active_c, c_cpu, c_th, c_m = extract_client_stats
@@ -88,6 +108,9 @@ module HttpLoader
       false
     end
 
+    # Hooks deeply into OS boundaries augmenting `ulimit -n` metrics facilitating bulk HTTP pipelines.
+    #
+    # @return [void]
     sig { void }
     def bump_file_limits
       Process.setrlimit(Process::RLIMIT_NOFILE, @config.connections + 1024)
@@ -95,6 +118,13 @@ module HttpLoader
       puts '[Harness] Warning: Could not set RLIMIT_NOFILE automatically.'
     end
 
+    # Diagnostically evaluates sudden connection termination from upstream server endpoints natively.
+    #
+    # @param active [Integer] active instantaneous sockets
+    # @param c_cpu [String] formatted client cpu util
+    # @param c_th [Integer] aggregated client thread pools count
+    # @param c_m [String] string formatted consumed heap
+    # @return [Boolean] flags if logical expectations are broken natively
     sig { params(active: Integer, c_cpu: String, c_th: Integer, c_m: String).returns(T::Boolean) }
     def missing_socket?(active, c_cpu, c_th, c_m)
       return false unless @config.target_urls.any? && @peak_connections.positive? && active.zero?

@@ -13,8 +13,13 @@ require 'optparse'
 
 command = ARGV.shift
 
+# Evaluate the desired execution mode (`client`, `server`, or `harness`) and dispatch the correct subsystem.
+# @example Invocation
+#   $ bin/http_loader client --connections 1000
 case command
 when 'client'
+  # Execute the Load Generation Client logic when the `client` mode is specified.
+  # Initiates parsing of client-specific parameters and orchestrates the creation of the Client instance.
   options = { connections: 1000, use_https: false, target_urls: [], verbose: false, ping: true, ping_period: 5,
               http_loader_timeout: 0.0, connections_per_second: 0, max_concurrent_connections: nil,
               reopen_closed_connections: false, reopen_interval: 5.0, read_timeout: 0.0, user_agent: 'Keep-Alive Test',
@@ -51,10 +56,14 @@ when 'client'
   end
 
 when 'server'
+  # Execute the Test Server logic when the `server` mode is specified.
+  # Can run as plain HTTP or HTTPS server locally for load reception.
   use_https = ARGV.include?('--https')
   HttpLoader::Server.new.start(use_https: use_https, port: use_https ? 8443 : 8080)
 
 when 'harness'
+  # Execute the Orchestration Harness logic when the `harness` mode is specified.
+  # It spawns and manages separate processes for the target server and load generators.
   original_args = ARGV.dup
   options = { connections: 1000, use_https: false, target_urls: [], export_json: nil, target_duration: 0.0 }
 
@@ -75,6 +84,7 @@ when 'harness'
   end
 
 else
+  # Provide help dialog on unrecognized command input.
   warn 'Usage: http_loader <client|server|harness> [options]'
   exit(1)
 end

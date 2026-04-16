@@ -5,18 +5,26 @@ require 'sorbet-runtime'
 require 'uri'
 require 'socket'
 
+# Primary namespace for the load testing framework.
 module HttpLoader
   class Client
     # Manages URI contexts, IPs, proxies, and HTTPS resolution.
     class TargetManager
       extend T::Sig
 
+      # Initializes the TargetManager tracking connection URI configurations.
+      #
+      # @param config [Config] configuration object from parsing orchestrator
+      # @return [void]
       sig { params(config: Config).void }
       def initialize(config)
         @config = config
         @target_contexts = T.let(build_target_contexts, T::Array[T::Hash[Symbol, T.untyped]])
       end
 
+      # Yields a formatted terminal label classifying protocol usage logic.
+      #
+      # @return [String] text representation denoting HTTP or HTTPS routing logic
       sig { returns(String) }
       def protocol_label
         if @config.target_urls.size > 1
@@ -30,16 +38,28 @@ module HttpLoader
         end
       end
 
+      # Provides access to all active configured endpoint structs array.
+      #
+      # @return [Array<Hash>] map comprising raw URIs and configurations
       sig { returns(T::Array[T::Hash[Symbol, T.untyped]]) }
       def contexts
         @target_contexts
       end
 
+      # Retrieves specific connection settings distributing nodes evenly using deterministic boundaries.
+      #
+      # @param client_index [Integer] integer value unique per generated worker thread
+      # @return [Hash] targeted setup config subset
       sig { params(client_index: Integer).returns(T::Hash[Symbol, T.untyped]) }
       def context_for(client_index)
         T.must(@target_contexts[client_index % @target_contexts.size])
       end
 
+      # Applies granular connection level options such as localized IP bindings targeting network stacks natively.
+      #
+      # @param client_index [Integer] thread worker ID enabling round-robin balancing
+      # @param args [Hash] raw initialization opts generated statically
+      # @return [Hash] dynamically mapped object with appended localized directives
       sig { params(client_index: Integer, args: T::Hash[Symbol, T.untyped]).returns(T::Hash[Symbol, T.untyped]) }
       def http_opts_for(client_index, args)
         http_opts = args.dup
@@ -50,6 +70,11 @@ module HttpLoader
         http_opts
       end
 
+      # Mutates incoming Hash payload injecting fully mapped generic web proxy routing specs.
+      #
+      # @param opts [Hash] configuration map destination
+      # @param client_index [Integer] index driving balanced proxy allocation logic
+      # @return [void]
       sig { params(opts: T::Hash[Symbol, T.untyped], client_index: Integer).void }
       def apply_proxy!(opts, client_index)
         pool = @config.proxy_pool
@@ -62,6 +87,9 @@ module HttpLoader
 
       private
 
+      # Creates localized cache defining DNS mapped structures minimizing resolution cost later statically.
+      #
+      # @return [Array<Hash>] cached Array mapping URLs
       sig { returns(T::Array[T::Hash[Symbol, T.untyped]]) }
       def build_target_contexts
         urls = @config.target_urls.any? ? @config.target_urls : [nil]
@@ -73,6 +101,10 @@ module HttpLoader
         end
       end
 
+      # Resolves unmapped domain string patterns against standardized URI protocol libraries.
+      #
+      # @param url [String, nil] textual endpoint target
+      # @return [URI::Generic] instantiated parsed reference object
       sig { params(url: T.nilable(String)).returns(URI::Generic) }
       def parse_uri(url)
         return URI(url.to_s) if url
@@ -80,6 +112,10 @@ module HttpLoader
         @config.use_https ? URI('https://localhost:8443') : URI('http://localhost:8080')
       end
 
+      # Pre-queries native operating system DNS to capture IPv4 IP maps proactively.
+      #
+      # @param uri [URI::Generic] the formulated host domain specifier
+      # @return [String, nil] pure textual Internet protocol network target coordinates
       sig { params(uri: URI::Generic).returns(T.nilable(String)) }
       def resolve_ip(uri)
         ip_info = Addrinfo.getaddrinfo(T.must(uri.host), uri.port, nil, :STREAM)
@@ -88,6 +124,11 @@ module HttpLoader
         nil
       end
 
+      # Merges generic configuration options with SSL overrides ensuring invalid certificates process correctly.
+      #
+      # @param uri [URI::Generic] parsed URI configuration
+      # @param args [Hash] basic configuration mapped state
+      # @return [Hash] augmented settings resolving security layers with SSL
       sig { params(uri: URI::Generic, args: T::Hash[Symbol, T.untyped]).returns(T::Hash[Symbol, T.untyped]) }
       def secure_opts(uri, args)
         return args unless uri.scheme == 'https'

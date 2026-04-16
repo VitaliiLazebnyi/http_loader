@@ -3,9 +3,11 @@
 
 require 'sorbet-runtime'
 
+# Primary namespace for the load testing framework.
 module HttpLoader
+  # Subsystem responsible for generating concurrent load.
   class Client
-    # Config parameters for Client connections.
+    # Configuration parameters strictly validated by Sorbet for Client connections.
     class Config < T::Struct
       const :connections, Integer
       const :target_urls, T::Array[String], default: []

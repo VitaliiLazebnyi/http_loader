@@ -3,6 +3,7 @@
 
 require 'sorbet-runtime'
 
+# Primary namespace for the load testing framework.
 module HttpLoader
   class Harness
     # Formatter handles printing load test statistics dynamically and robustly.
@@ -12,6 +13,9 @@ module HttpLoader
 
       requires_ancestor { HttpLoader::Harness }
 
+      # Prints an initial banner announcing URL and mode configurations.
+      #
+      # @return [void]
       sig { void }
       def print_startup_banner
         msg = if @config.target_urls.size > 1
@@ -26,6 +30,9 @@ module HttpLoader
         puts "[Harness] Starting test with #{@config.connections} connections to #{msg}"
       end
 
+      # Outputs the top layer header frame for the metrics table.
+      #
+      # @return [void]
       sig { void }
       def print_table_header
         puts '[Harness] Monitoring resources (Press Ctrl+C to stop)...'
@@ -35,6 +42,10 @@ module HttpLoader
         puts '-' * 125
       end
 
+      # Safely renders formatting table rows via string padding strategies.
+      #
+      # @param params [Hash] keyword arguments containing metric fields
+      # @return [void]
       sig { params(params: T::Hash[Symbol, T.untyped]).void }
       def log_table_row(params)
         puts format('%<t>-10s | %<ac>-11s | %<sc>-16s | %<sm>-14s | %<sk>-14s | %<cc>-16s | %<cm>-14s | %<ck>-14s',
@@ -42,6 +53,12 @@ module HttpLoader
                     sk: params[:sk], cc: params[:cc], cm: params[:cm], ck: params[:ck])
       end
 
+      # Computes KB overhead proportionally to established sockets natively.
+      #
+      # @param kilo [Float] total kilobyte footprint
+      # @param connections [Integer] observed connections count natively reported
+      # @param pid [Integer, nil] identifier validating process presence locally
+      # @return [String] formatted descriptor of bytes/connection logic
       sig { params(kilo: Float, connections: Integer, pid: T.nilable(Integer)).returns(String) }
       def format_kb_conn(kilo, connections, pid)
         return 'EXTERNAL' if pid.nil?
@@ -50,6 +67,13 @@ module HttpLoader
         "#{(kilo / connections).round(2)} KB"
       end
 
+      # Prints single row multiplexing both internal and external telemetry simultaneously.
+      #
+      # @param active [Integer] connections sum actively executing logic
+      # @param c_cpu [String] client CPU utilization value
+      # @param c_th [Integer] aggregated client thread count
+      # @param c_m [String] client heap usage marker
+      # @return [void]
       sig { params(active: Integer, c_cpu: String, c_th: Integer, c_m: String).void }
       def print_combined_stats(active, c_cpu, c_th, c_m)
         s_cpu, s_mem, s_th, s_conn = extract_server_stats
@@ -63,6 +87,9 @@ module HttpLoader
         )
       end
 
+      # Polls target server analytics resolving metric aggregations consistently.
+      #
+      # @return [Array<String, String, Integer, String>] data frame array for the internal server metrics
       sig { returns([String, String, Integer, String]) }
       def extract_server_stats
         s_cpu, s_mem, s_kb, s_th = @monitor.process_stats(@pm.server_pid)
@@ -71,6 +98,9 @@ module HttpLoader
         [s_cpu, s_mem, s_th, s_conn]
       end
 
+      # Polls target client processes tracking load execution limits systematically.
+      #
+      # @return [Array<Integer, String, Integer, String>] extracted client variables dataset
       sig { returns([Integer, String, Integer, String]) }
       def extract_client_stats
         c_cpu, c_mem, _c_kb, c_th = @monitor.process_stats(@pm.client_pid)

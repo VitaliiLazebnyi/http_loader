@@ -3,6 +3,7 @@
 
 require 'sorbet-runtime'
 
+# Primary namespace for the load testing framework.
 module HttpLoader
   class Harness
     # Manages child process lifecycles natively and checks status dynamically.
@@ -12,6 +13,10 @@ module HttpLoader
       sig { returns(T.nilable(Integer)) }
       attr_reader :server_pid, :client_pid
 
+      # Allocates a new supervisor manager evaluating local child architectures natively.
+      #
+      # @param config [HttpLoader::Harness::Config] strongly typed harness runtime configurations
+      # @return [void]
       sig { params(config: HttpLoader::Harness::Config).void }
       def initialize(config)
         @config = config
@@ -20,6 +25,9 @@ module HttpLoader
         @log_dir = T.let(File.expand_path('../../../logs', __dir__), String)
       end
 
+      # Unilaterally forks background OS processes wiring explicit file descriptor capture bounds natively.
+      #
+      # @return [void]
       sig { void }
       def spawn_processes
         FileUtils.mkdir_p(@log_dir)
@@ -27,6 +35,9 @@ module HttpLoader
         spawn_client
       end
 
+      # Sweeps and securely terminates attached children upon trap signaling explicitly.
+      #
+      # @return [void]
       sig { void }
       def cleanup
         begin
@@ -39,6 +50,9 @@ module HttpLoader
         end
       end
 
+      # Resolves active PID statuses ensuring both mapped logic ends remain alive actively.
+      #
+      # @return [Boolean] true flag implying fatal termination of tracked underlying routines
       sig { returns(T::Boolean) }
       def missing_process?
         return true if @client_pid && dead?(@client_pid)
@@ -49,6 +63,9 @@ module HttpLoader
 
       private
 
+      # Triggers Ruby's async native wrapper bindings spawning local HTTP1 endpoints natively via falcon bounds.
+      #
+      # @return [void]
       sig { void }
       def spawn_server
         server_cmd = ['ruby', 'bin/http_loader', 'server']
@@ -59,6 +76,9 @@ module HttpLoader
         sleep(2)
       end
 
+      # Synthesizes child client threads pushing dynamic option mapping strictly.
+      #
+      # @return [void]
       sig { void }
       def spawn_client
         client_cmd = ['ruby', 'bin/http_loader', 'client']
@@ -69,6 +89,10 @@ module HttpLoader
         puts "[Harness] Started client with PID #{@client_pid}"
       end
 
+      # Low-level POSIX call checking SIG status mapping logic externally.
+      #
+      # @param pid [Integer] system explicit PID string mapping
+      # @return [Boolean] evaluation declaring mortality manually
       sig { params(pid: Integer).returns(T::Boolean) }
       def dead?(pid)
         Process.getpgid(pid)
