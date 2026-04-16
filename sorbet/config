@@ -1,0 +1,7 @@
+--dir
+.
+--ignore=vendor/
+--ignore=coverage/
+--ignore=doc/
+--ignore=.yardoc/
+--ignore=logs/
