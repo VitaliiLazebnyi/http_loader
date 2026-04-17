@@ -8,8 +8,7 @@
 .yardoc/
 coverage
 doc/
-errors.txt
 gems_unpacked
 logs
-rspec_output.txt
 vendor
+.bundle/
