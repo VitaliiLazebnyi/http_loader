@@ -1,15 +1,15 @@
+# YARD Documentation
 *.gem
-*.pid
+*.json
 *.log
+*.out
+*.pid
 .gem
+.yardoc/
 coverage
+doc/
+errors.txt
 gems_unpacked
 logs
-vendor
-*.json
-*.out
 rspec_output.txt
-
-# YARD Documentation
-.yardoc/
-doc/
+vendor
