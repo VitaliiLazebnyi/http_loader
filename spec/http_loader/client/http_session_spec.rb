@@ -104,5 +104,25 @@ RSpec.describe HttpLoader::Client::HttpSession do
 
       expect { sess.run(0, uri, http, time) }.not_to raise_error
     end
+
+    it 'returns early if slowloris_delay is positive' do
+      cfg = config.with(slowloris_delay: 1.0)
+      sess = described_class.new(cfg, HttpLoader::Client::Logger.new(false))
+      expect { sess.run(0, uri, http, Time.now) }.not_to raise_error
+      expect(http).not_to have_received(:request)
+    end
+
+    it 'processes QPS payload and skips logging successful status' do
+      cfg = config.with(qps_per_connection: 5, track_status_codes: true)
+      sess = described_class.new(cfg, HttpLoader::Client::Logger.new(false))
+      allow(sess).to receive(:sleep)
+
+      res = Net::HTTPOK.new('1.1', '200', 'OK')
+      allow(res).to receive(:read_body).and_yield('chunk')
+      allow(http).to receive(:request).and_yield(res).and_return(res)
+
+      expect(sess.instance_variable_get(:@logger)).not_to receive(:info).with(/Upstream returned HTTP/)
+      expect { sess.run(0, uri, http, Time.now) }.not_to raise_error
+    end
   end
 end

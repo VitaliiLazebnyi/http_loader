@@ -87,10 +87,36 @@ RSpec.describe HttpLoader::Harness::ResourceMonitor do
         allow(Open3).to receive(:capture2).with('getconf PAGE_SIZE').and_raise(StandardError)
         expect(monitor.process_stats(123)).not_to be_nil
       end
+
+      it 'handles status without threads gracefully' do
+        allow(File).to receive(:exist?).with('/usr/bin/getconf').and_return(true)
+        allow(Open3).to receive(:capture2).with('getconf PAGE_SIZE').and_return(["8192\n", nil])
+        allow(File).to receive(:read).with('/proc/123/status').and_return("No Threads Here\n")
+        expect(monitor.process_stats(123)[3]).to eq(1)
+      end
+
+      it 'handles getconf returning zero or invalid gracefully' do
+        allow(File).to receive(:exist?).with('/usr/bin/getconf').and_return(true)
+        allow(Open3).to receive(:capture2).with('getconf PAGE_SIZE').and_return(["0\n", nil])
+        expect(monitor.process_stats(123)[1]).to eq('10.0 MB')
+      end
+
+      it 'returns 0.0 cpu if time_diff is zero or negative' do
+        allow(File).to receive(:exist?).with('/usr/bin/getconf').and_return(false)
+        time = Time.now.utc
+        allow(Time).to receive(:now).and_return(time)
+        monitor.process_stats(123)
+        res = monitor.process_stats(123)
+        expect(res[0]).to eq('0.0')
+      end
     end
   end
 
   describe '#count_established_connections' do
+    it 'returns zero dynamically statically when pid is nil' do
+      expect(monitor.count_established_connections(nil)).to eq(0)
+    end
+
     it 'counts logically established connections via lsof dynamically', :rspec do
       mock_lsof = "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n" \
                   "ruby 123 u 4u IPv4 0t0 TCP *:8080 (ESTABLISHED)\n"

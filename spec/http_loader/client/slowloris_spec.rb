@@ -48,6 +48,12 @@ RSpec.describe HttpLoader::Client::Slowloris do
       expect { slowloris.run(0, uri, http, Time.now) }.not_to raise_error
     end
 
+    it 'handles empty path intelligently' do
+      time = Time.now
+      allow(Time).to receive(:now).and_return(time, time, time, time + 0.5)
+      expect { slowloris.run(0, URI('http://local'), http, time) }.not_to raise_error
+    end
+
     it 'calculates delay accurately and maps query parameters accurately' do
       slow2 = described_class.new(config.with(slowloris_delay: 1.0, jitter: 0.1), HttpLoader::Client::Logger.new(false))
       allow(slow2).to receive(:sleep)

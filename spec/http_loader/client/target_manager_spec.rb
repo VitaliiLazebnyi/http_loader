@@ -25,6 +25,11 @@ RSpec.describe HttpLoader::Client::TargetManager do
       expect(manager.protocol_label).to eq('EXTERNAL HTTP')
     end
 
+    it 'handles missing scheme smoothly naturally' do
+      m = described_class.new(config.with(target_urls: ['foo.com']))
+      expect(m.protocol_label).to eq('EXTERNAL ')
+    end
+
     it 'maps MULTIPLE TARGETS properly' do
       m = described_class.new(config.with(target_urls: ['http://a', 'http://b']))
       expect(m.protocol_label).to eq('MULTIPLE TARGETS (2)')
@@ -81,6 +86,11 @@ RSpec.describe HttpLoader::Client::TargetManager do
       expect(opts[:proxy_user]).to eq('u')
       expect(opts[:proxy_pass]).to eq('p')
       expect(opts[:local_host]).to eq('1.1.1.1')
+    end
+
+    it 'returns opts unchanged when proxy_pool is empty' do
+      opts = manager.http_opts_for(0, {})
+      expect(opts[:proxy_address]).to be_nil
     end
   end
 end

@@ -18,6 +18,12 @@ RSpec.describe HttpLoader::Harness::Telemetry do
       telemetry.export!(100, Time.now.utc)
       expect(File).to have_received(:write).with('test.json', anything)
     end
+
+    it 'returns early if export_json is nil' do
+      telemetry.instance_variable_set(:@export_json, nil)
+      telemetry.export!(100, Time.now.utc)
+      expect(File).not_to have_received(:write)
+    end
   end
 
   describe '#check_bottlenecks!' do
@@ -25,6 +31,12 @@ RSpec.describe HttpLoader::Harness::Telemetry do
       allow(File).to receive(:read).with(%r{/client\.log}).and_return('ERROR_EMFILE ERROR_THREADLIMIT')
       telemetry.check_bottlenecks!
       expect($stdout).to have_received(:puts).with(/BOTTLENECK ACTIVE/)
+    end
+
+    it 'reports EADDRNOTAVAIL securely' do
+      allow(File).to receive(:read).and_return('ERROR_EADDRNOTAVAIL')
+      telemetry.check_bottlenecks!
+      expect($stdout).to have_received(:puts).with(/EADDRNOTAVAIL/)
     end
 
     it 'rescues File read organically smoothly mapping empty string' do

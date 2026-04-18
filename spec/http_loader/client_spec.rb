@@ -22,6 +22,16 @@ RSpec.describe HttpLoader::Client do
     allow_any_instance_of(HttpLoader::Client::Logger).to receive(:info)
   end
 
+  describe '#log_startup_message' do
+    it 'does not suppress output when verbose is true' do
+      cfg = HttpLoader::Client::Config.new(connections: 1, verbose: true)
+      cli = described_class.new(cfg)
+      allow($stdout).to receive(:puts)
+      cli.send(:log_startup_message)
+      expect($stdout).not_to have_received(:puts).with(/suppressed/)
+    end
+  end
+
   describe '#start' do
     it 'sets up logger, traps INT, and runs async loop' do
       allow(client).to receive(:trap).with('INT')
@@ -125,6 +135,22 @@ RSpec.describe HttpLoader::Client do
       expect(client).to have_received(:dispatch_sess)
     end
 
+    it 'executes context successfully without max_retries natively' do
+      ctx = { uri: URI.parse('http://test.local'), http_args: {} }
+      allow(client.instance_variable_get(:@target_manager)).to receive(:context_for).with(0).and_return(ctx)
+      allow(client).to receive(:fetch_opts).and_return({})
+
+      mock_http = Net::HTTP.new('localhost')
+      mock_http.singleton_class.undef_method(:max_retries=) if mock_http.respond_to?(:max_retries=)
+
+      allow(client).to receive(:start_http).and_yield(mock_http)
+      allow(client).to receive(:dispatch_sess)
+
+      client.send(:run_session, 0, Time.now)
+
+      expect(client).to have_received(:dispatch_sess)
+    end
+
     it 'rescues intelligently definitively comprehensively gracefully logically securely' do
       ctx = { uri: URI.parse('http://test.local'), http_args: {} }
       allow(client.instance_variable_get(:@target_manager)).to receive(:context_for).and_return(ctx)
@@ -151,6 +177,18 @@ RSpec.describe HttpLoader::Client do
       allow(Net::HTTP).to receive(:start)
       client.send(:start_http, uri, {}) { nil }
       expect(Net::HTTP).to have_received(:start).with('test.local', 80)
+    end
+
+    it 'maps flawlessly fully cleanly when max_retries not supported' do
+      uri = URI.parse('http://test.local')
+      mock_http = Net::HTTP.new('test.local', 80)
+      if mock_http.respond_to?(:max_retries=)
+        mock_http.singleton_class.undef_method(:max_retries=)
+      end
+      allow(Net::HTTP).to receive(:new).and_return(mock_http)
+      allow(mock_http).to receive(:start)
+      client.send(:start_http, uri, {}) { nil }
+      expect(mock_http).to have_received(:start)
     end
   end
 
@@ -189,6 +227,21 @@ RSpec.describe HttpLoader::Client do
 
       client.send(:run_engine, mock_task)
       expect(client).to have_received(:exec_conn).twice
+    end
+
+    it 'performs sleep when calc_ramp is positive' do
+      mock_task = instance_double(Async::Task)
+      mock_sem = instance_double(Async::Semaphore)
+      mock_conn_task = instance_double(Async::Task, wait: nil)
+
+      allow(Async::Semaphore).to receive(:new).and_return(mock_sem)
+      allow(client).to receive(:calc_ramp).and_return(1.0)
+      allow(client).to receive(:perform_sleep)
+      allow(mock_sem).to receive(:async).and_yield.and_return(mock_conn_task)
+      allow(client).to receive(:exec_conn)
+
+      client.send(:run_engine, mock_task)
+      expect(client).to have_received(:perform_sleep).at_least(:once)
     end
   end
 end

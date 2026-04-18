@@ -44,6 +44,19 @@ RSpec.describe HttpLoader::Harness::ProcessManager do
       expect(Process).to have_received(:spawn).once
     end
 
+    it 'spawns with https and client_args smoothly' do
+      cfg = HttpLoader::Harness::Config.new(target_urls: [], connections: 1, use_https: true, client_args: ['--custom_arg'], export_json: nil)
+      mgr = described_class.new(cfg)
+      allow(FileUtils).to receive(:mkdir_p)
+      allow(mgr).to receive(:sleep)
+
+      allow(Process).to receive(:spawn).and_return(998, 999)
+      mgr.spawn_processes
+
+      expect(Process).to have_received(:spawn).with(/--https/, hash_including(:out, :err))
+      expect(Process).to have_received(:spawn).with(/--custom_arg/, hash_including(:out, :err))
+    end
+
     context 'when target_urls is empty' do
       let(:config) { HttpLoader::Harness::Config.new(connections: 1, target_duration: 1.0, target_urls: [], export_json: nil) }
 
@@ -63,6 +76,12 @@ RSpec.describe HttpLoader::Harness::ProcessManager do
       manager.instance_variable_set(:@server_pid, 9998)
       allow(Process).to receive(:kill).and_raise(StandardError)
       expect { manager.cleanup }.not_to raise_error
+    end
+
+    it 'does not attempt kill if pids are nil' do
+      allow(Process).to receive(:kill)
+      manager.cleanup
+      expect(Process).not_to have_received(:kill)
     end
   end
 end

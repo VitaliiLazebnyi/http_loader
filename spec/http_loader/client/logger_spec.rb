@@ -24,6 +24,14 @@ RSpec.describe HttpLoader::Client::Logger do
       expect(File.exist?(File.join(tmp_dir, 'client.log'))).to be(true)
       expect(File.exist?(File.join(tmp_dir, 'client.err'))).to be(true)
     end
+
+    it 'does not create log file if verbose is false' do
+      non_verbose_logger = described_class.new(false)
+      non_verbose_logger.instance_variable_set(:@log_dir, tmp_dir)
+      non_verbose_logger.setup_files!
+      expect(File.exist?(File.join(tmp_dir, 'client.err'))).to be(true)
+      expect(File.exist?(File.join(tmp_dir, 'client.log'))).to be(false)
+    end
   end
 
   describe '#info' do
@@ -49,10 +57,16 @@ RSpec.describe HttpLoader::Client::Logger do
     it 'flushes synchronously safely tracking both queues' do
       logger.info('test info')
       logger.error('test err')
+      logger.instance_variable_get(:@log_queue) << :terminate
       logger.flush_synchronously!
 
       expect(File.read(File.join(tmp_dir, 'client.log'))).to match(/test info/)
       expect(File.read(File.join(tmp_dir, 'client.err'))).to match(/test err/)
+    end
+
+    it 'flushes synchronously an empty queue gracefully properly completely' do
+      logger.flush_synchronously!
+      expect(File.read(File.join(tmp_dir, 'client.log'))).to eq('')
     end
 
     it 'rescues StandardError securely gracefully during synchronous flush' do
@@ -89,6 +103,17 @@ RSpec.describe HttpLoader::Client::Logger do
       allow(logger.instance_variable_get(:@log_queue)).to receive(:pop).and_raise(ThreadError)
       expect(logger.send(:fetch_message, task)).to be_nil
       expect(task).to have_received(:sleep).with(0.05)
+    end
+
+    it 'ignores unknown target gracefully safely internally' do
+      logger.instance_variable_get(:@log_queue) << [:unknown, 'test diff']
+      logger.instance_variable_get(:@log_queue) << :terminate
+      task = instance_double(Async::Task, async: nil, sleep: nil)
+      allow(task).to receive(:async).and_yield
+      logger.run_task(task)
+
+      expect(File.read(File.join(tmp_dir, 'client.log'))).to eq('')
+      expect(File.read(File.join(tmp_dir, 'client.err'))).to eq('')
     end
   end
 end
