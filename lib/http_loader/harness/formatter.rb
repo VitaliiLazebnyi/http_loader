@@ -20,7 +20,7 @@ module HttpLoader
       end
 
       # Yields formatted message describing targeted context
-      # 
+      #
       # @param harness [HttpLoader::Harness] reference to local context
       # @return [String] formatted descriptor based on URLs count
       sig { params(harness: HttpLoader::Harness).returns(String) }

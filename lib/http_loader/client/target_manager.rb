@@ -78,9 +78,21 @@ module HttpLoader
       sig { params(opts: T::Hash[Symbol, T.untyped], client_index: Integer).void }
       def apply_proxy!(opts, client_index)
         pool = @config.proxy_pool
-        proxy_uri = URI.parse(T.must(pool[client_index % pool.size]))
-        opts.merge!(proxy_address: proxy_uri.host, proxy_port: proxy_uri.port)
-        opts.merge!(proxy_user: proxy_uri.user, proxy_pass: proxy_uri.password) if proxy_uri.user || proxy_uri.password
+        uri = URI.parse(T.must(pool[client_index % pool.size]))
+        set_proxy_opts(opts, uri)
+      end
+
+      # Applies specific proxy values mapping from URI cleanly.
+      #
+      # @param opts [Hash] configuration map destination
+      # @param uri [URI::Generic] parsed proxy URI definition
+      # @return [void]
+      sig { params(opts: T::Hash[Symbol, T.untyped], uri: URI::Generic).void }
+      def set_proxy_opts(opts, uri)
+        opts[:proxy_address] = uri.host
+        opts[:proxy_port] = uri.port
+        opts[:proxy_user] = uri.user if uri.user
+        opts[:proxy_pass] = uri.password if uri.password
       end
 
       private

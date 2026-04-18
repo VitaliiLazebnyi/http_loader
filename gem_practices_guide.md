@@ -10,11 +10,11 @@ The project leverages [Sorbet](https://sorbet.org/) for robust, static type chec
 - **Static Configuration**: The `sorbet/config` file is used to aggressively ignore irrelevant paths (`vendor/`, `coverage/`, `doc/`, `spec/`, etc.) to improve scanning performance.
 - **Strictness**: Code files are expected to utilize `# typed: strong` or `# typed: strict` inline pragmas to ensure comprehensive type safety.
 - **Runtime Testing Exclusions**: Within `spec/spec_helper.rb`, the runtime type error listeners are stubbed out during RSpec execution:
-  ```ruby
-  require 'sorbet-runtime'
-  T::Configuration.inline_type_error_handler = ->(_, _) {}
-  T::Configuration.call_validation_error_handler = ->(_, _) {}
-  ```
+```ruby
+require 'sorbet-runtime'
+T::Configuration.inline_type_error_handler = ->(_, _) {}
+T::Configuration.call_validation_error_handler = ->(_, _) {}
+```
   This guarantees that negative tests asserting behavior with invalid attributes don't crash from Sorbet runtime validations.
 
 ## 2. Code Quality & Linting (RuboCop)
@@ -64,10 +64,10 @@ YARD heavily drives code discoverability and API usability.
 Cryptographic signing ensures end-to-end security and integrity verification of the published `.gem` artifacts.
 
 - Inside the `http_loader.gemspec`:
-  ```ruby
-  spec.cert_chain  = ['certs/http_loader-public_cert.pem']
-  spec.signing_key = File.expand_path('~/.gem/gem-private_key.pem') if $PROGRAM_NAME.end_with?('gem') && File.exist?(File.expand_path('~/.gem/gem-private_key.pem'))
-  ```
+```ruby
+spec.cert_chain  = ['certs/http_loader-public_cert.pem']
+spec.signing_key = File.expand_path('~/.gem/gem-private_key.pem') if $PROGRAM_NAME.end_with?('gem') && File.exist?(File.expand_path('~/.gem/gem-private_key.pem'))
+```
 - The public certificate is distributed with the repository. 
 - The private key is securely stored in CI secrets and dynamically evaluated. It prevents the local `gem build` from failing for developers who do not possess the private key.
 

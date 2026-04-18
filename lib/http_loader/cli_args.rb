@@ -161,13 +161,33 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse(opts, options)
+        parse_harness_core(opts, options)
+        parse_harness_extras(opts, options)
+        ignore_core_args(opts)
+        nil
+      end
+
+      # Parses core connection args for harness.
+      #
+      # @param opts [OptionParser] option parser
+      # @param options [Hash] map
+      # @return [void]
+      sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
+      def self.parse_harness_core(opts, options)
         opts.on('--connections_count=C', Integer) { |v| options[:connections] = T.cast(v, Integer) }
         opts.on('--https') { options[:use_https] = true }
         opts.on('--url=U', String) { |v| options[:target_urls] = T.cast(v, String).split(',') }
+      end
+
+      # Parses extra settings for harness.
+      #
+      # @param opts [OptionParser] parser
+      # @param options [Hash] map
+      # @return [void]
+      sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
+      def self.parse_harness_extras(opts, options)
         opts.on('--export_json=FILE', String) { |v| options[:export_json] = T.cast(v, String) }
         opts.on('--target_duration=S', Float) { |v| options[:target_duration] = T.cast(v, Float) }
-        ignore_core_args(opts)
-        nil
       end
 
       # Binds OptionParser NO-OP lambdas for core args.

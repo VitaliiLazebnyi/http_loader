@@ -53,6 +53,7 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency 'rake', '~> 13.3'
   spec.add_development_dependency 'rspec', '~> 3.13'
   spec.add_development_dependency 'rubocop', '~> 1.86'
+  spec.add_development_dependency 'rubocop-ai', '~> 0.1'
   spec.add_development_dependency 'rubocop-md', '~> 2.0'
   spec.add_development_dependency 'rubocop-performance', '~> 1.26'
   spec.add_development_dependency 'rubocop-rake', '~> 0.7'
@@ -62,6 +63,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency 'simplecov', '~> 0.22'
   spec.add_development_dependency 'sorbet', '~> 0.6'
   spec.add_development_dependency 'yard', '~> 0.9'
-  spec.add_development_dependency 'rubocop-ai', '~> 0.1'
   spec.add_development_dependency 'yard-sorbet', '~> 0.8'
 end
