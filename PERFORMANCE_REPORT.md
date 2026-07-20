@@ -83,51 +83,11 @@ xychart-beta
 
 ### Ruby Method Execution Tracking (RubyProf)
 *This captures the most expensive Ruby method branches when instantiating fiber-bound TCP Keep-Alive sockets natively.*
-```text
-Measure Mode: wall_time
-Thread ID: 102176
-Fiber ID: 102168
-Total: 0.009822
-Sort by: self_time
 
- %self      total      self      wait     child     calls  name                           location
-
-* recursively called methods
-
-Columns are:
-
-  %self     - The percentage of time spent by this method relative to the total time in the entire program.
-  total     - The total time spent by this method and its children.
-  self      - The time spent by this method.
-  wait      - The time this method spent waiting for other threads.
-  child     - The time spent by this method's children.
-  calls     - The number of times this method was called.
-  name      - The name of the method.
-  location  - The location of the method.
-
-The interpretation of method names is:
-
-  * MyObject#test - An instance method "test" of the class "MyObject"
-  * <Object:MyObject>#test - The <> characters indicate a method on a singleton class.
-
-Measure Mode: wall_time
-Thread ID: 102176
-Fiber ID: 102184
-Total: 0.009749
-Sort by: self_time
-
- %self      total      self      wait     child     calls  name                           location
-
-* recursively called methods
-
-Columns are:
-
-  %self     - The percentage of time spent by this method relative to the total time in the entire program.
-  total     - The total time spent by this method and its children.
-  self      - The time spent by this method.
-  wait      - The time this method spent waiting for other threads.
-  child     - The time spent by this method's childr
-```
+> **Note:** The two wall-time RubyProf runs below (total ≈ 9.8 ms each over two fibers)
+> produced only header/legend output — the per-method rows were not retained in this
+> report. Regenerate them with `ruby-prof` against a live client run if a full per-method
+> breakdown is needed. The memory/allocation tables that follow are complete.
 
 ### Memory & Object Allocation Footprint (MemoryProfiler)
 *This captures the explicit internal structures and String/Hash allocations maintained by `Net::HTTP` per asynchronous cycle.*
@@ -179,6 +139,6 @@ allocated memory by location
   30.48 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1789
   28.20 kB  ruby/lib/lib/ruby/4.0.0/net/http/header.rb:284
   26.26 kB  ruby/lib/lib/ruby/4.0.0/uri/rfc3986_parser.rb:115
-  24.80 kB  r
+  24.80 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb:190
 ```
 

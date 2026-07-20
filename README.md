@@ -1,7 +1,7 @@
 # Fiber-Native High-Concurrency Load Testing Harness
 
 An aggressively scalable asynchronous Ruby load testing harness built specifically to simulate, maintain, and monitor hundreds of thousands of active Keep-Alive connections seamlessly.
-By circumventing traditional `1:1` OS Thread-per-connection blockers and utilizing Ruby 4.0+'s native `Fiber::Scheduler` bridging to modern native loopbacks (`kqueue`/`epoll`), this architecture handles mammoth concurrent loads autonomously on essentially `0.0%` CPU over just two hardware threads.
+By circumventing traditional `1:1` OS Thread-per-connection blockers and utilizing Ruby 4.0+'s native `Fiber::Scheduler` bridging to modern native loopbacks (`kqueue`/`epoll`), this architecture handles mammoth concurrent loads autonomously with very low CPU when idle (near `0%` with `--no-ping`) over just two hardware threads. Note that the default `--ping` mode fires a periodic `HEAD` per connection, so CPU rises with connection count and ping frequency (see `PERFORMANCE_REPORT.md`).
 
 ---
 
@@ -22,7 +22,7 @@ Traditional load testing tools (like `wrk`, Apache Bench, or Locust) are heavily
 ## Technical Dependencies
 
 **Strict Requirements**
-- **Ruby 4.0.2** (or strictly any Ruby 4.x environment that enforces native `Fiber::Scheduler` mechanics).
+- **Ruby 4.0.2** (the gemspec requires `>= 4.0`; any Ruby ≥ 4.0 with native `Fiber::Scheduler` support should work).
 - **Core Gems**: `rack`, `rackup`, `falcon`, `async`, `async-http`
 
 **Installation**
@@ -45,7 +45,7 @@ The architecture relies gracefully on three decoupled components mathematically 
 The brain of the test. It parses constraints, artificially lifts File Descriptor caps (`setrlimit`), seamlessly manages process spawning, detects hardware bottlenecks in real-time, and aggressively reads Unix metrics (`ps`, `lsof`) translating them into a highly readable dashboard telemetry loop.
 
 ### 2. `http_loader server` (The Local Endpoint)
-Instead of relying on blocking thread platforms (like Puma), the local endpoint hosts `Rackup::Handler::Falcon`. It serves an infinite lightweight `Server-Sent Events` (SSE) heartbeat (`data: ping\n\n`) mapped strictly to the asynchronous reactor, rendering CPU overhead practically non-existent.
+Instead of relying on blocking thread platforms (like Puma), the local endpoint hosts `Rackup::Handler::Falcon`. Every request is answered with a minimal `200 OK` (a 2-byte `text/plain` body of `OK`) mapped strictly to the asynchronous reactor, keeping server-side overhead negligible while the client holds connections open.
 
 ### 3. `http_loader client` (The Asynchronous Initiator)
 The client bypasses expensive `Thread.new` wrappers and deploys raw `Async` fiber blocks executing `Net::HTTP.start`. By utilizing `sleep`, the connections are specifically configured to never close from the client-side unless the target physically hangs up, guaranteeing true metric validation for idle Keep-Alive limits.
@@ -74,15 +74,15 @@ You engage all functions purely through the `http_loader` executable command int
 | `--slowloris_delay=` | Float | Optional | Hijacks conventional HTTP handshakes writing raw single byte strings maliciously across mathematical delays designed natively to systematically lock thread-dependent Reverse Proxies cleanly. |
 | `--export_json=` | String | Optional | Dumps the execution telemetry including `peak_connections` and mathematically evaluated OS FDs bottlenecks directly into a formatted JSON sink natively. |
 | `--target_duration=` | Float | Optional | Enforces a hard runtime cap structurally across the `keep-alive` processes. The Harness mathematically halts explicitly once SECONDS is bypassed natively. |
-| `--qps_per_connection=` | Integer | Optional | Upgrades pipelines to launch active rhythmic `GET` payloads natively per connected socket at RATE (Requires `--[no]-ping` bypassed). |
+| `--qps_per_connection=` | Integer | Optional | Upgrades pipelines to launch active rhythmic `GET` payloads natively per connected socket at RATE. A positive QPS takes precedence over ping regardless of the `--[no-]ping` flag. |
 | `--connections_per_second=` | Integer | Optional | Native Fiber load rate-limiter dictating explicit TCP handshake delays natively avoiding `ddos`-style port clogs too early natively. Defaults to `0` (unlimited burst). |
 | `--ramp_up=` | Float | Optional | Systematically scales the initial spawning rate uniformly over Seconds to evade trigger-based target scaling architectures like simple ASGs. Overrides static rates. |
-| `--max_concurrent_connections=`| Integer | Optional | Configures strict `Async::Semaphore` caps mapping active concurrent sockets exactly natively. Defaults exactly to `--connections_count`. |
+| `--max_concurrent_connections=`| Integer | Optional | Configures strict `Async::Semaphore` caps mapping active concurrent sockets exactly natively. On the CLI it defaults to `--connections_count`; a `Config` built programmatically defaults to `1000`. |
 | `--reopen_closed_connections` | Flag | Optional | Maps organic resilience loops. TCP endpoints forcefully disrupted dynamically resurrect automatically via standard retry heuristics. |
 | `--reopen_interval=` | Float | Optional | Forces absolute temporal `sleep()` gaps before restoring dropped target loops avoiding internal spin-lock CPU floods. Defaults to `5.0`. |
 | `--read_timeout=` | Float | Optional | Directly hooks into native `Net::HTTP` parameters forcing standard request drop mechanics organically mapping. Defaults to `0` (unlimited). |
 | `--user_agent=` | String | Optional | Overrides all HTTP payload identities statically natively evading specific rigid Bot detection infrastructures. Defaults to `Keep-Alive Test`. |
-| `--jitter=` | Float | Optional | Adds a mathematical `±%` randomization (e.g., `0.2` for 20%) to all sleep intervals organically evading Thundering Herd bottlenecks. Defaults to `1.0`. |
+| `--jitter=` | Float | Optional | Adds a mathematical `±%` randomization (e.g., `0.2` for 20%) to all sleep intervals organically evading Thundering Herd bottlenecks. **Defaults to `1.0` (±100%), i.e. jitter is on by default;** pass `--jitter=0` to disable it. |
 | `--track_status_codes` | Flag | Optional | Synchronously intercepts Keeping-Alive Pings HTTP integer responses, safely logging HTTP `429` and `5xx` load balancer drops sequentially natively. |
 
 ---
@@ -166,7 +166,7 @@ Process.kill('INT', pid)
 The `http_loader harness` dashboard prints active, real-time measurements describing exactly how the client is scaling.
 
 * **Time (UTC)**: Current absolute time in the UTC format for strict log matching.
-* **Real Conns (Real Connections)**: This column strictly calculates the physical number of dynamically established network sockets originating from the active `client` loop.
+* **Real Conns (Real Connections)**: The number of ESTABLISHED TCP sockets owned by the active `client` process. On Linux this is derived by intersecting the process's socket file descriptors with the ESTABLISHED entries in `/proc/<PID>/net/tcp[6]`; on macOS it is counted from `lsof` `(ESTABLISHED)` lines. Both paths report the same thing.
   - **Linux Fast-Path**: Bypasses external tools entirely, natively parsing symlinks directly in `/proc/<PID>/fd/` and counting exclusively the descriptors returning exactly `socket:[*]`.
   - **macOS Fallback**: Since macOS lacks `/proc` socket references natively, it polls via `lsof -p <CLIENT_PID> -n -P` and mathematically counts the exact occurrences indicating the `ESTABLISHED` flag organically.
 * **Srv/Cli CPU/Thrds**: Thread counts and combined relative CPU% measured across all threads dynamically allocated to each discrete process natively.
@@ -210,12 +210,12 @@ ulimit -n 250000
 ```
 
 ### Encryption Memory Economics
-While CPU/Threading metrics hovered essentially permanently around `0.0%` over `2 Threads`, tracking RAM natively produced incredibly useful deployment thresholds:
+CPU stays low over `2 Threads` when idle, but under the default `--ping` mode at scale the client and server measured roughly `55–70%` (see `PERFORMANCE_REPORT.md`). Tracking RAM natively produced useful deployment thresholds:
 
-* **HTTP Constraints:** At rest natively, Client overhead averaged `~72.4 KB` per connection. Server overhead was roughly `~113.6 KB` per persistent heartbeat.
+* **HTTP Constraints:** Per-connection memory overhead is workload-dependent; treat the figures in `PERFORMANCE_REPORT.md` as the single measured source of truth rather than the rounded values quoted here.
 * **HTTPS Overhead:** Introducing block ciphers and OpenSSL buffers exponentially explodes user RAM requirements payload. Handshakes natively forced the Client metrics out to `~166.3 KB` natively per socket, increasing overhead practically by **`2.3x`**.
 
-To securely hold 100,000 active HTTPS tunnels open smoothly utilizing this architecture, the host machine simply requires around `~18GB` to `~20GB` of available physical memory explicitly.
+Large HTTPS fan-outs are memory-bound; size the host from the per-connection RSS measured in `PERFORMANCE_REPORT.md` for your own build and target, rather than from a fixed headline number.
 
 ---
 
@@ -253,7 +253,7 @@ ss -tulpen | grep 8080
 ```
 
 ### 4. Intercepting Payload Data (Packet Sniffing)
-Because `rack/falcon` streams live TCP SSE lines across the loopback unencrypted (over HTTP on 8080), you can aggressively sniff and intercept the individual `PING/PONG` traffic payloads completely undetected at the kernel layer using `tcpdump`.
+Because `rack/falcon` serves plaintext HTTP across the loopback (over HTTP on 8080), you can sniff and intercept the request/response traffic — the client's periodic `HEAD` pings and the server's `200 OK` replies — at the kernel layer using `tcpdump`.
 ```bash
 # Sniff strict ASCII payload headers and body bounds passing over local interface 0 mapping perfectly to the benchmark port:
 sudo tcpdump -i lo0 port 8080 -A
