@@ -12,6 +12,13 @@ module HttpLoader
     class TargetManager
       extend T::Sig
 
+      # Matches `[scheme://][user[:pass]@]host[:port]` tolerantly, including credentialed
+      # proxies that `URI.parse` rejects under the bundled `uri` gem.
+      PROXY_RE = T.let(
+        %r{\A(?:\w+://)?(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>[^:/@]+)(?::(?<port>\d+))?},
+        Regexp
+      )
+
       # Initializes the TargetManager tracking connection URI configurations.
       #
       # @param config [Config] configuration object from parsing orchestrator
@@ -48,7 +55,7 @@ module HttpLoader
 
       # Retrieves specific connection settings distributing nodes evenly using deterministic boundaries.
       #
-      # @param client_index [Integer] integer value unique per generated worker thread
+      # @param client_index [Integer] integer value unique per generated fiber worker
       # @return [Hash] targeted setup config subset
       sig { params(client_index: Integer).returns(T::Hash[Symbol, T.untyped]) }
       def context_for(client_index)
@@ -57,7 +64,7 @@ module HttpLoader
 
       # Applies granular connection level options such as localized IP bindings targeting network stacks natively.
       #
-      # @param client_index [Integer] thread worker ID enabling round-robin balancing
+      # @param client_index [Integer] fiber worker ID enabling round-robin balancing
       # @param args [Hash] raw initialization opts generated statically
       # @return [Hash] dynamically mapped object with appended localized directives
       sig { params(client_index: Integer, args: T::Hash[Symbol, T.untyped]).returns(T::Hash[Symbol, T.untyped]) }
@@ -78,21 +85,35 @@ module HttpLoader
       sig { params(opts: T::Hash[Symbol, T.untyped], client_index: Integer).void }
       def apply_proxy!(opts, client_index)
         pool = @config.proxy_pool
-        uri = URI.parse(T.must(pool[client_index % pool.size]))
-        set_proxy_opts(opts, uri)
+        set_proxy_opts(opts, parse_proxy(T.must(pool[client_index % pool.size])))
       end
 
-      # Applies specific proxy values mapping from URI cleanly.
+      # Tolerantly parses a proxy pool entry into its components. `URI.parse` rejects
+      # credentialed proxy URLs (raw `:`/`@` in the userinfo) under the bundled `uri`
+      # gem, so a single regex extracts optional scheme, credentials, host, and port
+      # without ever raising on a well-formed `user:pass@host:port` entry.
+      #
+      # @param entry [String] a raw proxy pool entry
+      # @return [Hash] the extracted :host, :port, :user, and :pass
+      sig { params(entry: String).returns(T::Hash[Symbol, T.nilable(T.any(String, Integer))]) }
+      def parse_proxy(entry)
+        match = PROXY_RE.match(entry)
+        raise ArgumentError, "Invalid --proxy_pool entry: #{entry.inspect}" unless match && match[:host]
+
+        { host: match[:host], port: (match[:port] || '80').to_i, user: match[:user], pass: match[:pass] }
+      end
+
+      # Applies extracted proxy values onto the Net::HTTP options hash.
       #
       # @param opts [Hash] configuration map destination
-      # @param uri [URI::Generic] parsed proxy URI definition
+      # @param proxy [Hash] parsed proxy components
       # @return [void]
-      sig { params(opts: T::Hash[Symbol, T.untyped], uri: URI::Generic).void }
-      def set_proxy_opts(opts, uri)
-        opts[:proxy_address] = uri.host
-        opts[:proxy_port] = uri.port
-        opts[:proxy_user] = uri.user if uri.user
-        opts[:proxy_pass] = uri.password if uri.password
+      sig { params(opts: T::Hash[Symbol, T.untyped], proxy: T::Hash[Symbol, T.nilable(T.any(String, Integer))]).void }
+      def set_proxy_opts(opts, proxy)
+        opts[:proxy_address] = proxy[:host]
+        opts[:proxy_port] = proxy[:port]
+        opts[:proxy_user] = proxy[:user] if proxy[:user]
+        opts[:proxy_pass] = proxy[:pass] if proxy[:pass]
       end
 
       private
@@ -118,9 +139,14 @@ module HttpLoader
       # @return [URI::Generic] instantiated parsed reference object
       sig { params(url: T.nilable(String)).returns(URI::Generic) }
       def parse_uri(url)
-        return URI(url.to_s) if url
+        uri = if url
+                URI(url.to_s)
+              else
+                @config.use_https ? URI('https://localhost:8443') : URI('http://localhost:8080')
+              end
+        raise ArgumentError, "Invalid --url (missing host): #{url.inspect}" if uri.host.to_s.empty?
 
-        @config.use_https ? URI('https://localhost:8443') : URI('http://localhost:8080')
+        uri
       end
 
       # Pre-queries native operating system DNS to capture IPv4 IP maps proactively.

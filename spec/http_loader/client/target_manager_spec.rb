@@ -21,12 +21,18 @@ RSpec.describe HttpLoader::Client::TargetManager do
   let(:manager) { described_class.new(config) }
 
   describe '#protocol_label' do
-    it 'maps labels securely based on singular url endpoints', :rspec do
+    it 'maps labels securely based on singular url endpoints' do
       expect(manager.protocol_label).to eq('EXTERNAL HTTP')
     end
 
-    it 'handles missing scheme smoothly naturally' do
-      m = described_class.new(config.with(target_urls: ['foo.com']))
+    it 'rejects a hostless URL with a clear configuration error' do
+      expect { described_class.new(config.with(target_urls: ['foo.com'])) }
+        .to raise_error(ArgumentError, /missing host/)
+    end
+
+    it 'labels a scheme-less but hosted URL with a blank scheme' do
+      allow(Addrinfo).to receive(:getaddrinfo).and_return([])
+      m = described_class.new(config.with(target_urls: ['//example.com']))
       expect(m.protocol_label).to eq('EXTERNAL ')
     end
 
@@ -47,7 +53,7 @@ RSpec.describe HttpLoader::Client::TargetManager do
   end
 
   describe '#contexts' do
-    it 'evaluates and resolves IP statically through Addrinfo flawlessly', :rspec do
+    it 'evaluates and resolves IP statically through Addrinfo flawlessly' do
       allow(Addrinfo).to receive(:getaddrinfo).and_return([])
       expect(manager.contexts.first[:http_args][:ipaddr]).to be_nil
     end
@@ -73,7 +79,7 @@ RSpec.describe HttpLoader::Client::TargetManager do
     let(:config_proxy) { config.with(proxy_pool: ['http://proxy.com', 'http://proxy.com:8080']) }
     let(:manager_proxy) { described_class.new(config_proxy) }
 
-    it 'maps proxy parameters natively seamlessly via url mapping mechanics', :rspec do
+    it 'maps proxy parameters natively seamlessly via url mapping mechanics' do
       opts = manager_proxy.http_opts_for(0, {})
       expect(opts[:proxy_address]).to eq('proxy.com')
       expect(opts[:proxy_user]).to be_nil
@@ -91,6 +97,11 @@ RSpec.describe HttpLoader::Client::TargetManager do
     it 'returns opts unchanged when proxy_pool is empty' do
       opts = manager.http_opts_for(0, {})
       expect(opts[:proxy_address]).to be_nil
+    end
+
+    it 'raises a clear error on an unparseable proxy entry' do
+      mgr = described_class.new(config.with(proxy_pool: ['@']))
+      expect { mgr.http_opts_for(0, {}) }.to raise_error(ArgumentError, /proxy_pool/)
     end
   end
 end

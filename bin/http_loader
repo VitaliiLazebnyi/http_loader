@@ -10,6 +10,11 @@ $LOAD_PATH.unshift(File.expand_path('../lib', __dir__)) unless $LOAD_PATH.includ
 require 'http_loader'
 require 'http_loader/cli_args'
 require 'optparse'
+require 'uri'
+
+# Exceptions that represent a bad configuration/invocation rather than a bug, and
+# should surface to the user as a clean "Configuration Error" fast-fail (exit 1).
+CONFIG_ERRORS = [ArgumentError, OptionParser::ParseError, URI::Error, TypeError].freeze
 
 command = ARGV.shift
 
@@ -25,17 +30,17 @@ when 'client'
               reopen_closed_connections: false, reopen_interval: 5.0, read_timeout: 0.0, user_agent: 'Keep-Alive Test',
               ramp_up: 0.0, bind_ips: [], proxy_pool: [], qps_per_connection: 0, headers: {}, slowloris_delay: 0.0 }
 
-  OptionParser.new do |opts|
-    opts.banner = 'Usage: http_loader client [options]'
-    HttpLoader::CliArgs::ClientParser.parse(opts, options)
-  end.parse!(ARGV)
-
-  options[:max_concurrent_connections] ||= options[:connections]
-  options[:target_urls] ||= []
-  options[:jitter] ||= 1.0
-  options[:track_status_codes] ||= false
-
   begin
+    OptionParser.new do |opts|
+      opts.banner = 'Usage: http_loader client [options]'
+      HttpLoader::CliArgs::ClientParser.parse(opts, options)
+    end.parse!(ARGV)
+
+    options[:max_concurrent_connections] ||= options[:connections]
+    options[:target_urls] ||= []
+    options[:jitter] ||= 1.0
+    options[:track_status_codes] ||= false
+
     config = HttpLoader::Client::Config.new(
       connections: options[:connections], target_urls: options[:target_urls], use_https: options[:use_https],
       verbose: options[:verbose], ping: options[:ping], ping_period: options[:ping_period],
@@ -50,7 +55,7 @@ when 'client'
       headers: options[:headers], slowloris_delay: options[:slowloris_delay]
     )
     HttpLoader::Client.new(config).start
-  rescue ArgumentError => e
+  rescue *CONFIG_ERRORS => e
     warn "Configuration Error: #{e.message}"
     exit(1)
   end
@@ -58,7 +63,17 @@ when 'client'
 when 'server'
   # Execute the Test Server logic when the `server` mode is specified.
   # Can run as plain HTTP or HTTPS server locally for load reception.
-  use_https = ARGV.include?('--https')
+  server_options = { use_https: false }
+  begin
+    OptionParser.new do |opts|
+      opts.banner = 'Usage: http_loader server [options]'
+      opts.on('--https', 'Serve over HTTPS with an ephemeral self-signed certificate') { server_options[:use_https] = true }
+    end.parse!(ARGV)
+  rescue *CONFIG_ERRORS => e
+    warn "Configuration Error: #{e.message}"
+    exit(1)
+  end
+  use_https = server_options[:use_https]
   HttpLoader::Server.new.start(use_https: use_https, port: use_https ? 8443 : 8080)
 
 when 'harness'
@@ -67,18 +82,18 @@ when 'harness'
   original_args = ARGV.dup
   options = { connections: 1000, use_https: false, target_urls: [], export_json: nil, target_duration: 0.0 }
 
-  OptionParser.new do |opts|
-    opts.banner = 'Usage: http_loader harness [options]'
-    HttpLoader::CliArgs::HarnessParser.parse(opts, options)
-  end.parse!(ARGV)
-
   begin
+    OptionParser.new do |opts|
+      opts.banner = 'Usage: http_loader harness [options]'
+      HttpLoader::CliArgs::HarnessParser.parse(opts, options)
+    end.parse!(ARGV)
+
     hconfig = HttpLoader::Harness::Config.new(
       connections: options[:connections], target_urls: options[:target_urls], use_https: options[:use_https],
       client_args: original_args, export_json: options[:export_json], target_duration: options[:target_duration]
     )
     HttpLoader::Harness.new(hconfig).start
-  rescue ArgumentError => e
+  rescue *CONFIG_ERRORS => e
     warn "Configuration Error: #{e.message}"
     exit(1)
   end
