@@ -22,10 +22,16 @@ YARD::Rake::YardocTask.new do |t|
 end
 
 namespace :sorbet do
-  desc 'Run Sorbet type checking'
+  desc 'Run Sorbet type checking exactly as CI does (--typed strong)'
   task :check do
-    sh 'srb tc'
+    sh 'srb tc --typed strong'
   end
+end
+
+desc 'Run the full CI gate locally: tests, lint, strong type checks, docs, and gem build'
+task ci: %i[spec rubocop sorbet:check yard] do
+  sh 'yard stats --list-undoc'
+  sh 'gem build http_loader.gemspec'
 end
 
 desc 'Run tests, linters, and type checking'

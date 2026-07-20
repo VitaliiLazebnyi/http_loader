@@ -5,6 +5,7 @@ require 'spec_helper'
 require 'open3'
 require 'fileutils'
 require 'json'
+require 'socket'
 # Justified Exception: E2E Integration tests organically require complex sequential process bootstrapping mathematically stretching isolated expectation boundaries.
 RSpec.describe HttpLoader, type: :integration do
   let(:bin_path) { File.expand_path('../../bin/http_loader', __dir__) }
@@ -38,18 +39,47 @@ RSpec.describe HttpLoader, type: :integration do
     [stdout_str, stderr_str, status]
   end
 
+  def run_client(args)
+    Open3.capture3('ruby', bin_path, 'client', *args)
+  end
+
   def read_client_log
     File.exist?(client_log) ? File.read(client_log) : ''
   end
 
+  # Boots a throwaway local HTTP/1.1 server that keeps connections alive and answers
+  # every request with 200 OK, so external-target coverage never touches the network.
+  def with_local_server
+    server = TCPServer.new('127.0.0.1', 0)
+    port = server.addr[1]
+    thread = Thread.new do
+      loop do
+        Thread.new(server.accept) do |conn|
+          loop do
+            line = conn.gets
+            break if line.nil?
+
+            conn.readpartial(4096) while select([conn], nil, nil, 0.05)
+            conn.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
+          end
+        rescue StandardError
+          nil
+        ensure
+          conn.close
+        end
+      end
+    rescue StandardError
+      nil
+    end
+    yield port
+  ensure
+    thread&.kill
+    server&.close
+  end
+
   describe 'Mode 1: Fundamental HTTP Plaintext Mode' do
     it 'spawns HTTP Server and Client natively mapping successfully' do
-      args = [
-        '--connections_count=2',
-        '--target_duration=3.0',
-        '--verbose'
-      ]
-
+      args = ['--connections_count=2', '--target_duration=3.0', '--verbose']
       out, _, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
@@ -60,14 +90,8 @@ RSpec.describe HttpLoader, type: :integration do
 
   describe 'Mode 2: Encrypted HTTPS TLS Architecture' do
     it 'bootstraps secure contexts actively avoiding TLS handshaking drops seamlessly' do
-      args = [
-        '--connections_count=2',
-        '--target_duration=6.0',
-        '--reopen_closed_connections',
-        '--reopen_interval=0.5',
-        '--https',
-        '--verbose'
-      ]
+      args = ['--connections_count=2', '--target_duration=6.0', '--reopen_closed_connections',
+              '--reopen_interval=0.5', '--https', '--verbose']
       out, _, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
@@ -79,13 +103,7 @@ RSpec.describe HttpLoader, type: :integration do
 
   describe 'Mode 3: QPS Payload Active Simulation' do
     it 'maps rhythmic GET payloads cleanly across active tunnels' do
-      args = [
-        '--connections_count=2',
-        '--target_duration=3.0',
-        '--qps_per_connection=5',
-        '--no-ping', # Disable underlying ping explicitly
-        '--verbose'
-      ]
+      args = ['--connections_count=2', '--target_duration=3.0', '--qps_per_connection=5', '--no-ping', '--verbose']
       _, _err, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
@@ -95,12 +113,7 @@ RSpec.describe HttpLoader, type: :integration do
 
   describe 'Mode 4: Resilience Slowloris Thread Simulator' do
     it 'allocates and drops byte gap writes elegantly securely' do
-      args = [
-        '--connections_count=2',
-        '--target_duration=3.0',
-        '--slowloris_delay=0.1',
-        '--verbose'
-      ]
+      args = ['--connections_count=2', '--target_duration=3.0', '--slowloris_delay=0.1', '--verbose']
       _, _err, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
@@ -109,26 +122,41 @@ RSpec.describe HttpLoader, type: :integration do
   end
 
   describe 'Mode 5: External Target Mapping Logs' do
-    it 'bypasses local loopbacks effectively evaluating remote endpoints seamlessly' do
-      args = [
-        '--connections_count=2',
-        '--target_duration=2.0',
-        '--url=https://www.google.com',
-        '--export_json=logs/telemetry.json',
-        '--verbose'
-      ]
-      out, _err, status = run_harness(args)
+    it 'targets an external URL and exports JSON telemetry (against a local stub, no network)' do
+      with_local_server do |port|
+        args = ['--connections_count=2', '--target_duration=2.0', "--url=http://127.0.0.1:#{port}",
+                '--export_json=logs/telemetry.json', '--verbose']
+        out, _err, status = run_harness(args)
 
-      expect(status.exitstatus).to eq(0)
-      expect(out).to match(/\*\*EXTERNAL URL\*\*/)
+        expect(status.exitstatus).to eq(0)
+        expect(out).to match(/\*\*EXTERNAL URL\*\*/)
 
-      # Confirm JSON telemetry wrote effectively
-      telemetry_file = File.join(log_dir, 'telemetry.json')
-      expect(File.exist?(telemetry_file)).to be true
+        telemetry_file = File.join(log_dir, 'telemetry.json')
+        expect(File.exist?(telemetry_file)).to be true
+        json = JSON.parse(File.read(telemetry_file))
+        expect(json).to have_key('peak_connections')
+        expect(json).to have_key('errors')
+      end
+    end
+  end
 
-      json = JSON.parse(File.read(telemetry_file))
-      expect(json).to have_key('peak_connections')
-      expect(json).to have_key('errors')
+  describe 'CLI validation (REQ-CLI-023)' do
+    it 'fast-fails with a Configuration Error on connections_count=0 instead of deadlocking' do
+      _out, err, status = run_client(['--connections_count=0'])
+      expect(status.exitstatus).to eq(1)
+      expect(err).to match(/Configuration Error/)
+    end
+
+    it 'fast-fails on a non-numeric flag value' do
+      _out, err, status = run_client(['--connections_count=abc'])
+      expect(status.exitstatus).to eq(1)
+      expect(err).to match(/Configuration Error/)
+    end
+
+    it 'fast-fails on a malformed target URL' do
+      _out, err, status = run_client(['--connections_count=1', '--url=http://bad host/'])
+      expect(status.exitstatus).to eq(1)
+      expect(err).to match(/Configuration Error/)
     end
   end
 end

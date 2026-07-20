@@ -5,7 +5,10 @@ require 'simplecov'
 SimpleCov.start do
   add_filter '/spec/'
   enable_coverage :branch
-  minimum_coverage line: 100, branch: 100
+  # The 100% gate is meaningful only for a full-suite run. Enforcing it on an ad-hoc
+  # subset (or on spec/integration, whose work happens in subprocesses SimpleCov can't
+  # see) fails spuriously, so gate it behind CI/COVERAGE.
+  minimum_coverage(line: 100, branch: 100) if ENV['CI'] || ENV['COVERAGE']
 end
 
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
@@ -27,5 +30,14 @@ RSpec.configure do |config|
   config.shared_context_metadata_behavior = :apply_to_host_groups
 end
 require 'sorbet-runtime'
-T::Configuration.inline_type_error_handler = ->(_, _) {}
-T::Configuration.call_validation_error_handler = ->(_, _) {}
+# Keep inline type checks (T.let / T.cast / T.must) live so a genuinely wrong-typed
+# value still fails a test — restoring the runtime type net that a blanket no-op removed.
+# The one concession is RSpec verifying doubles: the suite deliberately substitutes them
+# for real Net::HTTP*/Async::Task collaborators, and those are a test-only construct, so a
+# cast that only "fails" because it received a double is allowed through. Any other type
+# mismatch (a real object of the wrong class) still raises and fails the example.
+T::Configuration.inline_type_error_handler = lambda do |error, _opts|
+  raise error unless error.message.include?('RSpec::Mocks')
+end
+# The method-signature validator stays relaxed for the same double-substitution reason.
+T::Configuration.call_validation_error_handler = ->(_signature, _opts) {}

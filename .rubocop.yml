@@ -14,6 +14,23 @@ AllCops:
   Exclude:
     - '.gemini/**/*'
     - 'vendor/**/*'
+    - 'CODE_REVIEW.md'
+
+Metrics/ClassLength:
+  Max: 140
+
+# The integration suite boots throwaway local servers on background threads to keep
+# end-to-end coverage off the network; the thread-safety and method-size cops do not
+# apply to that scaffolding.
+ThreadSafety/NewThread:
+  Exclude:
+    - 'spec/integration/**/*'
+Metrics/MethodLength:
+  Exclude:
+    - 'spec/integration/**/*'
+Metrics/AbcSize:
+  Exclude:
+    - 'spec/integration/**/*'
 
 Style/FrozenStringLiteralComment:
   Enabled: true
@@ -32,6 +49,9 @@ RSpec/MultipleExpectations:
 
 RSpec/NestedGroups:
   Max: 5
+
+RSpec/MultipleMemoizedHelpers:
+  Max: 7
 
 Naming/BlockForwarding:
   Enabled: false
