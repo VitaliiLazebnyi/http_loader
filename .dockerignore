@@ -1,0 +1,9 @@
+.git
+vendor
+coverage
+logs
+doc
+.yardoc
+tmp
+*.gem
+CODE_REVIEW.md
