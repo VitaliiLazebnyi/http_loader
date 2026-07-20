@@ -4,6 +4,8 @@
 require 'sorbet-runtime'
 require 'fileutils'
 require 'time'
+require 'async'
+require 'async/queue'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -20,7 +22,7 @@ module HttpLoader
       def initialize(verbose)
         @verbose = verbose
         @log_dir = T.let(File.expand_path('../../../logs', __dir__), String)
-        @log_queue = T.let(Queue.new, Queue)
+        @log_queue = T.let(Async::Queue.new, Async::Queue)
         @logger_task = T.let(nil, Object)
       end
 
@@ -30,20 +32,23 @@ module HttpLoader
       sig { void }
       def setup_files!
         FileUtils.mkdir_p(@log_dir)
+        # The Logger is the sole writer of these two files (the harness captures the
+        # child's raw stdout/stderr into separate `client.stdout.log`/`client.stderr.log`),
+        # so truncating here is safe and does not race a second file descriptor.
         File.write(File.join(@log_dir, 'client.err'), '')
-        File.write(File.join(@log_dir, 'client.log'), '') if @verbose
+        File.write(File.join(@log_dir, 'client.log'), '')
       end
 
       # Spins up an async listener mapping log queues to the underlying file descriptors.
       #
-      # @param task [Object] the orchestration asynchronous task
-      # @return [Object] the running logger task yielding IO operations
+      # @param task [Async::Task] the orchestration asynchronous task
+      # @return [Async::Task] the running logger task yielding IO operations
       sig { params(task: Async::Task).returns(Async::Task) }
       def run_task(task)
         @logger_task = task.async do
           File.open(File.join(@log_dir, 'client.log'), 'a') do |log|
             File.open(File.join(@log_dir, 'client.err'), 'a') do |err|
-              poll_queue(task, log, err)
+              poll_queue(log, err)
             end
           end
         end
@@ -76,6 +81,18 @@ module HttpLoader
         @log_queue << [:info, "[#{Time.now.utc.iso8601}] #{message}"]
       end
 
+      # Enqueues an informational message to `client.log` unconditionally, independent of
+      # verbosity. Used for opt-in channels such as `--track_status_codes`, which the user
+      # explicitly requested and which must therefore not be silently coupled to `--verbose`.
+      #
+      # @param message [String] the formatted payload message
+      # @return [void]
+      sig { params(message: String).void }
+      def status(message)
+        # ! SORBET BYPASS: Queue push allows Object
+        @log_queue << [:info, "[#{Time.now.utc.iso8601}] #{message}"]
+      end
+
       # Enqueues error messages immediately irrespective of verbosity configuration.
       #
       # @param message [String] the formatted payload message
@@ -88,53 +105,33 @@ module HttpLoader
 
       private
 
-      # Consumes queue actively via block polling using async sleeping paradigms.
+      # Consumes the queue with a fiber-aware blocking dequeue: while the queue is empty it
+      # yields to the reactor (no busy-poll, no wakeup latency) and is unwound cleanly by
+      # Async::Task#stop when the engine shuts down.
       #
-      # @param task [Object] the orchestrator bound task
       # @param log [File] descriptor targeting the info/debug log
       # @param err [File] descriptor targeting the error log
       # @return [void]
-      sig { params(task: Async::Task, log: File, err: File).void }
-      def poll_queue(task, log, err)
+      sig { params(log: File, err: File).void }
+      def poll_queue(log, err)
         loop do
-          msg = fetch_message(task)
-          next unless msg
-          break if msg == :terminate
-
-          write_msg(T.cast(msg, T::Array[T.any(Symbol, String)]), log, err)
+          write_msg(T.cast(@log_queue.dequeue, T::Array[T.any(Symbol, String)]), log, err)
         end
       end
 
-      # Continuously forces buffer evaluation synchronously without yielding runtime.
+      # Drains whatever remains in the queue synchronously at shutdown. `dequeue` returns
+      # immediately while items are present, and the `empty?` guard prevents it from
+      # blocking once the queue is exhausted (the reactor is no longer running here).
       #
       # @param log [File] descriptor targeting the info/debug log
       # @param err [File] descriptor targeting the error log
       # @return [void]
       sig { params(log: File, err: File).void }
       def drain_queue(log, err)
-        loop do
-          popped = begin; @log_queue.pop(true); rescue ThreadError; nil; end
-          msg_raw = T.cast(popped, T.nilable(T.any(Symbol, T::Array[T.any(Symbol, String)])))
-          break unless msg_raw
-
-          msg = msg_raw
-          break if msg == :terminate
-
-          write_msg(T.cast(msg, T::Array[T.any(Symbol, String)]), log, err)
+        until T.cast(@log_queue.empty?, T::Boolean)
+          msg = T.cast(@log_queue.dequeue, T::Array[T.any(Symbol, String)])
+          write_msg(msg, log, err)
         end
-      end
-
-      # Tries popping elements off execution queues non-blockingly, sleeping async if empty.
-      #
-      # @param task [Object] the async orchestrator task
-      # @return [T.nilable(T.any(Symbol, T::Array[T.any(Symbol, String)]))] the payload tuple, termination symbol, or nil
-      sig { params(task: Async::Task).returns(T.nilable(T.any(Symbol, T::Array[T.any(Symbol, String)]))) }
-      def fetch_message(task)
-        msg_raw = @log_queue.pop(true)
-        T.cast(msg_raw, T.any(Symbol, T::Array[T.any(Symbol, String)]))
-      rescue ThreadError
-        task.sleep(0.05)
-        nil
       end
 
       # Evaluates payload structure formatting raw string to physical IO devices.

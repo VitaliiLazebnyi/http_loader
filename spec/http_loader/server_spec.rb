@@ -20,14 +20,14 @@ RSpec.describe HttpLoader::Server do
 
   describe '#start' do
     context 'without https' do
-      it 'binds natively to plaintext HTTP', :rspec do
+      it 'binds natively to plaintext HTTP' do
         server.start(use_https: false, port: 8080)
         expect(Rackup::Handler::Falcon)
           .to have_received(:run)
           .with(instance_of(Proc), Host: '0.0.0.0', Port: 8080)
       end
 
-      it 'traps INT signal cleanly over generic Rackup layer', :rspec do
+      it 'traps INT signal cleanly over generic Rackup layer' do
         allow(Rackup::Handler::Falcon).to receive(:run).and_yield(instance_double(Object))
         allow(server).to receive(:trap).with('INT').and_yield('INT')
         allow(server).to receive(:exit)
@@ -36,12 +36,12 @@ RSpec.describe HttpLoader::Server do
     end
 
     context 'with https' do
-      it 'binds natively to HTTPS with generated keys', :rspec do
+      it 'binds natively to HTTPS with generated keys' do
         server.start(use_https: true, port: 8443)
         expect(Falcon::Server).to have_received(:new)
       end
 
-      it 'traps INT signal securely alongside active SSLEndpoints natively', :rspec do
+      it 'traps INT signal securely alongside active SSLEndpoints natively' do
         allow(server).to receive(:trap).with('INT').and_yield('INT')
         allow(server).to receive(:exit)
         task_mock = instance_double(Async::Task, stop: nil)
@@ -54,15 +54,15 @@ RSpec.describe HttpLoader::Server do
   describe 'app evaluator' do
     let(:response) { server.instance_variable_get(:@app).call({}) }
 
-    it 'returns the correct status code', :rspec do
+    it 'returns the correct status code' do
       expect(response[0]).to eq(200)
     end
 
-    it 'returns the correct headers', :rspec do
+    it 'returns the correct headers' do
       expect(response[1]['Content-Type']).to eq('text/plain')
     end
 
-    it 'returns the correct body', :rspec do
+    it 'returns the correct body' do
       expect(response[2]).to eq(['OK'])
     end
   end

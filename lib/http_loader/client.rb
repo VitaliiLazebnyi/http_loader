@@ -14,6 +14,7 @@ require_relative 'client/target_manager'
 require_relative 'client/slowloris'
 require_relative 'client/http_session'
 require_relative 'client/error_handler'
+require_relative 'file_limits'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -31,6 +32,7 @@ module HttpLoader
     # @return [void]
     sig { params(config: Config).void }
     def initialize(config)
+      config.validate!
       @config = T.let(config, Config)
       @logger = T.let(Logger.new(config.verbose), Logger)
       @target_manager = T.let(TargetManager.new(config), TargetManager)
@@ -45,6 +47,7 @@ module HttpLoader
     def start
       log_startup_message
       trap('INT') { exit(0) }
+      FileLimits.bump!(@config.connections + 1024, label: '[Client]')
       @logger.setup_files!
 
       Async { |raw_task| run_engine(T.cast(raw_task, Async::Task)) }
@@ -64,9 +67,9 @@ module HttpLoader
       sem = Async::Semaphore.new(@config.max_concurrent_connections, parent: task)
 
       conn_tasks = T.let([], T::Array[Async::Task])
-      @config.connections.times do |raw_i|
-        i = raw_i
-        perform_sleep(calc_ramp, task: task) if calc_ramp.positive?
+      @config.connections.times do |i|
+        ramp = calc_ramp
+        perform_sleep(ramp, task: task) if i.positive? && ramp > 0.0
         conn_tasks << sem.async { exec_conn(i) }
       end
 
@@ -84,13 +87,14 @@ module HttpLoader
       puts '[Client] Note: Output of individual pings is suppressed.' unless @config.verbose
     end
 
-    # Calculates the sleep duration required for ramp-up.
+    # Calculates the sleep duration required for ramp-up. When both `--ramp_up` and
+    # `--connections_per_second` are set, `--ramp_up` takes precedence.
     #
     # @return [Float] the calculated ramp sleep duration
     sig { returns(Float) }
     def calc_ramp
-      if @config.ramp_up.positive?
-        @config.ramp_up.to_f / @config.connections
+      if @config.ramp_up > 0.0
+        @config.ramp_up / @config.connections
       elsif @config.connections_per_second.positive?
         1.0 / @config.connections_per_second
       else
@@ -120,7 +124,7 @@ module HttpLoader
       [0.0, base + rand(-v..v)].max
     end
 
-    # Continuously attempts connection runs per thread/worker.
+    # Continuously attempts connection runs per fiber worker.
     #
     # @param idx [Integer] the connection identifier
     # @return [void]
@@ -185,7 +189,7 @@ module HttpLoader
     # @return [void]
     sig { params(idx: Integer, uri: URI::Generic, http: Net::HTTP, start_t: Time).void }
     def dispatch_sess(idx, uri, http, start_t)
-      if @config.slowloris_delay.positive?
+      if @config.slowloris_delay > 0.0
         @slow_sess.run(idx, uri, http, start_t)
       else
         @http_sess.run(idx, uri, http, start_t)

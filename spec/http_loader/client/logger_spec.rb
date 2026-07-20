@@ -2,118 +2,123 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'tmpdir'
 require 'http_loader/client/logger'
 
 RSpec.describe HttpLoader::Client::Logger do
-  require 'tmpdir'
-
   let(:logger) { described_class.new(true) }
   let(:tmp_dir) { Dir.mktmpdir }
 
-  before do
-    logger.instance_variable_set(:@log_dir, tmp_dir)
-  end
+  before { logger.instance_variable_set(:@log_dir, tmp_dir) }
+  after { FileUtils.remove_entry(tmp_dir) }
 
-  after do
-    FileUtils.remove_entry(tmp_dir)
+  def read(name)
+    File.read(File.join(tmp_dir, name))
   end
 
   describe '#setup_files!' do
-    it 'creates directories and files deterministically natively', :rspec do
+    it 'creates and truncates both log files (Logger is the sole writer)' do
       logger.setup_files!
       expect(File.exist?(File.join(tmp_dir, 'client.log'))).to be(true)
       expect(File.exist?(File.join(tmp_dir, 'client.err'))).to be(true)
     end
 
-    it 'does not create log file if verbose is false' do
-      non_verbose_logger = described_class.new(false)
-      non_verbose_logger.instance_variable_set(:@log_dir, tmp_dir)
-      non_verbose_logger.setup_files!
-      expect(File.exist?(File.join(tmp_dir, 'client.err'))).to be(true)
-      expect(File.exist?(File.join(tmp_dir, 'client.log'))).to be(false)
+    it 'creates client.log even when not verbose (used by the always-on status channel)' do
+      non_verbose = described_class.new(false)
+      non_verbose.instance_variable_set(:@log_dir, tmp_dir)
+      non_verbose.setup_files!
+      expect(File.exist?(File.join(tmp_dir, 'client.log'))).to be(true)
     end
   end
 
   describe '#info' do
-    it 'pushes into log queue successfully', :rspec do
+    it 'enqueues when verbose' do
       logger.info('test')
       expect(logger.instance_variable_get(:@log_queue).size).to eq(1)
+    end
+
+    it 'is a no-op when not verbose' do
+      quiet = described_class.new(false)
+      quiet.info('test')
+      expect(quiet.instance_variable_get(:@log_queue).size).to eq(0)
+    end
+  end
+
+  describe '#status' do
+    it 'always enqueues regardless of verbosity' do
+      quiet = described_class.new(false)
+      quiet.status('code 500')
+      msg = quiet.instance_variable_get(:@log_queue).pop
+      expect(msg.first).to eq(:info)
+      expect(msg.last).to include('code 500')
     end
   end
 
   describe '#error' do
-    it 'pushes exclusively into error queue successfully', :rspec do
+    it 'enqueues under the :error channel' do
       logger.error('failed')
       expect(logger.instance_variable_get(:@log_queue).pop).to include(:error)
     end
   end
 
-  describe 'Queue management' do
-    before do
-      logger.setup_files!
-    end
+  describe '#flush_synchronously!' do
+    before { logger.setup_files! }
 
-    # -- Architectural Note: RSpec integrations logically require lengthy isolated mock state bindings.
-    it 'flushes synchronously safely tracking both queues' do
+    it 'drains queued info and error messages to their files' do
       logger.info('test info')
       logger.error('test err')
-      logger.instance_variable_get(:@log_queue) << :terminate
       logger.flush_synchronously!
-
-      expect(File.read(File.join(tmp_dir, 'client.log'))).to match(/test info/)
-      expect(File.read(File.join(tmp_dir, 'client.err'))).to match(/test err/)
+      expect(read('client.log')).to match(/test info/)
+      expect(read('client.err')).to match(/test err/)
     end
 
-    it 'flushes synchronously an empty queue gracefully properly completely' do
+    it 'handles an empty queue gracefully' do
       logger.flush_synchronously!
-      expect(File.read(File.join(tmp_dir, 'client.log'))).to eq('')
+      expect(read('client.log')).to eq('')
     end
 
-    it 'rescues StandardError securely gracefully during synchronous flush' do
+    it 'rescues a file error during flush' do
       allow(File).to receive(:open).and_raise(StandardError)
       expect { logger.flush_synchronously! }.not_to raise_error
     end
+  end
 
-    it 'runs highly reliably through fetch looping cleanly' do
-      logger.info('i1')
-      logger.instance_variable_get(:@log_queue) << :terminate
+  describe '#run_task / #poll_queue (within the reactor)' do
+    it 'drains enqueued messages to disk and unwinds cleanly when the task stops' do
+      logger.setup_files!
+      Async do |task|
+        logger_task = logger.run_task(task)
+        logger.info('hello-async')
+        logger.error('boom-async')
+        task.sleep(0.05) # let the logger fiber process the queue
+        logger_task.stop # Async::Task#stop must interrupt the blocking dequeue
+      end
+      expect(read('client.log')).to include('hello-async')
+      expect(read('client.err')).to include('boom-async')
+    end
+  end
 
-      task = instance_double(Async::Task, async: nil, sleep: nil)
-      allow(task).to receive(:async).and_yield
-      logger.run_task(task)
+  describe '#write_msg' do
+    let(:log) { File.open(File.join(tmp_dir, 'client.log'), 'w') }
+    let(:err) { File.open(File.join(tmp_dir, 'client.err'), 'w') }
 
-      expect(File.read(File.join(tmp_dir, 'client.log'))).to match(/i1/)
+    after do
+      log.close
+      err.close
     end
 
-    # -- Architectural Note: RSpec integrations logically require lengthy isolated mock state bindings.
-    it 'skips logging if fetch message returns nil naturally' do
-      logger.instance_variable_get(:@log_queue) << :terminate
-      task = instance_double(Async::Task, async: nil, sleep: nil)
-      allow(logger).to receive(:fetch_message).and_return(nil, :terminate)
-
-      allow(task).to receive(:async).and_yield
-      logger.run_task(task)
-
-      expect(File.read(File.join(tmp_dir, 'client.log'))).to eq('')
+    it 'ignores an unknown target' do
+      logger.send(:write_msg, [:unknown, 'diff'], log, err)
+      log.flush
+      err.flush
+      expect(read('client.log')).to eq('')
+      expect(read('client.err')).to eq('')
     end
 
-    # -- Architectural Note: RSpec integrations logically require lengthy isolated mock state bindings.
-    it 'sleeps elegantly securely when ThreadError evaluates securely' do
-      task = instance_double(Async::Task, async: nil, sleep: nil)
-      allow(logger.instance_variable_get(:@log_queue)).to receive(:pop).and_raise(ThreadError)
-      expect(logger.send(:fetch_message, task)).to be_nil
-      expect(task).to have_received(:sleep).with(0.05)
-    end
-
-    it 'ignores unknown target gracefully safely internally' do
-      logger.instance_variable_get(:@log_queue) << [:unknown, 'test diff']
-      logger.instance_variable_get(:@log_queue) << :terminate
-      task = instance_double(Async::Task, async: nil, sleep: nil)
-      allow(task).to receive(:async).and_yield
-      logger.run_task(task)
-
-      expect(File.read(File.join(tmp_dir, 'client.log'))).to eq('')
-      expect(File.read(File.join(tmp_dir, 'client.err'))).to eq('')
+    it 'routes error messages to client.err' do
+      logger.send(:write_msg, [:error, 'boom'], log, err)
+      err.flush
+      expect(read('client.err')).to include('boom')
     end
   end
 end

@@ -57,25 +57,23 @@ module HttpLoader
       puts "[Server] Binding natively to HTTPS over port #{port}"
       ssl_context = generate_ssl_context
 
-      send(:Sync) do |raw_task|
-        run_falcon(T.cast(raw_task, Async::Task), port, ssl_context)
+      send(:Sync) do |_raw_task|
+        run_falcon(port, ssl_context)
       end
     end
 
-    # Orchestrates asynchronous falcon execution within local async boundary.
+    # Orchestrates asynchronous falcon execution within local async boundary. Shutdown is
+    # unified with the plaintext path: `exit(0)` alone tears down the reactor, so the
+    # previously redundant `task.stop` (and its version-dependent behavior) is gone.
     #
-    # @param task [Async::Task] async orchestrator closure bound variable
     # @param port [Integer] physical OS boundary target identifier
     # @param context [OpenSSL::SSL::SSLContext] verified generated payload map
     # @return [void]
-    sig { params(task: Async::Task, port: Integer, context: OpenSSL::SSL::SSLContext).void }
-    def run_falcon(task, port, context)
+    sig { params(port: Integer, context: OpenSSL::SSL::SSLContext).void }
+    def run_falcon(port, context)
       server = build_falcon_server(port, context)
       server_task = T.cast(server.run, Async::Task)
-      setup_interrupt do
-        task.stop
-        exit(0)
-      end
+      setup_interrupt { exit(0) }
       server_task.wait
     end
 
@@ -83,7 +81,7 @@ module HttpLoader
     #
     # @param port [Integer] target
     # @param context [OpenSSL::SSL::SSLContext] populated encryption mappings
-    # @return [Falcon::Server, T.untyped] internally mapped untyped interface natively wrapping the app
+    # @return [Falcon::Server] internally mapped interface natively wrapping the app
     sig { params(port: Integer, context: OpenSSL::SSL::SSLContext).returns(::Falcon::Server) }
     def build_falcon_server(port, context)
       endpoint = ::IO::Endpoint.tcp('0.0.0.0', port)
@@ -141,7 +139,8 @@ module HttpLoader
       cert = OpenSSL::X509::Certificate.new
       parse_cert_info(cert)
       cert.public_key = rsa.public_key
-      cert.serial = 0x0
+      # RFC 5280 §4.1.2.2 requires a positive serial number; 0 is rejected by strict clients.
+      cert.serial = 1
       cert.version = 2
       cert.sign(rsa, OpenSSL::Digest.new('SHA256'))
       cert

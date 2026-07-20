@@ -130,9 +130,11 @@ RSpec.describe HttpLoader::Client do
       allow(client).to receive(:start_http).and_yield(mock_http)
       allow(client).to receive(:dispatch_sess)
 
-      client.send(:run_session, 0, Time.now)
+      start = Time.now
+      client.send(:run_session, 0, start)
 
-      expect(client).to have_received(:dispatch_sess)
+      # Assert the exact index/uri/http/timestamp are forwarded, not merely that a call happened.
+      expect(client).to have_received(:dispatch_sess).with(0, URI.parse('http://test.local'), mock_http, start)
     end
 
     it 'executes context successfully without max_retries natively' do
@@ -146,9 +148,10 @@ RSpec.describe HttpLoader::Client do
       allow(client).to receive(:start_http).and_yield(mock_http)
       allow(client).to receive(:dispatch_sess)
 
-      client.send(:run_session, 0, Time.now)
+      start = Time.now
+      client.send(:run_session, 0, start)
 
-      expect(client).to have_received(:dispatch_sess)
+      expect(client).to have_received(:dispatch_sess).with(0, URI.parse('http://test.local'), mock_http, start)
     end
 
     it 'rescues intelligently definitively comprehensively gracefully logically securely' do
@@ -182,9 +185,7 @@ RSpec.describe HttpLoader::Client do
     it 'maps flawlessly fully cleanly when max_retries not supported' do
       uri = URI.parse('http://test.local')
       mock_http = Net::HTTP.new('test.local', 80)
-      if mock_http.respond_to?(:max_retries=)
-        mock_http.singleton_class.undef_method(:max_retries=)
-      end
+      mock_http.singleton_class.undef_method(:max_retries=) if mock_http.respond_to?(:max_retries=)
       allow(Net::HTTP).to receive(:new).and_return(mock_http)
       allow(mock_http).to receive(:start)
       client.send(:start_http, uri, {}) { nil }
@@ -193,24 +194,34 @@ RSpec.describe HttpLoader::Client do
   end
 
   describe '#dispatch_sess' do
-    it 'dispatches properly definitively accurately fully natively securely' do
-      cfg = HttpLoader::Client::Config.new(connections: 1, slowloris_delay: 0.1)
-      cli = described_class.new(cfg)
-      mock_http = Net::HTTP.new('localhost')
-      allow_any_instance_of(HttpLoader::Client::Slowloris).to receive(:run)
-      cli.send(:dispatch_sess, 0, URI.parse('http://localhost'), mock_http, Time.now)
+    let(:mock_http) { Net::HTTP.new('localhost') }
+    let(:uri) { URI.parse('http://localhost') }
+    let(:time) { Time.now }
 
-      expect(cli.instance_variable_get(:@slow_sess)).to have_received(:run)
+    it 'routes to the slowloris engine when slowloris_delay is positive, leaving the HTTP session idle' do
+      cli = described_class.new(HttpLoader::Client::Config.new(connections: 1, slowloris_delay: 0.1))
+      slow = cli.instance_variable_get(:@slow_sess)
+      http_sess = cli.instance_variable_get(:@http_sess)
+      allow(slow).to receive(:run)
+      allow(http_sess).to receive(:run)
+
+      cli.send(:dispatch_sess, 0, uri, mock_http, time)
+
+      expect(slow).to have_received(:run).with(0, uri, mock_http, time)
+      expect(http_sess).not_to have_received(:run)
     end
 
-    it 'dispatches flawlessly cleanly gracefully rationally dynamically inherently' do
-      cfg = HttpLoader::Client::Config.new(connections: 1, slowloris_delay: 0.0)
-      cli = described_class.new(cfg)
-      mock_http = Net::HTTP.new('localhost')
-      allow_any_instance_of(HttpLoader::Client::HttpSession).to receive(:run)
-      cli.send(:dispatch_sess, 0, URI.parse('http://localhost'), mock_http, Time.now)
+    it 'routes to the HTTP session engine when slowloris_delay is zero, leaving slowloris idle' do
+      cli = described_class.new(HttpLoader::Client::Config.new(connections: 1, slowloris_delay: 0.0))
+      slow = cli.instance_variable_get(:@slow_sess)
+      http_sess = cli.instance_variable_get(:@http_sess)
+      allow(slow).to receive(:run)
+      allow(http_sess).to receive(:run)
 
-      expect(cli.instance_variable_get(:@http_sess)).to have_received(:run)
+      cli.send(:dispatch_sess, 0, uri, mock_http, time)
+
+      expect(http_sess).to have_received(:run).with(0, uri, mock_http, time)
+      expect(slow).not_to have_received(:run)
     end
   end
 

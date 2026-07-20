@@ -31,8 +31,6 @@ module HttpLoader
       # @return [void]
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, start_time: Time).void }
       def run(client_index, uri, http, start_time)
-        return if @config.slowloris_delay.positive?
-
         fire_initial_request(uri, http)
         maintain_keepalive(client_index, uri, http, start_time)
       end
@@ -67,14 +65,39 @@ module HttpLoader
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, start_time: Time).void }
       def maintain_keepalive(client_index, uri, http, start_time)
         loop do
-          elapsed = Time.now - start_time
-          if @config.http_loader_timeout.positive? && elapsed >= @config.http_loader_timeout
+          remaining = remaining_budget(start_time)
+          if remaining && remaining <= 0.0
             @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing.")
             break
           end
 
-          break unless process_heartbeat?(client_index, uri, http)
+          break unless process_heartbeat?(client_index, uri, http, remaining)
         end
+      end
+
+      # Seconds left before the keep-alive deadline, or nil when the lifetime is unbounded
+      # (`http_loader_timeout == 0`). Used to cap each heartbeat sleep so the connection
+      # never overruns its deadline by up to a full (jittered) interval.
+      #
+      # @param start_time [Time] the connection's spawn timestamp
+      # @return [Float, nil] remaining seconds, or nil if unbounded
+      sig { params(start_time: Time).returns(T.nilable(Float)) }
+      def remaining_budget(start_time)
+        return nil unless @config.http_loader_timeout > 0.0
+
+        @config.http_loader_timeout - (Time.now - start_time)
+      end
+
+      # Caps a computed sleep so it never sleeps past the remaining keep-alive budget.
+      #
+      # @param base [Float] the desired sleep duration
+      # @param remaining [Float, nil] remaining budget, or nil if unbounded
+      # @return [Float] the capped sleep duration
+      sig { params(base: Float, remaining: T.nilable(Float)).returns(Float) }
+      def cap_sleep(base, remaining)
+        return base unless remaining
+
+        [base, remaining].min
       end
 
       # Analyzes global configurations selecting appropriate recurrent payloads or static hibernation.
@@ -82,15 +105,16 @@ module HttpLoader
       # @param client_index [Integer] numeric thread marker
       # @param uri [URI::Generic] destination configuration struct
       # @param http [Net::HTTP] active outbound resource allocation
+      # @param remaining [Float, nil] remaining keep-alive budget in seconds, or nil if unbounded
       # @return [Boolean] returns true to perpetuate cycle, false to break and exit
-      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP).returns(T::Boolean) }
-      def process_heartbeat?(client_index, uri, http)
+      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
+      def process_heartbeat?(client_index, uri, http, remaining)
         if @config.qps_per_connection.positive?
-          perform_qps?(client_index, uri, http)
+          perform_qps?(client_index, uri, http, remaining)
         elsif @config.ping
-          perform_ping?(client_index, uri, http)
+          perform_ping?(client_index, uri, http, remaining)
         else
-          sleep(calculate_sleep(1.0))
+          sleep(cap_sleep(calculate_sleep(1.0), remaining))
           true
         end
       end
@@ -100,10 +124,11 @@ module HttpLoader
       # @param client_index [Integer] the numeric id of the async block
       # @param uri [URI::Generic] active configuration struct parameters
       # @param http [Net::HTTP] live outgoing data streams
+      # @param remaining [Float, nil] remaining keep-alive budget in seconds, or nil if unbounded
       # @return [Boolean] success logic representing connection continuation validation
-      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP).returns(T::Boolean) }
-      def perform_qps?(client_index, uri, http)
-        sleep(calculate_sleep(1.0 / @config.qps_per_connection))
+      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
+      def perform_qps?(client_index, uri, http, remaining)
+        sleep(cap_sleep(calculate_sleep(1.0 / @config.qps_per_connection), remaining))
         req = build_request(Net::HTTP::Get.new(uri))
 
         res = T.cast(http.request(req) do |raw_r|
@@ -118,10 +143,11 @@ module HttpLoader
       # @param client_index [Integer] async boundary ID
       # @param uri [URI::Generic] the targeted struct params
       # @param http [Net::HTTP] executing communication object
+      # @param remaining [Float, nil] remaining keep-alive budget in seconds, or nil if unbounded
       # @return [Boolean] true predicting session extension
-      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP).returns(T::Boolean) }
-      def perform_ping?(client_index, uri, http)
-        sleep(calculate_sleep(@config.ping_period.to_f))
+      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
+      def perform_ping?(client_index, uri, http, remaining)
+        sleep(cap_sleep(calculate_sleep(@config.ping_period.to_f), remaining))
         req = build_request(Net::HTTP::Head.new(uri))
 
         res = T.cast(http.request(req), Net::HTTPResponse)
@@ -160,7 +186,7 @@ module HttpLoader
         return unless @config.track_status_codes
         return if success?(res)
 
-        @logger.info("[Client #{client_index}] Upstream returned HTTP #{res.code}")
+        @logger.status("[Client #{client_index}] Upstream returned HTTP #{res.code}")
       end
 
       # Determines physical sleep timer using standard pseudo-random distributions.

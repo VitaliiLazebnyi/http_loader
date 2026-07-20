@@ -49,12 +49,15 @@ module HttpLoader
       # @return [void]
       sig { params(io: IO, uri: URI::Generic).void }
       def fire_initial_payload(io, uri)
-        payload = build_payload_headers(uri)
+        chars = build_payload_headers(uri).chars
+        last = chars.size - 1
 
-        payload.each_char do |char|
+        chars.each_with_index do |char, i|
           io.write(char)
           io.flush
-          sleep(calculate_sleep(@config.slowloris_delay))
+          # No trailing pause after the final byte; maintain_hold immediately paces the
+          # subsequent keep-alive bytes, so an extra sleep here is redundant.
+          sleep(calculate_sleep(@config.slowloris_delay)) unless i == last
         end
       end
 
@@ -84,16 +87,39 @@ module HttpLoader
       sig { params(client_index: Integer, io: IO, start_time: Time).void }
       def maintain_hold(client_index, io, start_time)
         loop do
-          elapsed = Time.now - start_time
-          if @config.http_loader_timeout > 0.0 && elapsed >= @config.http_loader_timeout
+          remaining = remaining_budget(start_time)
+          if remaining && remaining <= 0.0
             @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing Slowloris thread.")
             break
           end
 
           io.write(rand(97..122).chr)
           io.flush
-          sleep(calculate_sleep(@config.slowloris_delay))
+          sleep(cap_sleep(calculate_sleep(@config.slowloris_delay), remaining))
         end
+      end
+
+      # Seconds left before the keep-alive deadline, or nil when unbounded.
+      #
+      # @param start_time [Time] the connection's spawn timestamp
+      # @return [Float, nil] remaining seconds, or nil if unbounded
+      sig { params(start_time: Time).returns(T.nilable(Float)) }
+      def remaining_budget(start_time)
+        return nil unless @config.http_loader_timeout > 0.0
+
+        @config.http_loader_timeout - (Time.now - start_time)
+      end
+
+      # Caps a computed sleep so it never sleeps past the remaining keep-alive budget.
+      #
+      # @param base [Float] the desired sleep duration
+      # @param remaining [Float, nil] remaining budget, or nil if unbounded
+      # @return [Float] the capped sleep duration
+      sig { params(base: Float, remaining: T.nilable(Float)).returns(Float) }
+      def cap_sleep(base, remaining)
+        return base unless remaining
+
+        [base, remaining].min
       end
 
       # Analyzes base sleep threshold utilizing configured global jitter factors.
