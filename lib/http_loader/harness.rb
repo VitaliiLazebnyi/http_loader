@@ -3,6 +3,7 @@
 
 require 'sorbet-runtime'
 require 'fileutils'
+require_relative 'file_limits'
 require_relative 'harness/config'
 require_relative 'harness/resource_monitor'
 require_relative 'harness/telemetry'
@@ -31,6 +32,7 @@ module HttpLoader
     # @return [void]
     sig { params(config: Config).void }
     def initialize(config)
+      config.validate!
       @config = config
       @start_time = T.let(Time.now.utc, Time)
       @peak_connections = T.let(0, Integer)
@@ -59,12 +61,14 @@ module HttpLoader
     # @return [void]
     sig { void }
     def run_lifecycle
-      @pm.spawn_processes
+      # Install the trap before spawning so an early Ctrl+C still runs cleanup;
+      # cleanup is a guarded no-op while the child PIDs are still unset.
       trap('INT') do
         puts "\n[Harness] Caught interrupt, cleaning up processes..."
         @pm.cleanup
         exit(0)
       end
+      @pm.spawn_processes
       monitor_resources
     ensure
       @telemetry.export!(@peak_connections, @start_time)
@@ -122,9 +126,7 @@ module HttpLoader
     # @return [void]
     sig { void }
     def bump_file_limits
-      Process.setrlimit(Process::RLIMIT_NOFILE, @config.connections + 1024)
-    rescue Errno::EPERM
-      puts '[Harness] Warning: Could not set RLIMIT_NOFILE automatically.'
+      FileLimits.bump!(@config.connections + 1024, label: '[Harness]')
     end
 
     # Diagnostically evaluates sudden connection termination from upstream server endpoints natively.

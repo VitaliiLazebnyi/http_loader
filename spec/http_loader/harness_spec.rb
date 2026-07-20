@@ -108,14 +108,26 @@ RSpec.describe HttpLoader::Harness do
   end
 
   describe '#bump_file_limits' do
-    it 'rescues seamlessly fully natively' do
-      allow(Process).to receive(:setrlimit).and_raise(Errno::EPERM)
-      expect { harness.send(:bump_file_limits) }.not_to raise_error
+    it 'raises only the soft limit toward connections+1024, preserving the hard ceiling' do
+      allow(Process).to receive(:getrlimit).with(Process::RLIMIT_NOFILE).and_return([256, 4096])
+      allow(Process).to receive(:setrlimit)
+      harness.send(:bump_file_limits)
+      # connections is 1, so desired soft = 1025; hard 4096 is passed through unchanged.
+      expect(Process).to have_received(:setrlimit).with(Process::RLIMIT_NOFILE, 1025, 4096)
     end
 
-    it 'executes actively elegantly' do
+    it 'clamps the request to the existing hard limit and never lowers it' do
+      allow(Process).to receive(:getrlimit).with(Process::RLIMIT_NOFILE).and_return([256, 512])
       allow(Process).to receive(:setrlimit)
-      expect { harness.send(:bump_file_limits) }.not_to raise_error
+      harness.send(:bump_file_limits)
+      # desired 1025 exceeds the hard limit 512, so soft is clamped to 512; hard stays 512.
+      expect(Process).to have_received(:setrlimit).with(Process::RLIMIT_NOFILE, 512, 512)
+    end
+
+    it 'warns (without raising) when the OS rejects the change' do
+      allow(Process).to receive(:getrlimit).and_return([256, 4096])
+      allow(Process).to receive(:setrlimit).and_raise(Errno::EPERM)
+      expect { harness.send(:bump_file_limits) }.to output(/Could not set RLIMIT_NOFILE/).to_stderr
     end
   end
 

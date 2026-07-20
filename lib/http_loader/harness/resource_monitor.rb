@@ -11,12 +11,17 @@ module HttpLoader
     class ResourceMonitor
       extend T::Sig
 
+      # Upper bound on the per-PID CPU-history map (defensive; the harness tracks 2 PIDs).
+      CPU_HISTORY_LIMIT = 128
+
       # Connects system resource metrics trackers mapping natively OS limits.
       #
       # @return [void]
       sig { void }
       def initialize
         @cpu_prev = T.let({}, T::Hash[Integer, T::Hash[Symbol, T.untyped]])
+        @page_size = T.let(nil, T.nilable(Integer))
+        @clock_tick = T.let(nil, T.nilable(Integer))
       end
 
       # Generates fully mapped array structure containing instantaneous memory, threads, and cpu overhead natively.
@@ -73,7 +78,7 @@ module HttpLoader
       sig { params(pid: Integer).returns(Float) }
       def read_rss_kb(pid)
         rss_pages = T.must(File.read("/proc/#{pid}/statm").split[1]).to_i
-        (rss_pages * fetch_page_size) / 1024.0
+        (rss_pages * page_size) / 1024.0
       end
 
       # Maps current elapsed execution loops into relative temporal performance representations accurately.
@@ -82,8 +87,12 @@ module HttpLoader
       # @return [Float] percentage scale explicitly normalized natively
       sig { params(pid: Integer).returns(Float) }
       def read_cpu_perc(pid)
-        stat_array = File.read("/proc/#{pid}/stat").split
-        calculate_cpu(pid, T.must(stat_array[13]).to_f + T.must(stat_array[14]).to_f)
+        raw = File.read("/proc/#{pid}/stat")
+        # Field 2 (comm) is parenthesised and may itself contain spaces or parens
+        # (e.g. "(Web Content)"), so a naive split shifts every later field. Slice
+        # after the final ')' and re-base: utime/stime become indices [11]/[12].
+        tail = T.must(raw[(T.must(raw.rindex(')')) + 1)..]).split
+        calculate_cpu(pid, T.must(tail[11]).to_f + T.must(tail[12]).to_f)
       end
 
       # Scrapes raw `/proc/$PID/status` natively extracting precise context thread sizes directly via regex bindings.
@@ -99,13 +108,31 @@ module HttpLoader
       #
       # @return [Integer] memory integer sizing parameter bound physically
       sig { returns(Integer) }
-      def fetch_page_size
-        return 4096 unless File.exist?('/usr/bin/getconf')
+      def page_size
+        @page_size ||= query_getconf('PAGE_SIZE', 4096)
+      end
 
-        out, _s = Open3.capture2('getconf PAGE_SIZE')
-        out.to_i > 0.0 ? out.to_i : 4096
+      # Resolves the kernel clock tick (`sysconf(_SC_CLK_TCK)`) once, memoizing the
+      # immutable value. The `/proc/<pid>/stat` jiffy fields are counted in these ticks,
+      # so assuming a literal 100 mis-scales CPU% on kernels where `CLK_TCK != 100`.
+      #
+      # @return [Integer] the number of clock ticks per second (fallback 100)
+      sig { returns(Integer) }
+      def clock_tick
+        @clock_tick ||= query_getconf('CLK_TCK', 100)
+      end
+
+      # Queries an immutable `getconf` system constant, falling back on any failure.
+      #
+      # @param name [String] the getconf variable name
+      # @param fallback [Integer] the value to use when getconf is unavailable or invalid
+      # @return [Integer] the resolved positive integer, or the fallback
+      sig { params(name: String, fallback: Integer).returns(Integer) }
+      def query_getconf(name, fallback)
+        out, _s = Open3.capture2('getconf', name)
+        out.to_i.positive? ? out.to_i : fallback
       rescue StandardError
-        4096
+        fallback
       end
 
       # Performs numerical differentials tracking performance deviations over discrete timelines.
@@ -116,20 +143,38 @@ module HttpLoader
       sig { params(pid: Integer, total_ticks: Float).returns(Float) }
       def calculate_cpu(pid, total_ticks)
         now = Time.now.utc
-        prev = @cpu_prev[pid]
-        @cpu_prev[pid] = { ticks: total_ticks, time: now }
+        prev = record_cpu_sample(pid, total_ticks, now)
         return 0.0 unless prev
 
         time_diff = now - T.cast(prev[:time], Time)
         return 0.0 unless time_diff > 0.0
 
-        (((total_ticks - T.cast(prev[:ticks], Float)) / 100.0) / time_diff * 100).round(1)
+        (((total_ticks - T.cast(prev[:ticks], Float)) / clock_tick) / time_diff * 100).round(1).to_f
+      end
+
+      # Stores the latest tick/time sample for a PID and returns the previous one (or nil).
+      # Bounds the history so it cannot grow without limit if the monitor is ever reused
+      # across many PIDs (this app only tracks the server + client, so it never trips).
+      #
+      # @param pid [Integer] tracked process id
+      # @param total_ticks [Float] current cumulative jiffies
+      # @param now [Time] sample timestamp
+      # @return [Hash, nil] the previous sample, or nil on the first observation
+      sig { params(pid: Integer, total_ticks: Float, now: Time).returns(T.nilable(T::Hash[Symbol, T.untyped])) }
+      def record_cpu_sample(pid, total_ticks, now)
+        prev = @cpu_prev[pid]
+        @cpu_prev[pid] = { ticks: total_ticks, time: now }
+        @cpu_prev.shift if @cpu_prev.size > CPU_HISTORY_LIMIT
+        prev
       end
 
       # Evaluates older fallback UNIX command line execution structures safely yielding basic analysis outputs.
       #
       # @param pid [Integer] tracked internal map universally evaluated.
       # @return [Array<String, String, Float, Integer>] subset output simulating mapped natively structures dynamically.
+      # NOTE: `ps` reports `%cpu` as a decaying recent average over the process lifetime,
+      # whereas the /proc path computes an instantaneous delta between ticks. The two CPU
+      # figures therefore mean slightly different things across platforms.
       sig { params(pid: Integer).returns([String, String, Float, Integer]) }
       def fallback_ps_stats(pid)
         out, _s = Open3.capture2('ps', '-o', '%cpu,rss', '-p', pid.to_s)
@@ -150,22 +195,45 @@ module HttpLoader
       # @return [Integer] thread size safely
       sig { params(pid: Integer).returns(Integer) }
       def fallback_threads_count(pid)
-        out, _s = Open3.capture2("ps -M -p #{pid}")
+        out, _s = Open3.capture2('ps', '-M', '-p', pid.to_s)
         [out.strip.split("\n").size - 1, 0].max
       rescue StandardError
         1
       end
 
-      # Inspects fast Linux specific raw sockets natively resolving bounds cleanly.
+      # Counts only ESTABLISHED TCP sockets on Linux, matching the macOS `lsof` path.
+      # A bare `socket:[` prefix would over-count listening/UNIX/UDP sockets, so we
+      # intersect the process's socket fds with the inodes of ESTABLISHED entries in
+      # `/proc/<pid>/net/tcp[6]` (state `01`).
       #
       # @param pid [Integer] physical identifier dynamically mapped logically
-      # @return [Integer] count explicitly returned and evaluated
+      # @return [Integer] count of established TCP connections
       sig { params(pid: Integer).returns(Integer) }
       def count_linux_connections(pid)
+        established = established_inodes(pid)
         Dir.glob("/proc/#{pid}/fd/*").count do |fd_path|
-          File.readlink(fd_path).start_with?('socket:[')
+          match = File.readlink(fd_path).match(/\Asocket:\[(\d+)\]\z/)
+          match ? established.include?(T.must(match[1])) : false
         rescue StandardError
           false
+        end
+      end
+
+      # Collects the socket inodes of ESTABLISHED TCP (IPv4 + IPv6) connections owned
+      # by the process, parsed from `/proc/<pid>/net/tcp` and `net/tcp6`.
+      #
+      # @param pid [Integer] tracked process identifier
+      # @return [Array<String>] inode strings of ESTABLISHED sockets
+      sig { params(pid: Integer).returns(T::Array[String]) }
+      def established_inodes(pid)
+        %w[tcp tcp6].flat_map do |proto|
+          path = "/proc/#{pid}/net/#{proto}"
+          next [] unless File.exist?(path)
+
+          File.readlines(path).drop(1).filter_map do |line|
+            cols = line.split
+            cols[9] if cols[3] == '01'
+          end
         end
       end
 
@@ -175,8 +243,8 @@ module HttpLoader
       # @return [Integer] connections count actively evaluated
       sig { params(pid: Integer).returns(Integer) }
       def count_lsof_connections(pid)
-        out, _s = Open3.capture2("lsof -p #{pid} -n -P")
-        out.scan('ESTABLISHED').count
+        out, _s = Open3.capture2('lsof', '-p', pid.to_s, '-n', '-P')
+        out.scan('(ESTABLISHED)').count
       end
     end
   end

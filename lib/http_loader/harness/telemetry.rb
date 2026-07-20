@@ -11,6 +11,12 @@ module HttpLoader
     class Telemetry
       extend T::Sig
 
+      # Error tokens harvested from the client logs, keyed by the payload metric name.
+      ERROR_TOKENS = T.let(
+        { emfile: 'ERROR_EMFILE', eaddr_count: 'ERROR_EADDRNOTAVAIL', thread_errors: 'ERROR_THREADLIMIT' }.freeze,
+        T::Hash[Symbol, String]
+      )
+
       # Mounts the telemetry sub-engine mapping disk outputs transparently tracking boundaries.
       #
       # @param log_dir [String] physical absolute path targeting output payload maps
@@ -20,6 +26,8 @@ module HttpLoader
       def initialize(log_dir, export_json)
         @log_dir = log_dir
         @export_json = export_json
+        @counts = T.let({ emfile: 0, eaddr_count: 0, thread_errors: 0 }, T::Hash[Symbol, Integer])
+        @offsets = T.let({}, T::Hash[String, Integer])
       end
 
       # Serializes a comprehensive analysis payload upon successful OS termination manually.
@@ -31,7 +39,8 @@ module HttpLoader
       def export!(peak_connections, start_time)
         return unless @export_json
 
-        payload = generate_payload(peak_connections, start_time, count_bottlenecks(read_logs))
+        accumulate!
+        payload = generate_payload(peak_connections, start_time, @counts)
         File.write(@export_json, JSON.generate(payload))
         puts "[Harness] Telemetry JSON securely sinked to #{@export_json}."
       end
@@ -41,7 +50,8 @@ module HttpLoader
       # @return [void]
       sig { void }
       def check_bottlenecks!
-        errors = build_bottleneck_messages(count_bottlenecks(read_logs))
+        accumulate!
+        errors = build_bottleneck_messages(@counts)
         puts format('   => BOTTLENECK ACTIVE: %s', errors.join(' | ')) if errors.any?
       rescue StandardError
         nil
@@ -63,31 +73,50 @@ module HttpLoader
         }
       end
 
-      # Non-blockingly extracts physical log datasets without triggering process mutex collisions inherently.
+      # Reads only the newly-appended tail of each client log since the previous tick and
+      # folds any error tokens into the running totals. This keeps per-tick cost proportional
+      # to fresh output rather than re-reading unbounded logs into memory every ~2 seconds.
       #
-      # @return [String] unified payload log text evaluation directly read via native APIs
-      sig { returns(String) }
-      def read_logs
-        begin
-          File.read(File.join(@log_dir, 'client.log'))
-        rescue StandardError; ''
-        end + begin
-          File.read(File.join(@log_dir, 'client.err'))
-        rescue StandardError; ''
+      # @return [void]
+      sig { void }
+      def accumulate!
+        %w[client.log client.err].each { |name| consume_tail(File.join(@log_dir, name)) }
+      end
+
+      # Consumes complete lines appended to a single file since the last offset, tolerating
+      # truncation/rotation (offset reset) and never splitting an error token across reads.
+      #
+      # @param path [String] absolute file path
+      # @return [void]
+      sig { params(path: String).void }
+      def consume_tail(path)
+        return unless File.exist?(path)
+
+        size = File.size(path)
+        offset = @offsets[path] || 0
+        offset = 0 if size < offset
+        return if size <= offset
+
+        File.open(path, 'rb') do |file|
+          file.seek(offset)
+          data = file.read(size - offset).to_s
+          @offsets[path] = offset + tally_complete_lines(data)
         end
       end
 
-      # Aggregates instances of catastrophic OS limitations preventing linear load progressions proactively.
+      # Tallies error tokens from whole lines only, returning the number of bytes consumed
+      # (up to and including the final newline); a trailing partial line is left for next time.
       #
-      # @param log_text [String] aggregated string mapping log states
-      # @return [Hash] subset defining statistical integer maps representing specific crashes
-      sig { params(log_text: String).returns(T::Hash[Symbol, Integer]) }
-      def count_bottlenecks(log_text)
-        {
-          emfile: log_text.scan('ERROR_EMFILE').size,
-          eaddr_count: log_text.scan('ERROR_EADDRNOTAVAIL').size,
-          thread_errors: log_text.scan('ERROR_THREADLIMIT').size
-        }
+      # @param data [String] freshly read bytes
+      # @return [Integer] bytes consumed
+      sig { params(data: String).returns(Integer) }
+      def tally_complete_lines(data)
+        last_nl = data.rindex("\n")
+        return 0 unless last_nl
+
+        chunk = T.must(data[0..last_nl])
+        ERROR_TOKENS.each { |metric, token| @counts[metric] = T.must(@counts[metric]) + chunk.scan(token).size }
+        chunk.bytesize
       end
 
       # Translates generic error logs into explicit formatting tuples suitable for interactive terminals locally.

@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'stringio'
 require 'http_loader/harness/telemetry'
 
 RSpec.describe HttpLoader::Harness::Telemetry do
@@ -10,48 +11,78 @@ RSpec.describe HttpLoader::Harness::Telemetry do
   before do
     allow($stdout).to receive(:puts)
     allow(File).to receive(:write)
-    allow(File).to receive(:read).and_return('')
+    # Default: both log files exist but are empty.
+    allow(File).to receive_messages(exist?: true, size: 0)
+  end
+
+  # Makes `client.log` (or the given basename) yield `content` through the tail reader.
+  def stub_log(content, basename: 'client.log')
+    path = "/logs/#{basename}"
+    allow(File).to receive(:size).with(path).and_return(content.bytesize)
+    allow(File).to receive(:open).with(path, 'rb').and_yield(StringIO.new(content))
   end
 
   describe '#export!' do
-    it 'exports JSON explicitly natively correctly mathematically', :rspec do
+    it 'writes the telemetry JSON with an errors payload' do
       telemetry.export!(100, Time.now.utc)
-      expect(File).to have_received(:write).with('test.json', anything)
+      expect(File).to have_received(:write).with('test.json', /"peak_connections":100/)
     end
 
-    it 'returns early if export_json is nil' do
-      telemetry.instance_variable_set(:@export_json, nil)
-      telemetry.export!(100, Time.now.utc)
+    it 'returns early when export_json is nil' do
+      described_class.new('/logs', nil).export!(100, Time.now.utc)
       expect(File).not_to have_received(:write)
+    end
+
+    it 'accumulates error tokens from the client logs into the payload' do
+      stub_log("[t] ERROR_EMFILE: boom\n[t] ERROR_THREADLIMIT: x\n")
+      telemetry.export!(5, Time.now.utc)
+      expect(File).to have_received(:write).with('test.json', /"emfile":1.*"thread_limit":1/)
     end
   end
 
   describe '#check_bottlenecks!' do
-    it 'handles checking securely seamlessly', :rspec do
-      allow(File).to receive(:read).with(%r{/client\.log}).and_return('ERROR_EMFILE ERROR_THREADLIMIT')
+    it 'reports an active bottleneck for EMFILE and THREADLIMIT' do
+      stub_log("[t] ERROR_EMFILE: a\n[t] ERROR_THREADLIMIT: b\n")
       telemetry.check_bottlenecks!
-      expect($stdout).to have_received(:puts).with(/BOTTLENECK ACTIVE/)
+      expect($stdout).to have_received(:puts).with(/BOTTLENECK ACTIVE.*EMFILE.*ThreadError/)
     end
 
-    it 'reports EADDRNOTAVAIL securely' do
-      allow(File).to receive(:read).and_return('ERROR_EADDRNOTAVAIL')
+    it 'reports EADDRNOTAVAIL' do
+      stub_log("[t] ERROR_EADDRNOTAVAIL: ports\n", basename: 'client.err')
       telemetry.check_bottlenecks!
       expect($stdout).to have_received(:puts).with(/EADDRNOTAVAIL/)
     end
 
-    it 'rescues File read organically smoothly mapping empty string' do
-      allow(File).to receive(:read).and_raise(StandardError)
+    it 'prints nothing when there are no errors' do
       telemetry.check_bottlenecks!
       expect($stdout).not_to have_received(:puts)
     end
 
-    it 'rescues specifically client err accurately organically smoothly mapping empty string' do
-      telemetry.instance_variable_set(:@export_json, nil)
-      allow(File).to receive(:read).with(%r{/client\.log}).and_return('')
-      allow(File).to receive(:read).with(%r{/client\.err}).and_raise(StandardError)
-      # force build_bottleneck_messages to raise to cover line 33?
-      # No, wait. We want to cover line 33 "rescue StandardError" in check_bottlenecks!
-      allow(telemetry).to receive(:read_logs).and_raise(StandardError)
+    it 'skips a log file that does not exist yet' do
+      allow(File).to receive(:exist?).and_return(false)
+      telemetry.check_bottlenecks!
+      expect($stdout).not_to have_received(:puts)
+    end
+
+    it 'only counts complete lines, deferring a partial trailing line to the next tick' do
+      # No trailing newline: the token must NOT be counted yet.
+      stub_log('[t] ERROR_EMFILE: partial')
+      telemetry.check_bottlenecks!
+      expect($stdout).not_to have_received(:puts)
+    end
+
+    it 'resets the offset and re-reads when a log is truncated' do
+      stub_log("[t] ERROR_EMFILE: one\n")
+      telemetry.check_bottlenecks!
+      # Simulate truncation: size shrinks below the stored offset.
+      stub_log("[t] ERROR_EMFILE: fresh\n")
+      allow(File).to receive(:size).with('/logs/client.log').and_return(5, "[t] ERROR_EMFILE: fresh\n".bytesize)
+      telemetry.check_bottlenecks!
+      expect($stdout).to have_received(:puts).with(/EMFILE/).at_least(:once)
+    end
+
+    it 'rescues a read error silently' do
+      allow(File).to receive(:size).and_raise(StandardError)
       telemetry.check_bottlenecks!
       expect($stdout).not_to have_received(:puts)
     end

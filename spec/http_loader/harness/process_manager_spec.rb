@@ -48,7 +48,7 @@ RSpec.describe HttpLoader::Harness::ProcessManager do
       cfg = HttpLoader::Harness::Config.new(target_urls: [], connections: 1, use_https: true, client_args: ['--custom_arg'], export_json: nil)
       mgr = described_class.new(cfg)
       allow(FileUtils).to receive(:mkdir_p)
-      allow(mgr).to receive(:sleep)
+      allow(mgr).to receive(:port_open?).and_return(true) # server "ready" immediately
 
       allow(Process).to receive(:spawn).and_return(998, 999)
       mgr.spawn_processes
@@ -63,7 +63,7 @@ RSpec.describe HttpLoader::Harness::ProcessManager do
       it 'spawns both server and client' do
         allow(FileUtils).to receive(:mkdir_p)
         allow(Process).to receive(:spawn).and_return(998, 999)
-        allow(manager).to receive(:sleep)
+        allow(manager).to receive(:port_open?).and_return(true) # server "ready" immediately
         manager.spawn_processes
         expect(Process).to have_received(:spawn).twice
       end
@@ -82,6 +82,82 @@ RSpec.describe HttpLoader::Harness::ProcessManager do
       allow(Process).to receive(:kill)
       manager.cleanup
       expect(Process).not_to have_received(:kill)
+    end
+
+    it 'reaps a child that exits on SIGINT without escalating to SIGKILL' do
+      manager.instance_variable_set(:@client_pid, 556)
+      allow(Process).to receive(:kill)
+      allow(manager).to receive(:reaped?).and_return(true)
+      manager.cleanup
+      expect(Process).to have_received(:kill).with('INT', 556)
+      expect(Process).not_to have_received(:kill).with('KILL', 556)
+    end
+
+    it 'escalates to SIGKILL when the child is not reaped after SIGINT' do
+      manager.instance_variable_set(:@client_pid, 556)
+      allow(Process).to receive(:kill)
+      allow(manager).to receive(:reaped?).and_return(false, true)
+      manager.cleanup
+      expect(Process).to have_received(:kill).with('KILL', 556)
+    end
+  end
+
+  describe '#reaped?' do
+    it 'returns true as soon as waitpid reaps the child' do
+      allow(Process).to receive(:waitpid).with(1, Process::WNOHANG).and_return(1)
+      expect(manager.send(:reaped?, 1, deadline: 1.0)).to be(true)
+    end
+
+    it 'returns true when the child is already gone (ECHILD)' do
+      allow(Process).to receive(:waitpid).and_raise(Errno::ECHILD)
+      expect(manager.send(:reaped?, 1, deadline: 1.0)).to be(true)
+    end
+
+    it 'polls then gives up after the deadline' do
+      allow(manager).to receive(:sleep)
+      allow(Process).to receive(:waitpid).and_return(nil)
+      t = Time.now
+      allow(Time).to receive(:now).and_return(t, t + 0.5, t + 2)
+      expect(manager.send(:reaped?, 1, deadline: 1.0)).to be(false)
+      expect(manager).to have_received(:sleep).with(0.05)
+    end
+  end
+
+  describe '#wait_for_server' do
+    it 'returns once the port is open' do
+      allow(manager).to receive(:port_open?).and_return(true)
+      manager.instance_variable_set(:@server_pid, 111)
+      expect { manager.send(:wait_for_server) }.not_to output.to_stderr
+    end
+
+    it 'breaks and warns when the server dies before binding' do
+      allow(manager).to receive_messages(port_open?: false, dead?: true)
+      manager.instance_variable_set(:@server_pid, 111)
+      expect { manager.send(:wait_for_server) }.to output(/did not become ready/).to_stderr
+    end
+
+    it 'warns after the readiness timeout elapses' do
+      allow(manager).to receive_messages(port_open?: false, dead?: false)
+      allow(manager).to receive(:sleep)
+      t = Time.now
+      # (stop_at base, one in-loop iteration, then past the deadline) so the loop body —
+      # including the sleep(0.1) backoff — runs exactly once before timing out.
+      allow(Time).to receive(:now).and_return(t, t, t + 100)
+      manager.instance_variable_set(:@server_pid, 111)
+      expect { manager.send(:wait_for_server) }.to output(/did not become ready/).to_stderr
+      expect(manager).to have_received(:sleep).with(0.1)
+    end
+  end
+
+  describe '#port_open?' do
+    it 'returns true when a TCP connection succeeds' do
+      allow(TCPSocket).to receive(:new).and_return(instance_double(TCPSocket, close: nil))
+      expect(manager.send(:port_open?, 8080)).to be(true)
+    end
+
+    it 'returns false when the connection is refused' do
+      allow(TCPSocket).to receive(:new).and_raise(Errno::ECONNREFUSED)
+      expect(manager.send(:port_open?, 8080)).to be(false)
     end
   end
 end

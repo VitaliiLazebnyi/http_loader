@@ -21,14 +21,22 @@ module HttpLoader
       # @return [void]
       sig { params(idx: Integer, err: StandardError).void }
       def handle_err(idx, err)
-        client = T.cast(self, HttpLoader::Client)
+        T.cast(self, HttpLoader::Client).logger.error("[Client #{idx}] #{classify_error(err)}")
+      end
+
+      # Maps a caught exception to its telemetry-tracked error token and message. The
+      # tokens (ERROR_EMFILE / ERROR_EADDRNOTAVAIL / ERROR_THREADLIMIT / ERROR_OTHER)
+      # are what the harness Telemetry scans for when reporting OS bottlenecks.
+      #
+      # @param err [StandardError] the caught exception
+      # @return [String] the classified "TOKEN: message" string
+      sig { params(err: StandardError).returns(String) }
+      def classify_error(err)
         case err
-        when Errno::EMFILE
-          client.logger.error("[Client #{idx}] ERROR_EMFILE: #{err.message}")
-        when Errno::EADDRNOTAVAIL
-          client.logger.error("[Client #{idx}] ERROR_EADDRNOTAVAIL: Ephemeral port limit reached.")
-        else
-          client.logger.error("[Client #{idx}] ERROR_OTHER: #{err.message}")
+        when Errno::EMFILE then "ERROR_EMFILE: #{err.message}"
+        when Errno::EADDRNOTAVAIL then 'ERROR_EADDRNOTAVAIL: Ephemeral port limit reached.'
+        when ThreadError, Errno::EAGAIN then "ERROR_THREADLIMIT: #{err.message}"
+        else "ERROR_OTHER: #{err.message}"
         end
       end
     end
