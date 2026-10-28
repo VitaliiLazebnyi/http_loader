@@ -25,5 +25,10 @@ mutation:
     # *value or type argument* are distinct nodes and are still tested.
     - send{selector=must}
     - send{selector=cast}
+    # `T.type_alias { ... }` blocks define a static type, checked by `srb tc`, never executed as
+    # behaviour. Mutating the type expression inside only changes a compile-time annotation (and
+    # sorbet-runtime checks generics shallowly), so no runtime test can observe it -- same basis as
+    # a `sig` block.
+    - block{receiver=send{selector=type_alias}}
 coverage_criteria:
   process_abort: true

@@ -32,9 +32,9 @@ RSpec.describe HttpLoader::Client::TargetManager do
       expect(described_class.new(config(target_urls: ['https://secure'])).protocol_label).to eq('EXTERNAL HTTPS')
     end
 
-    it 'rejects a hostless URL with a clear configuration error' do
+    it 'rejects a hostless URL with a clear configuration error naming the value' do
       expect { described_class.new(config(target_urls: ['foo.com'])) }
-        .to raise_error(ArgumentError, /missing host/)
+        .to raise_error(ArgumentError, 'Invalid --url (missing host): "foo.com"')
     end
 
     it 'labels a scheme-less but hosted URL with a blank scheme' do
@@ -91,6 +91,10 @@ RSpec.describe HttpLoader::Client::TargetManager do
 
     it 'maps a zero read_timeout to nil (unlimited)' do
       expect(described_class.new(config(read_timeout: 0.0)).contexts.first[:http_args][:read_timeout]).to be_nil
+    end
+
+    it 'passes a sub-second read_timeout through (the boundary is strictly > 0)' do
+      expect(described_class.new(config(read_timeout: 0.5)).contexts.first[:http_args][:read_timeout]).to eq(0.5)
     end
 
     it 'adds SSL options (verify disabled) for an HTTPS target' do
@@ -179,9 +183,10 @@ RSpec.describe HttpLoader::Client::TargetManager do
       expect(opts).not_to have_key(:proxy_pass)
     end
 
-    it 'raises a clear error on an unparseable proxy entry' do
+    it 'raises a clear error naming the unparseable proxy entry' do
       mgr = described_class.new(config(proxy_pool: ['@']))
-      expect { mgr.http_opts_for(0, {}) }.to raise_error(ArgumentError, /Invalid --proxy_pool entry/)
+      expect { mgr.http_opts_for(0, {}) }
+        .to raise_error(ArgumentError, 'Invalid --proxy_pool entry: "@"')
     end
   end
 end
