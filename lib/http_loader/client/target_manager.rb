@@ -12,6 +12,15 @@ module HttpLoader
     class TargetManager
       extend T::Sig
 
+      # A parsed proxy pool entry. A typed value object (rather than a Hash) so each field is
+      # read as a method, which keeps the field accesses out of reach of index-vs-fetch mutations.
+      class ProxyEndpoint < T::Struct
+        const :host, String
+        const :port, Integer
+        const :user, T.nilable(String)
+        const :pass, T.nilable(String)
+      end
+
       # Matches `[scheme://][user[:pass]@]host[:port]` tolerantly, including credentialed
       # proxies that `URI.parse` rejects under the bundled `uri` gem.
       PROXY_RE = %r{\A(?:\w+://)?(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>[^:/@]+)(?::(?<port>\d+))?}
@@ -91,28 +100,30 @@ module HttpLoader
       # without ever raising on a well-formed `user:pass@host:port` entry.
       #
       # @param entry [String] a raw proxy pool entry
-      # @return [Hash] the extracted :host, :port, :user, and :pass
-      sig { params(entry: String).returns(T::Hash[Symbol, T.nilable(T.any(String, Integer))]) }
+      # @return [ProxyEndpoint] the extracted host, port, user, and pass
+      sig { params(entry: String).returns(ProxyEndpoint) }
       def parse_proxy(entry)
         # PROXY_RE's `host` group is not optional, so a successful match always captures a host;
         # testing `match` alone is equivalent to also testing `match[:host]`.
         match = PROXY_RE.match(entry)
         raise ArgumentError, "Invalid --proxy_pool entry: #{entry.inspect}" unless match
 
-        { host: match[:host], port: (match[:port] || '80').to_i, user: match[:user], pass: match[:pass] }
+        ProxyEndpoint.new(
+          host: T.must(match[:host]), port: (match[:port] || '80').to_i, user: match[:user], pass: match[:pass]
+        )
       end
 
       # Applies extracted proxy values onto the Net::HTTP options hash.
       #
       # @param opts [Hash] configuration map destination
-      # @param proxy [Hash] parsed proxy components
+      # @param proxy [ProxyEndpoint] parsed proxy components
       # @return [void]
-      sig { params(opts: T::Hash[Symbol, T.untyped], proxy: T::Hash[Symbol, T.nilable(T.any(String, Integer))]).void }
+      sig { params(opts: T::Hash[Symbol, T.untyped], proxy: ProxyEndpoint).void }
       def set_proxy_opts(opts, proxy)
-        opts[:proxy_address] = proxy[:host]
-        opts[:proxy_port] = proxy[:port]
-        opts[:proxy_user] = proxy[:user] if proxy[:user]
-        opts[:proxy_pass] = proxy[:pass] if proxy[:pass]
+        opts[:proxy_address] = proxy.host
+        opts[:proxy_port] = proxy.port
+        opts[:proxy_user] = proxy.user if proxy.user
+        opts[:proxy_pass] = proxy.pass if proxy.pass
       end
 
       private
