@@ -27,8 +27,6 @@ module HttpLoader
       def validate!
         raise ArgumentError, "--connections_count must be greater than 0 (got #{connections})" unless connections.positive?
         raise ArgumentError, "--target_duration must not be negative (got #{target_duration})" if target_duration < 0.0
-
-        nil
       end
     end
   end

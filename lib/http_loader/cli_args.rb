@@ -22,7 +22,6 @@ module HttpLoader
         parse_core(opts, options)
         parse_ping(opts, options)
         parse_timeouts(opts, options)
-        nil
       end
 
       # Parses core connectivity and URL parameters.
@@ -36,7 +35,6 @@ module HttpLoader
         opts.on('--https', 'Use HTTPS natively') { options[:use_https] = true }
         opts.on('--url=URL', String, 'URLs') { |v| options[:target_urls] = split_list(T.cast(v, String)) }
         opts.on('--verbose', 'Verbose logging') { options[:verbose] = true }
-        nil
       end
 
       # Parses ping enablement and intervals.
@@ -48,7 +46,6 @@ module HttpLoader
       def self.parse_ping(opts, options)
         opts.on('--[no-]ping', 'Ping') { |v| options[:ping] = T.cast(v, T::Boolean) }
         opts.on('--ping_period=SECONDS', Integer, 'Ping period') { |v| options[:ping_period] = T.cast(v, Integer) }
-        nil
       end
 
       # Parses timeout, rate-limiting, and concurrency thresholds.
@@ -62,7 +59,6 @@ module HttpLoader
         opts.on('--connections_per_second=R', Integer, 'Rate') { |v| options[:connections_per_second] = T.cast(v, Integer) }
         opts.on('--max_concurrent_connections=C', Integer, 'Max') { |v| options[:max_concurrent_connections] = T.cast(v, Integer) }
         parse_advanced(opts, options)
-        nil
       end
 
       # Parses advanced connection lifecycle controls like reopen logic.
@@ -76,7 +72,6 @@ module HttpLoader
         opts.on('--reopen_interval=S', Float, 'Reopen delay') { |v| options[:reopen_interval] = T.cast(v, Float) }
         opts.on('--read_timeout=S', Float, 'Read timeout') { |v| options[:read_timeout] = T.cast(v, Float) }
         parse_tracking(opts, options)
-        nil
       end
 
       # Parses tracking and obfuscation parameters like jitter and user agents.
@@ -90,7 +85,6 @@ module HttpLoader
         opts.on('--jitter=F', Float, 'Randomize sleep') { |v| options[:jitter] = T.cast(v, Float) }
         opts.on('--track_status_codes', 'Track HTTP codes') { options[:track_status_codes] = true }
         parse_endpoints(opts, options)
-        nil
       end
 
       # Parses IP binding, proxying, and ramp-up behavior.
@@ -104,7 +98,6 @@ module HttpLoader
         opts.on('--bind_ips=IPS', String, 'IPs') { |v| options[:bind_ips] = split_list(T.cast(v, String)) }
         opts.on('--proxy_pool=U', String, 'URI pool') { |v| options[:proxy_pool] = split_list(T.cast(v, String)) }
         parse_slowloris(opts, options)
-        nil
       end
 
       # Splits a comma-delimited CLI list, trimming whitespace and dropping empty
@@ -128,7 +121,6 @@ module HttpLoader
         opts.on('--qps_per_connection=R', Integer, 'QPS') { |v| options[:qps_per_connection] = T.cast(v, Integer) }
         opts.on('--headers=L', String, 'Headers') { |v| parse_headers(T.cast(v, String), options) }
         parse_slowloris_delays(opts, options)
-        nil
       end
 
       # Parses a single `Key: Value` header from one `--headers` occurrence. Supplying
@@ -166,7 +158,6 @@ module HttpLoader
         end
         opts.on('--export_json=FILE', String) { nil }
         opts.on('--target_duration=S', Float) { nil }
-        nil
       end
     end
 
@@ -184,7 +175,6 @@ module HttpLoader
         parse_harness_core(opts, options)
         parse_harness_extras(opts, options)
         ignore_core_args(opts)
-        nil
       end
 
       # Parses core connection args for harness.
@@ -229,7 +219,6 @@ module HttpLoader
       sig { params(opts: OptionParser).void }
       def self.ignore_core_args(opts)
         IGNORED_CLIENT_FLAGS.each { |flag| opts.on(flag) { nil } }
-        nil
       end
     end
   end

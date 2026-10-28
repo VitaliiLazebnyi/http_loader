@@ -44,7 +44,6 @@ module HttpLoader
         validate_positive_bounds
         validate_non_negative_bounds
         warn_on_oversubscription
-        nil
       end
 
       private
@@ -81,7 +80,7 @@ module HttpLoader
       # @return [void]
       sig { params(name: Symbol, value: Numeric).void }
       def require_positive!(name, value)
-        return if value.to_f > 0.0
+        return if value > 0.0
 
         raise ArgumentError, "--#{name} must be greater than 0 (got #{value})"
       end
@@ -93,7 +92,7 @@ module HttpLoader
       # @return [void]
       sig { params(name: Symbol, value: Numeric).void }
       def require_non_negative!(name, value)
-        return unless value.to_f < 0.0
+        return unless value < 0.0
 
         raise ArgumentError, "--#{name} must not be negative (got #{value})"
       end

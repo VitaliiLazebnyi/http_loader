@@ -1,0 +1,22 @@
+# Mutation testing configuration. Every subject in lib/ is mutated and every mutation must be
+# killed by the spec suite (see CONTRIBUTING.md).
+usage: opensource
+integration:
+  name: rspec
+requires:
+  - http_loader
+includes:
+  - lib
+matcher:
+  subjects:
+    - HttpLoader*
+mutation:
+  timeout: 20.0
+  # Mutations that cannot change observable behavior. Each pattern is matched against the node
+  # being mutated. Every entry states why it is equivalent.
+  ignore_patterns:
+    # `sig { ... }` blocks are checked statically by `srb tc` (and at runtime by sorbet-runtime);
+    # mutating the signature DSL only produces type errors the method's own examples already surface.
+    - block{receiver=send{selector=sig}}
+coverage_criteria:
+  process_abort: true
