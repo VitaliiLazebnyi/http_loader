@@ -15,7 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RUBYOPT: -W:deprecated -W:performance
+  # Deprecation warnings are enforced (the warning gate fails on any). -W:performance is NOT
+  # enabled: on Ruby 3.3/3.4 it surfaces an irreducible rubygems/VM "object shape variations"
+  # notice from Gem::Specification loading, which is not a code issue and cannot be fixed here.
+  RUBYOPT: -W:deprecated
 
 jobs:
   test:

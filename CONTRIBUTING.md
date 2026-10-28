@@ -68,7 +68,7 @@ docker build -t http_loader:ci .     # hadolint-clean Dockerfile, pinned base di
   - The sole configured warning opt-out is `Warning[:experimental] = false` at the CLI and
     spec entry points, for the `IO::Buffer` experimental-feature notice that the async fiber
     scheduler triggers. Deprecation and performance warnings stay on.
-- **No warnings.** Tests run with `-W:deprecated -W:performance`, and every workflow ends
+- **No warnings.** Tests run with `-W:deprecated`, and every workflow ends
   with a "Warning gate" job (`script/warning_gate.sh`) that fails the run when the log of any
   job contains a warning or a deprecation notice.
 - **Behavior is specified.** Every behavioral fix needs a regression spec, and every

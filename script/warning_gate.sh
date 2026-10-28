@@ -8,6 +8,11 @@
 set -euo pipefail
 
 pattern='warning:|WARNING:|DEPRECATION|DEPRECATED|##\[warning\]|is deprecated|will be deprecated|Node\.js [0-9]+ actions are deprecated'
+# The one kind of matching line that is not a warning: CodeQL prints the JSON schema of its
+# extractor options, whose "title"/"description" fields document a deprecated option ("DEPRECATED
+# - Whether to use buildless ..."). Only such JSON documentation fields are skipped; the same
+# words anywhere else still fail.
+documentation='^[0-9TZ:.-]+ +"(title|description)" : "'
 
 jobs=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
   --jq ".jobs[] | select(.name != \"${GATE_JOB_NAME}\" and .conclusion != \"skipped\") | \"\(.id)\t\(.name)\"")
@@ -20,7 +25,7 @@ while IFS=$'\t' read -r id name; do
   log=$(curl --fail --silent --show-error --location \
     --header "Authorization: Bearer ${GH_TOKEN}" --header 'Accept: application/vnd.github+json' \
     "${GITHUB_API_URL:-https://api.github.com}/repos/${GITHUB_REPOSITORY}/actions/jobs/${id}/logs")
-  hits=$(printf '%s\n' "$log" | grep -nE -e "$pattern" || true)
+  hits=$(printf '%s\n' "$log" | grep -nE -e "$pattern" | grep -vE -e "^[0-9]+:${documentation#^}" || true)
   if [ -n "$hits" ]; then
     printf '::error::Warnings in the log of job "%s"\n%s\n\n' "$name" "$hits"
     status=1

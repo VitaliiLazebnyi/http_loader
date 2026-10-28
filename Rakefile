@@ -28,9 +28,12 @@ desc 'Generate the gem RBIs with Tapioca, then run the Sorbet type checker'
 task :typecheck do
   # Tapioca runs from its own bundle. Under `bundle exec rake` the environment belongs to the
   # main bundle, so the nested commands run in an unbundled environment.
+  # BUNDLE_DEPLOYMENT/FROZEN are forced off: the typecheck bundle has no committed lockfile
+  # (it is generated here), which deployment mode refuses. CI's cached main bundle sets them on.
+  nested = 'env BUNDLE_GEMFILE=typecheck.gemfile BUNDLE_DEPLOYMENT=false BUNDLE_FROZEN=false'
   Bundler.with_unbundled_env do
-    sh 'env BUNDLE_GEMFILE=typecheck.gemfile bundle install --quiet'
-    sh 'env BUNDLE_GEMFILE=typecheck.gemfile bundle exec tapioca gem'
+    sh "#{nested} bundle install --quiet"
+    sh "#{nested} bundle exec tapioca gem"
   end
   # Tapioca already merges the RBIs that gems ship themselves into the generated ones; srb must
   # not load them a second time.

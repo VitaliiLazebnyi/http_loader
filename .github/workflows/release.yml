@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RUBYOPT: -W:deprecated -W:performance
+  RUBYOPT: -W:deprecated
 
 jobs:
   # Gate the release on the full verification suite so a broken tagged commit can never ship.
