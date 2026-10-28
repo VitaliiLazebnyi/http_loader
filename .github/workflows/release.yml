@@ -1,53 +1,111 @@
-name: Release
+name: Automated Release
 
 on:
   push:
     tags:
-      - 'v*.*.*' # Triggers on semantic version tags like v1.0.0
+      - 'v*.*.*'
+
+permissions: {}
+
+# Never cancel a release in flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RUBYOPT: -W:deprecated -W:performance
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  # Gate the release on the full verification suite so a broken tagged commit can never ship.
+  verify:
+    name: Verify
+    runs-on: ubuntu-24.04
     permissions:
-      contents: write # Required to create a GitHub Release
-      id-token: write # Required for OIDC Trusted Publishing
+      contents: read
+    env:
+      CI: "true"
     steps:
-      - uses: actions/checkout@v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '4.0.2'
-          bundler-cache: true
+    # No dependency cache in the release pipeline: a poisoned cache must never reach a published gem.
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: false
+    - name: Check the Ruby version
+      run: script/check_ruby.sh
+    - run: bundle install --jobs 4 --retry 3
+    - run: bundle exec rake spec rubocop suppressions typecheck yard reek flay audit
 
-      - name: Set Release Version
-        run: |
-          TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          sed -i "s/VERSION = '.*'/VERSION = '$TAG_VERSION'/" lib/http_loader/version.rb
+  build_and_release:
+    name: Build and release
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create the GitHub release and attach the gem
+      id-token: write # RubyGems trusted publishing (OIDC)
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
 
-      - name: Setup Gem Signing
-        env:
-          GEM_PRIVATE_KEY: ${{ secrets.GEM_PRIVATE_KEY }}
-        run: |
-          mkdir -p ~/.gem
-          echo "$GEM_PRIVATE_KEY" > ~/.gem/gem-private_key.pem
-          chmod 0600 ~/.gem/gem-private_key.pem
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: false
+    - name: Check the Ruby version
+      run: script/check_ruby.sh
+    - run: bundle install --jobs 4 --retry 3
 
-      - name: Build Gem
-        env:
-          GEM_SIGN: '1'
-        run: gem build http_loader.gemspec
+    # Require the tag to match the committed version.rb; a mistyped tag fails loudly.
+    - name: Validate tag against version.rb
+      run: |
+        TAG_NAME="${GITHUB_REF_NAME}"
+        if ! printf '%s' "$TAG_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "::error::Tag '$TAG_NAME' does not match the required vX.Y.Z format." >&2
+          exit 1
+        fi
+        VERSION="${TAG_NAME#v}"
+        FILE_VERSION="$(ruby -r ./lib/http_loader/version -e 'puts HttpLoader::VERSION')"
+        if [ "$VERSION" != "$FILE_VERSION" ]; then
+          echo "::error::Tag version '$VERSION' does not match lib/http_loader/version.rb ('$FILE_VERSION'). Update version.rb, commit, then re-tag." >&2
+          exit 1
+        fi
+        echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: "*.gem"
-          generate_release_notes: true
+    - name: Recover the signing key
+      env:
+        GEM_PRIVATE_KEY: ${{ secrets.GEM_PRIVATE_KEY }}
+      run: |
+        if [ -z "$GEM_PRIVATE_KEY" ]; then
+          echo "::error::GEM_PRIVATE_KEY secret is missing or empty; refusing to publish an unsigned gem." >&2
+          exit 1
+        fi
+        mkdir -p ~/.gem
+        printf '%s\n' "$GEM_PRIVATE_KEY" > ~/.gem/gem-private_key.pem
+        chmod 0600 ~/.gem/gem-private_key.pem
 
-      - name: Configure RubyGems Credentials
-        uses: rubygems/configure-rubygems-credentials@v1.0.0
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    - name: Build the signed gem
+      env:
+        GEM_SIGN: '1'
+      run: gem build http_loader.gemspec
 
-      - name: Publish to RubyGems
-        run: gem push *.gem
+    - name: Verify the built gem is signed
+      run: |
+        gem spec "http_loader-${VERSION}.gem" cert_chain | grep -q 'BEGIN CERTIFICATE' || {
+          echo "::error::Built gem is not signed." >&2
+          exit 1
+        }
+
+    - name: Create the GitHub release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release create "$GITHUB_REF_NAME" "http_loader-${VERSION}.gem" --title "$GITHUB_REF_NAME" --generate-notes
+
+    # Pinned to the v2.1.0 release SHA (credential-handling step; never track a mutable ref here).
+    - uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
+
+    - run: gem push "http_loader-${VERSION}.gem"
