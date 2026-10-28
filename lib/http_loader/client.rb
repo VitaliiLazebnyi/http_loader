@@ -9,6 +9,7 @@ require 'async'
 require 'async/semaphore'
 require 'time'
 require_relative 'client/config'
+require_relative 'client/pacing'
 require_relative 'client/logger'
 require_relative 'client/target_manager'
 require_relative 'client/slowloris'
@@ -22,6 +23,7 @@ module HttpLoader
   class Client
     extend T::Sig
     include ErrorHandler
+    include Pacing
 
     sig { returns(HttpLoader::Client::Logger) }
     attr_reader :logger
@@ -33,7 +35,7 @@ module HttpLoader
     sig { params(config: Config).void }
     def initialize(config)
       config.validate!
-      @config = T.let(config, Config)
+      @config = config
       @logger = T.let(Logger.new(config.verbose), Logger)
       @target_manager = T.let(TargetManager.new(config), TargetManager)
       @slow_sess = T.let(Slowloris.new(config, @logger), Slowloris)
@@ -69,7 +71,7 @@ module HttpLoader
       conn_tasks = T.let([], T::Array[Async::Task])
       @config.connections.times do |i|
         ramp = calc_ramp
-        perform_sleep(ramp, task: task) if i.positive? && ramp > 0.0
+        perform_sleep(ramp) if i.positive? && ramp > 0.0
         conn_tasks << sem.async { exec_conn(i) }
       end
 
@@ -102,26 +104,15 @@ module HttpLoader
       end
     end
 
-    # Executes sleep logic during ramp-up phases.
+    # Executes sleep logic during ramp-up phases. Inside the Async reactor `Kernel#sleep` is
+    # fiber-aware (it suspends this fiber and yields to the scheduler), so it paces the ramp
+    # without blocking the reactor and without the deprecated `Async::Task#sleep`.
     #
     # @param dur [Float] the duration to sleep
-    # @param task [Async::Task, nil] the async task if running within engine
     # @return [void]
-    sig { params(dur: Float, task: T.nilable(Async::Task)).void }
-    def perform_sleep(dur, task: nil)
-      task ? task.sleep(dur) : sleep(dur)
-    end
-
-    # Applies randomization jitter to the base sleep interval.
-    #
-    # @param base [Float] the base sleep interval
-    # @return [Float] the jittered interval
-    sig { params(base: Float).returns(Float) }
-    def calc_sleep(base)
-      return base if @config.jitter.zero?
-
-      v = base * @config.jitter
-      [0.0, base + rand(-v..v)].max
+    sig { params(dur: Float).void }
+    def perform_sleep(dur)
+      sleep(dur)
     end
 
     # Continuously attempts connection runs per fiber worker.
@@ -134,7 +125,7 @@ module HttpLoader
         run_session(idx, Time.now)
         break unless @config.reopen_closed_connections
 
-        sleep(calc_sleep(@config.reopen_interval))
+        sleep(jittered_interval(@config.reopen_interval, @config.jitter))
       end
     end
 

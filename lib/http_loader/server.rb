@@ -1,5 +1,4 @@
 # typed: strong
-# Justified Exception: Flawed upstream library typings (Rack and Rackup) prevent strong evaluation natively.
 # frozen_string_literal: true
 
 require 'sorbet-runtime'
@@ -152,9 +151,10 @@ module HttpLoader
     # @return [void]
     sig { params(cert: OpenSSL::X509::Certificate).void }
     def parse_cert_info(cert)
+      now = Time.now.utc
       cert.subject = cert.issuer = OpenSSL::X509::Name.parse('/CN=localhost')
-      cert.not_before = Time.now.utc
-      cert.not_after = Time.now.utc + (365 * 24 * 60 * 60)
+      cert.not_before = now
+      cert.not_after = now + (365 * 24 * 60 * 60)
     end
   end
 end

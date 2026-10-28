@@ -132,7 +132,8 @@ module HttpLoader
       # @return [void]
       sig { void }
       def spawn_client
-        extra = @config.client_args.empty? ? ["--connections_count=#{@config.connections}"] : @config.client_args
+        client_args = @config.client_args
+        extra = client_args.empty? ? ["--connections_count=#{@config.connections}"] : client_args
         @client_pid = spawn_child(['client', *extra], 'client.stdout.log', 'client.stderr.log')
         puts "[Harness] Started client with PID #{@client_pid}"
       end

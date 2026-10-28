@@ -6,7 +6,6 @@ require 'open3'
 require 'fileutils'
 require 'json'
 require 'socket'
-# Justified Exception: E2E Integration tests organically require complex sequential process bootstrapping mathematically stretching isolated expectation boundaries.
 RSpec.describe HttpLoader, type: :integration do
   let(:bin_path) { File.expand_path('../../bin/http_loader', __dir__) }
   let(:log_dir) { File.expand_path('../../logs', __dir__) }
@@ -83,8 +82,8 @@ RSpec.describe HttpLoader, type: :integration do
       out, _, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(out).to match(/Starting test with 2 connections to \*\*HTTP\*\*/)
-      expect(read_client_log).to match(/Starting 2 HTTP connections/)
+      expect(out).to include('Starting test with 2 connections to **HTTP**')
+      expect(read_client_log).to include('Starting 2 HTTP connections')
     end
   end
 
@@ -95,9 +94,9 @@ RSpec.describe HttpLoader, type: :integration do
       out, _, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(out).to match(/Starting test with 2 connections to \*\*HTTPS\*\*/)
-      expect(read_client_log).to match(/Starting 2 HTTPS connections/)
-      expect(out).to match(/Target duration mathematically reached/)
+      expect(out).to include('Starting test with 2 connections to **HTTPS**')
+      expect(read_client_log).to include('Starting 2 HTTPS connections')
+      expect(out).to include('Target duration mathematically reached')
     end
   end
 
@@ -107,7 +106,7 @@ RSpec.describe HttpLoader, type: :integration do
       _, _err, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(read_client_log).to match(/Starting 2 HTTP connections/)
+      expect(read_client_log).to include('Starting 2 HTTP connections')
     end
   end
 
@@ -117,7 +116,7 @@ RSpec.describe HttpLoader, type: :integration do
       _, _err, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(read_client_log).to match(/Starting 2 HTTP connections/)
+      expect(read_client_log).to include('Starting 2 HTTP connections')
     end
   end
 
@@ -129,7 +128,7 @@ RSpec.describe HttpLoader, type: :integration do
         out, _err, status = run_harness(args)
 
         expect(status.exitstatus).to eq(0)
-        expect(out).to match(/\*\*EXTERNAL URL\*\*/)
+        expect(out).to include('**EXTERNAL URL**')
 
         telemetry_file = File.join(log_dir, 'telemetry.json')
         expect(File.exist?(telemetry_file)).to be true
@@ -144,19 +143,19 @@ RSpec.describe HttpLoader, type: :integration do
     it 'fast-fails with a Configuration Error on connections_count=0 instead of deadlocking' do
       _out, err, status = run_client(['--connections_count=0'])
       expect(status.exitstatus).to eq(1)
-      expect(err).to match(/Configuration Error/)
+      expect(err).to include('Configuration Error')
     end
 
     it 'fast-fails on a non-numeric flag value' do
       _out, err, status = run_client(['--connections_count=abc'])
       expect(status.exitstatus).to eq(1)
-      expect(err).to match(/Configuration Error/)
+      expect(err).to include('Configuration Error')
     end
 
     it 'fast-fails on a malformed target URL' do
       _out, err, status = run_client(['--connections_count=1', '--url=http://bad host/'])
       expect(status.exitstatus).to eq(1)
-      expect(err).to match(/Configuration Error/)
+      expect(err).to include('Configuration Error')
     end
   end
 end

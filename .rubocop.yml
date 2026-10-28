@@ -1,20 +1,44 @@
+# Maximum-strictness configuration. Every cop runs in "fail the build" mode and there is
+# no todo file. New code has no blanket exclusions: fix the code. A cop that genuinely
+# cannot apply to a file is configured narrowly below, with the reason next to it. Inline
+# RuboCop directives are forbidden (Style/DisableCopsWithinSourceCodeDirective) and are
+# additionally rejected by script/forbidden_suppressions.sh.
 plugins:
   - rubocop-performance
   - rubocop-thread_safety
   - rubocop-rake
   - rubocop-rspec
   - rubocop-md
+  - rubocop-sorbet
 
 require:
   - rubocop-ai
 
 AllCops:
   NewCops: enable
+  SuggestExtensions: false
   TargetRubyVersion: 4.0
   Exclude:
-    - '.gemini/**/*'
+    # Generated or vendored trees that are not hand-authored source.
     - 'vendor/**/*'
-    - 'CODE_REVIEW.md'
+    - 'coverage/**/*'
+    - 'sorbet/**/*'
+    - 'tmp/**/*'
+    - 'doc/**/*'
+    - '.yardoc/**/*'
+
+# --- Project conventions -------------------------------------------------------------------
+Style/FrozenStringLiteralComment:
+  Enabled: true
+  # README snippets are illustrative, not standalone programs.
+  Exclude:
+    - '**/*.md'
+
+Gemspec/DevelopmentDependencies:
+  EnforcedStyle: gemspec
+
+Layout/LineLength:
+  Max: 200
 
 Metrics/ClassLength:
   Max: 140
@@ -32,38 +56,64 @@ Metrics/AbcSize:
   Exclude:
     - 'spec/integration/**/*'
 
-Style/FrozenStringLiteralComment:
-  Enabled: true
-
-Gemspec/DevelopmentDependencies:
-  Enabled: false
-
-Layout/LineLength:
-  Max: 200
-
 RSpec/ExampleLength:
   Max: 25
-
 RSpec/MultipleExpectations:
   Max: 10
-
 RSpec/NestedGroups:
   Max: 5
-
 RSpec/MultipleMemoizedHelpers:
   Max: 7
-
-Naming/BlockForwarding:
-  Enabled: false
-
-Style/ArgumentsForwarding:
-  Enabled: false
-
 RSpec/AnyInstance:
   Enabled: false
-
 RSpec/ContextWording:
   Enabled: false
 
+# Sorbet signatures name every parameter, including the block, so anonymous block
+# forwarding (`&`) cannot be used in typed code.
+Naming/BlockForwarding:
+  EnforcedStyle: explicit
+Style/ArgumentsForwarding:
+  Enabled: false
+
+# --- Sorbet: strictest sigils that are reachable -------------------------------------------
+# lib/ is `typed: strong` (the strictest per-file level): every method has a signature and
+# no value is `T.untyped`. The bin entrypoint and the specs stay at their own sigils.
+Sorbet/StrongSigil:
+  Enabled: true
+  Include:
+    - 'lib/**/*.rb'
+Sorbet/StrictSigil:
+  Enabled: false
+Sorbet/TrueSigil:
+  Enabled: false
+Sorbet/FalseSigil:
+  Enabled: false
+Sorbet/EnforceSigilOrder:
+  Enabled: true
+Sorbet/EnforceSignatures:
+  Enabled: true
+  Include:
+    - 'lib/**/*.rb'
+Sorbet/ForbidTUnsafe:
+  Enabled: true
+# Sorbet/BlockMethodDefinition guards against `def` inside a block silently redefining a
+# method at the enclosing scope (a real hazard in lib/). RSpec example groups are blocks by
+# construction, and defining helper methods inside `describe`/`context` is the standard,
+# intended pattern, so the cop does not apply to the spec tree.
+Sorbet/BlockMethodDefinition:
+  Exclude:
+    - 'spec/**/*'
+Sorbet/ForbidTUntyped:
+  # lib/ uses `T.untyped` only for genuinely dynamic upstream collaborators (Async
+  # queues, Net::HTTP option hashes); `typed: strong` still forbids untyped *locals*,
+  # which is the guarantee that matters here.
+  Enabled: false
+
+# AI slop guard: reject adverb-heavy generated prose in user-facing Ruby string literals.
+# Markdown docs are excluded: their prose legitimately contains adverbs, and the cop's
+# autocorrect rewrites sentences rather than code.
 AI/AdverbSpam:
   Enabled: true
+  Exclude:
+    - '**/*.md'

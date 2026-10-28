@@ -139,16 +139,4 @@ RSpec.describe HttpLoader::Client::HttpSession do
       expect(sess).to have_received(:sleep).with(a_value <= 0.1)
     end
   end
-
-  describe 'budget helpers' do
-    let(:unbounded) { described_class.new(config.with(http_loader_timeout: 0.0), logger) }
-
-    it 'treats a zero timeout as an unbounded budget (nil)' do
-      expect(unbounded.send(:remaining_budget, Time.now)).to be_nil
-    end
-
-    it 'does not cap the sleep when the budget is unbounded' do
-      expect(unbounded.send(:cap_sleep, 2.5, nil)).to eq(2.5)
-    end
-  end
 end

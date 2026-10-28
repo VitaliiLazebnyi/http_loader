@@ -210,60 +210,25 @@ module HttpLoader
         opts.on('--target_duration=S', Float) { |v| options[:target_duration] = T.cast(v, Float) }
       end
 
-      # Binds OptionParser NO-OP lambdas for core args.
+      # Client-only flags the harness accepts but ignores: it forwards the original argv to the
+      # client subprocess verbatim, and only needs OptionParser not to reject these while it
+      # extracts its own structural flags. Listing them as data (rather than one no-op handler
+      # per flag) keeps the harness flag surface in one place with no duplicated method bodies.
+      IGNORED_CLIENT_FLAGS = %w[
+        --verbose --[no-]ping --ping_period=S --http_loader_timeout=S --connections_per_second=R
+        --max_concurrent_connections=C --reopen_closed_connections --reopen_interval=S --read_timeout=S
+        --user_agent=A --jitter=F --track_status_codes --ramp_up=S --bind_ips=IPS --proxy_pool=U
+        --qps_per_connection=R --headers=LIST --slowloris_delay=S
+      ].freeze
+
+      # Registers a discarding handler for every client-only flag so OptionParser tolerates
+      # them during the harness's own structural parse.
       #
       # @param opts [OptionParser] the active parser instance
       # @return [void]
       sig { params(opts: OptionParser).void }
       def self.ignore_core_args(opts)
-        opts.on('--verbose') { nil }
-        opts.on('--[no-]ping') { nil }
-        opts.on('--ping_period=S', Integer) { nil }
-        opts.on('--http_loader_timeout=S', Float) { nil }
-        opts.on('--connections_per_second=R', Integer) { nil }
-        ignore_time_args(opts)
-        nil
-      end
-
-      # Binds OptionParser NO-OP lambdas for timing variables.
-      #
-      # @param opts [OptionParser] the active parser instance
-      # @return [void]
-      sig { params(opts: OptionParser).void }
-      def self.ignore_time_args(opts)
-        opts.on('--max_concurrent_connections=C', Integer) { nil }
-        opts.on('--reopen_closed_connections') { nil }
-        opts.on('--reopen_interval=S', Float) { nil }
-        opts.on('--read_timeout=S', Float) { nil }
-        opts.on('--user_agent=A', String) { nil }
-        ignore_advanced_args(opts)
-        nil
-      end
-
-      # Binds OptionParser NO-OP lambdas for advanced connection variables.
-      #
-      # @param opts [OptionParser] the active parser instance
-      # @return [void]
-      sig { params(opts: OptionParser).void }
-      def self.ignore_advanced_args(opts)
-        opts.on('--jitter=F', Float) { nil }
-        opts.on('--track_status_codes') { nil }
-        opts.on('--ramp_up=S', Float) { nil }
-        opts.on('--bind_ips=IPS', String) { nil }
-        opts.on('--proxy_pool=U', String) { nil }
-        ignore_payload_args(opts)
-        nil
-      end
-
-      # Binds OptionParser NO-OP lambdas for slowloris and HTTP headers variables.
-      #
-      # @param opts [OptionParser] the active parser instance
-      # @return [void]
-      sig { params(opts: OptionParser).void }
-      def self.ignore_payload_args(opts)
-        opts.on('--qps_per_connection=R', Integer) { nil }
-        opts.on('--headers=LIST', String) { nil }
-        opts.on('--slowloris_delay=S', Float) { nil }
+        IGNORED_CLIENT_FLAGS.each { |flag| opts.on(flag) { nil } }
         nil
       end
     end

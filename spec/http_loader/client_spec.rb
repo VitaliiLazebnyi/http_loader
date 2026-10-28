@@ -65,32 +65,10 @@ RSpec.describe HttpLoader::Client do
   end
 
   describe '#perform_sleep' do
-    it 'delegates to sleep if no task is securely natively passed' do
+    it 'delegates to the reactor-aware Kernel#sleep' do
       allow(client).to receive(:sleep)
       client.send(:perform_sleep, 0.1)
       expect(client).to have_received(:sleep).with(0.1)
-    end
-
-    it 'delegates securely gracefully to task intelligently' do
-      task = instance_double(Async::Task)
-      allow(task).to receive(:sleep)
-      client.send(:perform_sleep, 0.1, task: task)
-      expect(task).to have_received(:sleep).with(0.1)
-    end
-  end
-
-  describe '#calc_sleep' do
-    it 'returns natively exact base cleanly accurately naturally' do
-      cfg = HttpLoader::Client::Config.new(connections: 2, jitter: 0.0)
-      cli = described_class.new(cfg)
-      expect(cli.send(:calc_sleep, 10.0)).to eq(10.0)
-    end
-
-    it 'returns variance bounds mathematically when actively calculated properly dynamically' do
-      cfg = HttpLoader::Client::Config.new(connections: 2, jitter: 0.5)
-      cli = described_class.new(cfg)
-      allow(cli).to receive(:rand).and_return(0.0)
-      expect(cli.send(:calc_sleep, 10.0)).to eq(10.0)
     end
   end
 

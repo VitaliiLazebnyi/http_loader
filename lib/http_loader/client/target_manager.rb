@@ -14,10 +14,7 @@ module HttpLoader
 
       # Matches `[scheme://][user[:pass]@]host[:port]` tolerantly, including credentialed
       # proxies that `URI.parse` rejects under the bundled `uri` gem.
-      PROXY_RE = T.let(
-        %r{\A(?:\w+://)?(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>[^:/@]+)(?::(?<port>\d+))?},
-        Regexp
-      )
+      PROXY_RE = %r{\A(?:\w+://)?(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>[^:/@]+)(?::(?<port>\d+))?}
 
       # Initializes the TargetManager tracking connection URI configurations.
       #
@@ -155,7 +152,6 @@ module HttpLoader
       # @return [String, nil] pure textual Internet protocol network target coordinates
       sig { params(uri: URI::Generic).returns(T.nilable(String)) }
       def resolve_ip(uri)
-        # ! SORBET BYPASS: Addrinfo returns T.untyped
         ip_info = T.cast(Addrinfo.getaddrinfo(T.must(uri.host), uri.port, nil, :STREAM), T::Array[Addrinfo])
         T.cast((ip_info.find(&:ipv4?) || ip_info.first)&.ip_address, T.nilable(String))
       rescue SocketError

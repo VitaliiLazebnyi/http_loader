@@ -125,10 +125,13 @@ module HttpLoader
       # @return [Array<String>] textual output logs targeting stderr mapped explicitly
       sig { params(counts: T::Hash[Symbol, Integer]).returns(T::Array[String]) }
       def build_bottleneck_messages(counts)
+        emfile = T.must(counts[:emfile])
+        eaddr = T.must(counts[:eaddr_count])
+        threads = T.must(counts[:thread_errors])
         errors = []
-        errors << "[OS FDs Limit: #{counts[:emfile]} EMFILE]" if T.must(counts[:emfile]).positive?
-        errors << "[OS Ports Limit: #{counts[:eaddr_count]} EADDRNOTAVAIL]" if T.must(counts[:eaddr_count]).positive?
-        errors << "[OS Thread Limit: #{counts[:thread_errors]} ThreadError]" if T.must(counts[:thread_errors]).positive?
+        errors << "[OS FDs Limit: #{emfile} EMFILE]" if emfile.positive?
+        errors << "[OS Ports Limit: #{eaddr} EADDRNOTAVAIL]" if eaddr.positive?
+        errors << "[OS Thread Limit: #{threads} ThreadError]" if threads.positive?
         errors
       end
     end

@@ -92,16 +92,4 @@ RSpec.describe HttpLoader::Client::Slowloris do
       expect(io.string).to eq('')
     end
   end
-
-  describe 'budget helpers' do
-    let(:unbounded) { described_class.new(config.with(http_loader_timeout: 0.0), logger) }
-
-    it 'treats a zero timeout as an unbounded budget (nil)' do
-      expect(unbounded.send(:remaining_budget, Time.now)).to be_nil
-    end
-
-    it 'does not cap the sleep when the budget is unbounded' do
-      expect(unbounded.send(:cap_sleep, 3.0, nil)).to eq(3.0)
-    end
-  end
 end

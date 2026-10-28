@@ -130,7 +130,8 @@ module HttpLoader
       sig { params(name: String, fallback: Integer).returns(Integer) }
       def query_getconf(name, fallback)
         out, _s = Open3.capture2('getconf', name)
-        out.to_i.positive? ? out.to_i : fallback
+        value = out.to_i
+        value.positive? ? value : fallback
       rescue StandardError
         fallback
       end

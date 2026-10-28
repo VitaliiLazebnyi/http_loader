@@ -68,8 +68,8 @@ RSpec.describe HttpLoader::Client::Logger do
       logger.info('test info')
       logger.error('test err')
       logger.flush_synchronously!
-      expect(read('client.log')).to match(/test info/)
-      expect(read('client.err')).to match(/test err/)
+      expect(read('client.log')).to include('test info')
+      expect(read('client.err')).to include('test err')
     end
 
     it 'handles an empty queue gracefully' do
@@ -90,7 +90,7 @@ RSpec.describe HttpLoader::Client::Logger do
         logger_task = logger.run_task(task)
         logger.info('hello-async')
         logger.error('boom-async')
-        task.sleep(0.05) # let the logger fiber process the queue
+        sleep(0.05) # reactor-aware: let the logger fiber process the queue
         logger_task.stop # Async::Task#stop must interrupt the blocking dequeue
       end
       expect(read('client.log')).to include('hello-async')

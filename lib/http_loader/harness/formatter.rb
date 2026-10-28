@@ -25,11 +25,13 @@ module HttpLoader
       # @return [String] formatted descriptor based on URLs count
       sig { params(harness: HttpLoader::Harness).returns(String) }
       def startup_target_msg(harness)
-        urls = harness.config.target_urls
-        return "**MULTIPLE TARGETS** (#{urls.size} URLs)." if urls.size > 1
-        return "**EXTERNAL URL** #{urls.first}." if urls.size == 1
+        config = harness.config
+        urls = config.target_urls
+        count = urls.size
+        return "**MULTIPLE TARGETS** (#{count} URLs)." if count > 1
+        return "**EXTERNAL URL** #{urls.first}." if count == 1
 
-        harness.config.use_https ? '**HTTPS**.' : '**HTTP**.'
+        config.use_https ? '**HTTPS**.' : '**HTTP**.'
       end
 
       # Outputs the top layer header frame for the metrics table.
@@ -37,10 +39,11 @@ module HttpLoader
       # @return [void]
       sig { void }
       def print_table_header
+        rule = '-' * 125
         Kernel.puts '[Harness] Monitoring resources (Press Ctrl+C to stop)...'
-        Kernel.puts '-' * 125
+        Kernel.puts rule
         Kernel.puts 'Time (UTC) | Real Conns  | Srv CPU/Thrds    | Srv Mem        | Srv Mem/Conn   | Cli CPU/Thrds    | Cli Mem        | Cli Mem/Conn  '
-        Kernel.puts '-' * 125
+        Kernel.puts rule
       end
 
       # Safely renders formatting table rows via string padding strategies.

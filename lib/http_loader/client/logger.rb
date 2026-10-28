@@ -77,7 +77,6 @@ module HttpLoader
       def info(message)
         return unless @verbose
 
-        # ! SORBET BYPASS: Queue push allows Object
         @log_queue << [:info, "[#{Time.now.utc.iso8601}] #{message}"]
       end
 
@@ -89,7 +88,6 @@ module HttpLoader
       # @return [void]
       sig { params(message: String).void }
       def status(message)
-        # ! SORBET BYPASS: Queue push allows Object
         @log_queue << [:info, "[#{Time.now.utc.iso8601}] #{message}"]
       end
 
@@ -99,7 +97,6 @@ module HttpLoader
       # @return [void]
       sig { params(message: String).void }
       def error(message)
-        # ! SORBET BYPASS: Queue push allows Object
         @log_queue << [:error, "[#{Time.now.utc.iso8601}] #{message}"]
       end
 

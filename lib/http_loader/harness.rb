@@ -99,10 +99,11 @@ module HttpLoader
     # @return [Boolean] evaluation if runtime duration has violated constraints
     sig { returns(T::Boolean) }
     def duration_exceeded?
-      elapsed = Time.now.utc - @start_time
-      return false unless @config.target_duration > 0.0 && elapsed >= @config.target_duration
+      target = @config.target_duration
+      elapsed = Float(Time.now.utc - @start_time)
+      return false unless target > 0.0 && elapsed >= target
 
-      puts "[Harness] Target duration mathematically reached (#{@config.target_duration}s). auto-shutdown."
+      puts "[Harness] Target duration mathematically reached (#{target}s). auto-shutdown."
       true
     end
 
