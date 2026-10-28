@@ -18,5 +18,12 @@ mutation:
     # `sig { ... }` blocks are checked statically by `srb tc` (and at runtime by sorbet-runtime);
     # mutating the signature DSL only produces type errors the method's own examples already surface.
     - block{receiver=send{selector=sig}}
+    # `T.must` and `T.cast` are static type assertions that `lib/`'s `typed: strong` sigil forces
+    # (Sorbet proves the value is non-nil / of the asserted type). Removing the assertion is
+    # behaviourally equivalent on every path the type checker accepts, so no runtime test can kill
+    # the mutation -- it is guarded by `srb tc`, exactly like a `sig`. Mutations of the asserted
+    # *value or type argument* are distinct nodes and are still tested.
+    - send{selector=must}
+    - send{selector=cast}
 coverage_criteria:
   process_abort: true
