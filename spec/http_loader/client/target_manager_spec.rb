@@ -58,6 +58,27 @@ RSpec.describe HttpLoader::Client::TargetManager do
       expect(manager.contexts.first[:http_args][:ipaddr]).to be_nil
     end
 
+    it 'resolves the first IPv4 address when Addrinfo returns results' do
+      allow(Addrinfo).to receive(:getaddrinfo).and_return([Addrinfo.tcp('1.2.3.4', 80)])
+      expect(manager.contexts.first[:http_args][:ipaddr]).to eq('1.2.3.4')
+    end
+
+    it 'falls back to the localhost default when no target_urls are given (HTTP)' do
+      m = described_class.new(config.with(target_urls: [], use_https: false))
+      allow(Addrinfo).to receive(:getaddrinfo).and_return([])
+      expect(m.contexts.first[:uri].to_s).to eq('http://localhost:8080')
+    end
+
+    it 'falls back to the localhost default when no target_urls are given (HTTPS)' do
+      m = described_class.new(config.with(target_urls: [], use_https: true))
+      allow(Addrinfo).to receive(:getaddrinfo).and_return([])
+      expect(m.contexts.first[:uri].to_s).to eq('https://localhost:8443')
+    end
+
+    it 'leaves a plain HTTP context without SSL options' do
+      expect(manager.contexts.first[:http_args]).not_to have_key(:use_ssl)
+    end
+
     it 'evaluates SocketError exceptions handling effectively' do
       allow(Addrinfo).to receive(:getaddrinfo).and_raise(SocketError)
       expect(manager.contexts.first[:http_args][:ipaddr]).to be_nil
@@ -97,6 +118,12 @@ RSpec.describe HttpLoader::Client::TargetManager do
     it 'returns opts unchanged when proxy_pool is empty' do
       opts = manager.http_opts_for(0, {})
       expect(opts[:proxy_address]).to be_nil
+    end
+
+    it 'does not mutate the caller-supplied args hash' do
+      original = { read_timeout: 1.0 }
+      manager_proxy.http_opts_for(0, original)
+      expect(original).to eq(read_timeout: 1.0)
     end
 
     it 'raises a clear error on an unparseable proxy entry' do

@@ -94,8 +94,10 @@ module HttpLoader
       # @return [Hash] the extracted :host, :port, :user, and :pass
       sig { params(entry: String).returns(T::Hash[Symbol, T.nilable(T.any(String, Integer))]) }
       def parse_proxy(entry)
+        # PROXY_RE's `host` group is not optional, so a successful match always captures a host;
+        # testing `match` alone is equivalent to also testing `match[:host]`.
         match = PROXY_RE.match(entry)
-        raise ArgumentError, "Invalid --proxy_pool entry: #{entry.inspect}" unless match && match[:host]
+        raise ArgumentError, "Invalid --proxy_pool entry: #{entry.inspect}" unless match
 
         { host: match[:host], port: (match[:port] || '80').to_i, user: match[:user], pass: match[:pass] }
       end
