@@ -6,3 +6,5 @@
 --ignore=.yardoc/
 --ignore=logs/
 --ignore=spec/
+
+--enable-experimental-requires-ancestor

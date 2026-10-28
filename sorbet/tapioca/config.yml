@@ -1,0 +1,6 @@
+gem:
+  # Tapioca is the generator itself; spoom is its runtime helper. Neither ships a gem any
+  # checked file loads, and generating their own RBIs is meaningless.
+  exclude:
+  - tapioca
+  - spoom
