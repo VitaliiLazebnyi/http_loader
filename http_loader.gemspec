@@ -17,7 +17,7 @@ Gem::Specification.new do |spec|
                        'socket capacity with precision and minimal client-side overhead.'
   spec.homepage      = 'https://github.com/VitaliiLazebnyi/http_loader'
   spec.license       = 'MIT'
-  spec.required_ruby_version = '>= 4.0'
+  spec.required_ruby_version = '>= 3.3'
   spec.metadata['allowed_push_host']     = 'https://rubygems.org'
   spec.metadata['source_code_uri']       = 'https://github.com/VitaliiLazebnyi/http_loader'
   spec.metadata['bug_tracker_uri']       = 'https://github.com/VitaliiLazebnyi/http_loader/issues'

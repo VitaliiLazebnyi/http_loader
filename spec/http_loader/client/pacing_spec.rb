@@ -37,6 +37,15 @@ RSpec.describe HttpLoader::Client::Pacing do
       expect(pacer.budget_remaining(10.0, Time.now - 3)).to be_within(0.5).of(7.0)
     end
 
+    it 'treats a small positive timeout (below 1s) as bounded' do
+      expect(pacer.budget_remaining(0.5, Time.now)).to be_within(0.5).of(0.5)
+    end
+
+    it 'subtracts the fractional elapsed time (not whole seconds) from the timeout' do
+      allow(Time).to receive(:now).and_return(Time.at(1000.75))
+      expect(pacer.budget_remaining(10.0, Time.at(997.25))).to eq(6.5)
+    end
+
     it 'returns a negative value once the deadline has passed' do
       expect(pacer.budget_remaining(2.0, Time.now - 5)).to be < 0.0
     end

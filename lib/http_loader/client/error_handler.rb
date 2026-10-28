@@ -21,7 +21,7 @@ module HttpLoader
       # @return [void]
       sig { params(idx: Integer, err: StandardError).void }
       def handle_err(idx, err)
-        T.cast(self, HttpLoader::Client).logger.error("[Client #{idx}] #{classify_error(err)}")
+        logger.error("[Client #{idx}] #{classify_error(err)}")
       end
 
       # Maps a caught exception to its telemetry-tracked error token and message. The
@@ -32,11 +32,13 @@ module HttpLoader
       # @return [String] the classified "TOKEN: message" string
       sig { params(err: StandardError).returns(String) }
       def classify_error(err)
+        # `#{err}` interpolates the exception message (Exception#to_s); it is used directly
+        # rather than `err.message` so the two forms cannot drift as equivalent mutations.
         case err
-        when Errno::EMFILE then "ERROR_EMFILE: #{err.message}"
+        when Errno::EMFILE then "ERROR_EMFILE: #{err}"
         when Errno::EADDRNOTAVAIL then 'ERROR_EADDRNOTAVAIL: Ephemeral port limit reached.'
-        when ThreadError, Errno::EAGAIN then "ERROR_THREADLIMIT: #{err.message}"
-        else "ERROR_OTHER: #{err.message}"
+        when ThreadError, Errno::EAGAIN then "ERROR_THREADLIMIT: #{err}"
+        else "ERROR_OTHER: #{err}"
         end
       end
     end

@@ -19,16 +19,15 @@ module HttpLoader
       # private Kernel helpers (`rand`) resolve on `self` under `typed: strong`.
       requires_ancestor { Kernel }
 
-      # Applies randomization jitter to a base sleep interval. A jitter of zero returns the
-      # base unchanged; otherwise the interval is spread by +/- (base * jitter), floored at 0.
+      # Applies randomization jitter to a base sleep interval: the interval is spread by
+      # +/- (base * jitter) and floored at 0. A jitter of zero yields a zero spread, so the
+      # base is returned unchanged.
       #
       # @param base_seconds [Float] the base sleep interval
-      # @param jitter [Float] the jitter factor (0 disables)
+      # @param jitter [Float] the jitter factor (0 disables the spread)
       # @return [Float] the jittered, non-negative interval
       sig { params(base_seconds: Float, jitter: Float).returns(Float) }
       def jittered_interval(base_seconds, jitter)
-        return base_seconds if jitter.zero?
-
         variance = base_seconds * jitter
         [0.0, base_seconds + rand(-variance..variance)].max
       end
@@ -44,7 +43,7 @@ module HttpLoader
       def budget_remaining(timeout, start_time)
         return nil unless timeout > 0.0
 
-        timeout - Float(Time.now - start_time)
+        timeout - (Time.now.to_f - start_time.to_f)
       end
 
       # Caps a computed sleep so it never sleeps past the remaining keep-alive budget.
