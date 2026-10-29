@@ -18,6 +18,12 @@ module HttpLoader
   class Server
     extend T::Sig
 
+    # The Rack application signature: a callable taking the env hash and returning the
+    # `[status, headers, body]` triple. A static type, checked by `srb tc`.
+    RackApp = T.type_alias do
+      T.proc.params(arg0: T::Hash[String, T.untyped]).returns(T::Array[T.any(Integer, T::Hash[String, String], T.untyped)])
+    end
+
     # Allocates the Rack mapped mock layer simulating an identical, ultra-efficient mock endpoint.
     #
     # @return [void]
@@ -27,7 +33,7 @@ module HttpLoader
         proc do |_env|
           [200, { 'Content-Type' => 'text/plain', 'Content-Length' => '2' }, ['OK']]
         end,
-        T.proc.params(arg0: T::Hash[String, T.untyped]).returns(T::Array[T.any(Integer, T::Hash[String, String], T.untyped)])
+        RackApp
       )
     end
 
@@ -56,7 +62,7 @@ module HttpLoader
       puts "[Server] Binding natively to HTTPS over port #{port}"
       ssl_context = generate_ssl_context
 
-      send(:Sync) do |_raw_task|
+      Sync do |_raw_task|
         run_falcon(port, ssl_context)
       end
     end
@@ -83,11 +89,11 @@ module HttpLoader
     # @return [Falcon::Server] internally mapped interface natively wrapping the app
     sig { params(port: Integer, context: OpenSSL::SSL::SSLContext).returns(::Falcon::Server) }
     def build_falcon_server(port, context)
-      endpoint = ::IO::Endpoint.tcp('0.0.0.0', port)
-      secure = ::IO::Endpoint::SSLEndpoint.new(endpoint, ssl_context: context)
-      adapter = ::Protocol::Rack::Adapter.new(@app)
-      ::Falcon::Server.new(
-        adapter, secure, protocol: ::Async::HTTP::Protocol::HTTP1, scheme: 'https'
+      endpoint = IO::Endpoint.tcp('0.0.0.0', port)
+      secure = IO::Endpoint::SSLEndpoint.new(endpoint, ssl_context: context)
+      adapter = Protocol::Rack::Adapter.new(@app)
+      Falcon::Server.new(
+        adapter, secure, protocol: Async::HTTP::Protocol::HTTP1, scheme: 'https'
       )
     end
 
@@ -141,8 +147,10 @@ module HttpLoader
       # RFC 5280 §4.1.2.2 requires a positive serial number; 0 is rejected by strict clients.
       cert.serial = 1
       cert.version = 2
-      cert.sign(rsa, OpenSSL::Digest.new('SHA256'))
-      cert
+      # `OpenSSL::X509::Certificate#sign` finalises and returns the (now signed) certificate, so it is
+      # the method's return value; signing must stay last, after every field is set. The RBI types
+      # `#sign` as untyped, so `T.cast` restores the declared return type.
+      T.cast(cert.sign(rsa, OpenSSL::Digest.new('SHA256')), OpenSSL::X509::Certificate)
     end
 
     # Mutates metadata associated with x509 structures natively verifying localhost assertions.
@@ -151,7 +159,9 @@ module HttpLoader
     # @return [void]
     sig { params(cert: OpenSSL::X509::Certificate).void }
     def parse_cert_info(cert)
-      now = Time.now.utc
+      # OpenSSL serialises certificate times as UTC regardless of the Time's zone, so a plain
+      # `Time.now` fixes the same validity instant; the window below is what matters.
+      now = Time.now
       cert.subject = cert.issuer = OpenSSL::X509::Name.parse('/CN=localhost')
       cert.not_before = now
       cert.not_after = now + (365 * 24 * 60 * 60)

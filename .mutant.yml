@@ -43,5 +43,11 @@ mutation:
     # `T.must(rss_kb_str).to_f` (an integer KB field from `ps`). The `T.must(...)` receiver subtree is
     # already pruned by the `must` ignore above, so this adds no coverage loss beyond the coercion.
     - send{selector=to_f receiver=send{selector=must}}
+    # `Server#build_cert`'s `cert.sign(rsa, OpenSSL::Digest.new('SHA256'))` -- the sole `.sign` call in
+    # lib/. OpenSSL's RSA signing treats `OpenSSL::Digest.new('SHA256')`, the string `'SHA256'` and
+    # `nil` (which defaults to SHA256 for RSA keys) as the same digest, producing a byte-identical
+    # certificate, so no runtime test can distinguish the digest expression. That the certificate is
+    # validly signed by the key is covered end-to-end by `#generate_ssl_context`'s verify spec.
+    - send{selector=sign}
 coverage_criteria:
   process_abort: true
