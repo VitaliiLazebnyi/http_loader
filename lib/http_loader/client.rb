@@ -25,6 +25,9 @@ module HttpLoader
     include ErrorHandler
     include Pacing
 
+    # The spawned per-connection worker tasks. A static type, checked by `srb tc`.
+    ConnTasks = T.type_alias { T::Array[Async::Task] }
+
     sig { returns(HttpLoader::Client::Logger) }
     attr_reader :logger
 
@@ -68,7 +71,7 @@ module HttpLoader
       logger_t = @logger.run_task(task)
       sem = Async::Semaphore.new(@config.max_concurrent_connections, parent: task)
 
-      conn_tasks = T.let([], T::Array[Async::Task])
+      conn_tasks = T.let([], ConnTasks)
       @config.connections.times do |i|
         ramp = calc_ramp
         perform_sleep(ramp) if i.positive? && ramp > 0.0
