@@ -34,7 +34,9 @@ module HttpLoader
     def initialize(config)
       config.validate!
       @config = config
-      @start_time = T.let(Time.now.utc, Time)
+      # Only elapsed-second deltas are taken from @start_time (here, in the monitor loop, and in
+      # telemetry), and `Time#-` is instant-based, so the Time's zone never surfaces -- no `.utc`.
+      @start_time = T.let(Time.now, Time)
       @peak_connections = T.let(0, Integer)
       log_dir = T.let(File.expand_path('../../logs', __dir__), String)
       @telemetry = T.let(Telemetry.new(log_dir, config.export_json), Telemetry)
@@ -81,7 +83,7 @@ module HttpLoader
     sig { void }
     def monitor_resources
       print_table_header
-      @start_time = Time.now.utc
+      @start_time = Time.now
 
       loop do
         break if duration_exceeded?
@@ -99,10 +101,11 @@ module HttpLoader
     # @return [Boolean] evaluation if runtime duration has violated constraints
     sig { returns(T::Boolean) }
     def duration_exceeded?
-      elapsed = Time.now.utc - @start_time
-      return false unless @config.target_duration > 0.0 && elapsed >= @config.target_duration
+      target = @config.target_duration
+      elapsed = Time.now - @start_time # Time#- already yields Float seconds (instant-based)
+      return false unless target > 0.0 && elapsed >= target
 
-      puts "[Harness] Target duration mathematically reached (#{@config.target_duration}s). auto-shutdown."
+      puts "[Harness] Target duration mathematically reached (#{target}s). auto-shutdown."
       true
     end
 

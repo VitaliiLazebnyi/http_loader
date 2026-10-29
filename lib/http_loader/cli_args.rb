@@ -22,7 +22,6 @@ module HttpLoader
         parse_core(opts, options)
         parse_ping(opts, options)
         parse_timeouts(opts, options)
-        nil
       end
 
       # Parses core connectivity and URL parameters.
@@ -32,11 +31,10 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_core(opts, options)
-        opts.on('--connections_count=COUNT', Integer, 'Total') { |v| options[:connections] = T.cast(v, Integer) }
+        opts.on('--connections_count=COUNT', Integer, 'Total connection count') { |v| options[:connections] = T.cast(v, Integer) }
         opts.on('--https', 'Use HTTPS natively') { options[:use_https] = true }
-        opts.on('--url=URL', String, 'URLs') { |v| options[:target_urls] = split_list(T.cast(v, String)) }
+        opts.on('--url=URL', 'Comma-separated target URLs') { |v| options[:target_urls] = split_list(T.cast(v, String)) }
         opts.on('--verbose', 'Verbose logging') { options[:verbose] = true }
-        nil
       end
 
       # Parses ping enablement and intervals.
@@ -46,9 +44,8 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_ping(opts, options)
-        opts.on('--[no-]ping', 'Ping') { |v| options[:ping] = T.cast(v, T::Boolean) }
-        opts.on('--ping_period=SECONDS', Integer, 'Ping period') { |v| options[:ping_period] = T.cast(v, Integer) }
-        nil
+        opts.on('--[no-]ping', 'Enable keep-alive pings') { |v| options[:ping] = T.cast(v, T::Boolean) }
+        opts.on('--ping_period=SECONDS', Float, 'Seconds between pings') { |v| options[:ping_period] = T.cast(v, Float) }
       end
 
       # Parses timeout, rate-limiting, and concurrency thresholds.
@@ -58,11 +55,10 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_timeouts(opts, options)
-        opts.on('--http_loader_timeout=S', Float, 'Keep') { |v| options[:http_loader_timeout] = T.cast(v, Float) }
-        opts.on('--connections_per_second=R', Integer, 'Rate') { |v| options[:connections_per_second] = T.cast(v, Integer) }
-        opts.on('--max_concurrent_connections=C', Integer, 'Max') { |v| options[:max_concurrent_connections] = T.cast(v, Integer) }
+        opts.on('--http_loader_timeout=S', Float, 'Keep-alive budget in seconds') { |v| options[:http_loader_timeout] = T.cast(v, Float) }
+        opts.on('--connections_per_second=R', Integer, 'Connection ramp rate') { |v| options[:connections_per_second] = T.cast(v, Integer) }
+        opts.on('--max_concurrent_connections=C', Integer, 'Concurrency cap') { |v| options[:max_concurrent_connections] = T.cast(v, Integer) }
         parse_advanced(opts, options)
-        nil
       end
 
       # Parses advanced connection lifecycle controls like reopen logic.
@@ -72,11 +68,10 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_advanced(opts, options)
-        opts.on('--reopen_closed_connections', 'Reopen') { options[:reopen_closed_connections] = true }
-        opts.on('--reopen_interval=S', Float, 'Reopen delay') { |v| options[:reopen_interval] = T.cast(v, Float) }
-        opts.on('--read_timeout=S', Float, 'Read timeout') { |v| options[:read_timeout] = T.cast(v, Float) }
+        opts.on('--reopen_closed_connections', 'Reopen closed connections') { options[:reopen_closed_connections] = true }
+        opts.on('--reopen_interval=S', Float, 'Delay before reopening') { |v| options[:reopen_interval] = T.cast(v, Float) }
+        opts.on('--read_timeout=S', Float, 'Socket read timeout') { |v| options[:read_timeout] = T.cast(v, Float) }
         parse_tracking(opts, options)
-        nil
       end
 
       # Parses tracking and obfuscation parameters like jitter and user agents.
@@ -86,11 +81,10 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_tracking(opts, options)
-        opts.on('--user_agent=A', String, 'User Agent') { |v| options[:user_agent] = T.cast(v, String) }
-        opts.on('--jitter=F', Float, 'Randomize sleep') { |v| options[:jitter] = T.cast(v, Float) }
-        opts.on('--track_status_codes', 'Track HTTP codes') { options[:track_status_codes] = true }
+        opts.on('--user_agent=A', 'User-Agent header') { |v| options[:user_agent] = T.cast(v, String) }
+        opts.on('--jitter=F', Float, 'Randomize sleep durations') { |v| options[:jitter] = T.cast(v, Float) }
+        opts.on('--track_status_codes', 'Track HTTP status codes') { options[:track_status_codes] = true }
         parse_endpoints(opts, options)
-        nil
       end
 
       # Parses IP binding, proxying, and ramp-up behavior.
@@ -100,11 +94,10 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_endpoints(opts, options)
-        opts.on('--ramp_up=S', Float, 'Smoothly scale') { |v| options[:ramp_up] = T.cast(v, Float) }
-        opts.on('--bind_ips=IPS', String, 'IPs') { |v| options[:bind_ips] = split_list(T.cast(v, String)) }
-        opts.on('--proxy_pool=U', String, 'URI pool') { |v| options[:proxy_pool] = split_list(T.cast(v, String)) }
+        opts.on('--ramp_up=S', Float, 'Ramp-up window in seconds') { |v| options[:ramp_up] = T.cast(v, Float) }
+        opts.on('--bind_ips=IPS', 'Comma-separated source IPs') { |v| options[:bind_ips] = split_list(T.cast(v, String)) }
+        opts.on('--proxy_pool=U', 'Comma-separated proxy URIs') { |v| options[:proxy_pool] = split_list(T.cast(v, String)) }
         parse_slowloris(opts, options)
-        nil
       end
 
       # Splits a comma-delimited CLI list, trimming whitespace and dropping empty
@@ -125,10 +118,9 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_slowloris(opts, options)
-        opts.on('--qps_per_connection=R', Integer, 'QPS') { |v| options[:qps_per_connection] = T.cast(v, Integer) }
-        opts.on('--headers=L', String, 'Headers') { |v| parse_headers(T.cast(v, String), options) }
+        opts.on('--qps_per_connection=R', Integer, 'Per-connection QPS cap') { |v| options[:qps_per_connection] = T.cast(v, Integer) }
+        opts.on('--headers=L', 'Repeatable Key: Value header') { |v| parse_headers(T.cast(v, String), options) }
         parse_slowloris_delays(opts, options)
-        nil
       end
 
       # Parses a single `Key: Value` header from one `--headers` occurrence. Supplying
@@ -143,30 +135,34 @@ module HttpLoader
       # @return [void]
       sig { params(val: String, options: T::Hash[Symbol, Object]).void }
       def self.parse_headers(val, options)
+        # `String#split(':', 2)` always yields at least the key element, so `value` (the second
+        # element) is the only one that can be nil -- it is absent exactly when there was no colon.
         key, value = val.split(':', 2)
-        return warn("[Client] Ignoring malformed --headers entry (expected 'Key: Value'): #{val.inspect}") unless key && value
+        shown = val.inspect
+        return warn("[Client] Ignoring malformed --headers entry (expected 'Key: Value'): #{shown}") unless value
 
-        key = key.strip
+        key = T.must(key).strip
         value = value.strip
-        return warn("[Client] Ignoring --headers entry with empty key: #{val.inspect}") if key.empty?
-        return warn("[Client] Ignoring --headers entry with CR/LF: #{val.inspect}") if "#{key}#{value}".match?(/[\r\n]/)
+        return warn("[Client] Ignoring --headers entry with empty key: #{shown}") if key.empty?
+        return warn("[Client] Ignoring --headers entry with CR/LF: #{shown}") if "#{key}#{value}".match?(/[\r\n]/)
 
         T.cast(options[:headers], T::Hash[String, String])[key] = value
       end
 
-      # Parses granular delay configs specifically for slowloris payloads.
+      # Parses granular delay configs specifically for slowloris payloads. The harness forwards the
+      # client its own `--export_json` / `--target_duration` flags verbatim, so the client registers
+      # (and silently ignores) them here to keep OptionParser from rejecting the shared argv.
       #
       # @param opts [OptionParser] the active parser instance
       # @param options [Hash] the configuration map to populate
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_slowloris_delays(opts, options)
-        opts.on('--slowloris_delay=S', Float, 'Gap') do |v|
+        opts.on('--slowloris_delay=S', Float, 'Slowloris byte gap in seconds') do |v|
           options[:slowloris_delay] = T.cast(v, Float)
         end
-        opts.on('--export_json=FILE', String) { nil }
-        opts.on('--target_duration=S', Float) { nil }
-        nil
+        opts.on('--export_json=FILE', 'Accepted but ignored by the client subprocess')
+        opts.on('--target_duration=S', 'Accepted but ignored; honoured by the harness only')
       end
     end
 
@@ -184,7 +180,6 @@ module HttpLoader
         parse_harness_core(opts, options)
         parse_harness_extras(opts, options)
         ignore_core_args(opts)
-        nil
       end
 
       # Parses core connection args for harness.
@@ -194,9 +189,9 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_harness_core(opts, options)
-        opts.on('--connections_count=C', Integer) { |v| options[:connections] = T.cast(v, Integer) }
-        opts.on('--https') { options[:use_https] = true }
-        opts.on('--url=U', String) { |v| options[:target_urls] = ClientParser.split_list(T.cast(v, String)) }
+        opts.on('--connections_count=C', Integer, 'Total connection count') { |v| options[:connections] = T.cast(v, Integer) }
+        opts.on('--https', 'Use HTTPS natively') { options[:use_https] = true }
+        opts.on('--url=U', 'Comma-separated target URLs') { |v| options[:target_urls] = ClientParser.split_list(T.cast(v, String)) }
       end
 
       # Parses extra settings for harness.
@@ -206,65 +201,30 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_harness_extras(opts, options)
-        opts.on('--export_json=FILE', String) { |v| options[:export_json] = T.cast(v, String) }
-        opts.on('--target_duration=S', Float) { |v| options[:target_duration] = T.cast(v, Float) }
+        opts.on('--export_json=FILE', 'Write the JSON run report to FILE') { |v| options[:export_json] = T.cast(v, String) }
+        opts.on('--target_duration=S', Float, 'Stop after S seconds') { |v| options[:target_duration] = T.cast(v, Float) }
       end
 
-      # Binds OptionParser NO-OP lambdas for core args.
+      # Client-only flags the harness accepts but ignores: it forwards the original argv to the
+      # client subprocess verbatim, and only needs OptionParser not to reject these while it
+      # extracts its own structural flags. Listing them as data (rather than one no-op handler
+      # per flag) keeps the harness flag surface in one place with no duplicated method bodies.
+      IGNORED_CLIENT_FLAGS = %w[
+        --verbose --[no-]ping --ping_period=S --http_loader_timeout=S --connections_per_second=R
+        --max_concurrent_connections=C --reopen_closed_connections --reopen_interval=S --read_timeout=S
+        --user_agent=A --jitter=F --track_status_codes --ramp_up=S --bind_ips=IPS --proxy_pool=U
+        --qps_per_connection=R --headers=LIST --slowloris_delay=S
+      ].freeze
+
+      # Registers a discarding handler for every client-only flag so OptionParser tolerates
+      # them during the harness's own structural parse. A block-less `on` registers the flag
+      # with no action, which is exactly the "accept and discard" behaviour required.
       #
       # @param opts [OptionParser] the active parser instance
       # @return [void]
       sig { params(opts: OptionParser).void }
       def self.ignore_core_args(opts)
-        opts.on('--verbose') { nil }
-        opts.on('--[no-]ping') { nil }
-        opts.on('--ping_period=S', Integer) { nil }
-        opts.on('--http_loader_timeout=S', Float) { nil }
-        opts.on('--connections_per_second=R', Integer) { nil }
-        ignore_time_args(opts)
-        nil
-      end
-
-      # Binds OptionParser NO-OP lambdas for timing variables.
-      #
-      # @param opts [OptionParser] the active parser instance
-      # @return [void]
-      sig { params(opts: OptionParser).void }
-      def self.ignore_time_args(opts)
-        opts.on('--max_concurrent_connections=C', Integer) { nil }
-        opts.on('--reopen_closed_connections') { nil }
-        opts.on('--reopen_interval=S', Float) { nil }
-        opts.on('--read_timeout=S', Float) { nil }
-        opts.on('--user_agent=A', String) { nil }
-        ignore_advanced_args(opts)
-        nil
-      end
-
-      # Binds OptionParser NO-OP lambdas for advanced connection variables.
-      #
-      # @param opts [OptionParser] the active parser instance
-      # @return [void]
-      sig { params(opts: OptionParser).void }
-      def self.ignore_advanced_args(opts)
-        opts.on('--jitter=F', Float) { nil }
-        opts.on('--track_status_codes') { nil }
-        opts.on('--ramp_up=S', Float) { nil }
-        opts.on('--bind_ips=IPS', String) { nil }
-        opts.on('--proxy_pool=U', String) { nil }
-        ignore_payload_args(opts)
-        nil
-      end
-
-      # Binds OptionParser NO-OP lambdas for slowloris and HTTP headers variables.
-      #
-      # @param opts [OptionParser] the active parser instance
-      # @return [void]
-      sig { params(opts: OptionParser).void }
-      def self.ignore_payload_args(opts)
-        opts.on('--qps_per_connection=R', Integer) { nil }
-        opts.on('--headers=LIST', String) { nil }
-        opts.on('--slowloris_delay=S', Float) { nil }
-        nil
+        IGNORED_CLIENT_FLAGS.each { |flag| opts.on(flag) }
       end
     end
   end

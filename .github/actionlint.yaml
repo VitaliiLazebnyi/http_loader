@@ -1,0 +1,4 @@
+# actionlint configuration. Self-hosted runner labels are not used; the default GitHub-hosted
+# runner set is assumed.
+self-hosted-runner:
+  labels: []

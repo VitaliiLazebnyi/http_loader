@@ -2,45 +2,178 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+# Nothing is writable by default; every job re-declares the (read-only) permissions it needs.
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Deprecation warnings are enforced (the warning gate fails on any). -W:performance is NOT
+  # enabled: on Ruby 3.3/3.4 it surfaces an irreducible rubygems/VM "object shape variations"
+  # notice from Gem::Specification loading, which is not a code issue and cannot be fixed here.
+  RUBYOPT: -W:deprecated
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: RSpec (Ruby ${{ matrix.ruby }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     strategy:
+      fail-fast: false
       matrix:
-        ruby-version: ['4.0.2']
-
+        ruby: ["3.3.13", "3.4.12", "4.0.9"]
+    env:
+      CI: "true"
     steps:
-    - uses: actions/checkout@v6
-    
-    - name: Set up Ruby
-      uses: ruby/setup-ruby@v1
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        ruby-version: ${{ matrix.ruby-version }}
-        bundler-cache: true # runs 'bundle install' and caches installed gems automatically
-        
-    - name: Run RuboCop
-      env:
-        LANG: en_US.UTF-8
-      run: bundle exec rubocop
+        persist-credentials: false
 
-    - name: Run Tests
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: ${{ matrix.ruby }}
+        bundler-cache: true
+    - name: Check the Ruby version
+      env:
+        EXPECTED_RUBY: ${{ matrix.ruby }}
+      run: script/check_ruby.sh "$EXPECTED_RUBY"
+    # SimpleCov enforces minimum_coverage 100 (line + branch) and fails the run below it.
+    - name: RSpec with the 100% line + branch coverage gate
       run: bundle exec rspec
 
-    - name: Run Sorbet Type Checks
-      run: bundle exec srb tc --typed strong
+  lint:
+    name: RuboCop
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
-    - name: Generate YARD Documentation
-      run: bundle exec yardoc
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+    - name: Check the Ruby version
+      run: script/check_ruby.sh
+    - run: bundle exec rake rubocop
+    - name: Forbid inline suppressions
+      run: script/forbidden_suppressions.sh
 
-    - name: Run YARD Stats
-      run: bundle exec yard stats --list-undoc
+  typecheck:
+    name: Sorbet
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
-    - name: Check Gem Build
-      run: gem build http_loader.gemspec
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+    - name: Check the Ruby version
+      run: script/check_ruby.sh
+    - run: bundle exec rake typecheck
+
+  docs:
+    name: YARD (100% documented)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+    - name: Check the Ruby version
+      run: script/check_ruby.sh
+    - run: bundle exec rake yard
+
+  smells:
+    name: Reek and Flay
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+    - name: Check the Ruby version
+      run: script/check_ruby.sh
+    - run: bundle exec rake reek flay
+
+  outdated:
+    name: Outdated gems
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+    - name: Check the Ruby version
+      run: script/check_ruby.sh
+    - run: bundle exec rake outdated
+
+  build:
+    name: Build gem
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+    - name: Check the Ruby version
+      run: script/check_ruby.sh
+    - run: gem build http_loader.gemspec
+
+  warning-gate:
+    name: Warning gate
+    if: ${{ !cancelled() }}
+    needs: [test, lint, typecheck, docs, smells, outdated, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read # reads the logs of the other jobs of this run
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Fail on any warning or deprecation in the logs of this run
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GATE_JOB_NAME: Warning gate
+      run: script/warning_gate.sh

@@ -11,10 +11,17 @@ module HttpLoader
     class Telemetry
       extend T::Sig
 
+      # The error-token table: metric name => log token. A static type, checked by `srb tc`.
+      Tokens = T.type_alias { T::Hash[Symbol, String] }
+      # The running per-metric error tallies. A static type, checked by `srb tc`.
+      Counts = T.type_alias { T::Hash[Symbol, Integer] }
+      # The per-file byte offsets consumed so far. A static type, checked by `srb tc`.
+      Offsets = T.type_alias { T::Hash[String, Integer] }
+
       # Error tokens harvested from the client logs, keyed by the payload metric name.
       ERROR_TOKENS = T.let(
         { emfile: 'ERROR_EMFILE', eaddr_count: 'ERROR_EADDRNOTAVAIL', thread_errors: 'ERROR_THREADLIMIT' }.freeze,
-        T::Hash[Symbol, String]
+        Tokens
       )
 
       # Mounts the telemetry sub-engine mapping disk outputs transparently tracking boundaries.
@@ -26,8 +33,8 @@ module HttpLoader
       def initialize(log_dir, export_json)
         @log_dir = log_dir
         @export_json = export_json
-        @counts = T.let({ emfile: 0, eaddr_count: 0, thread_errors: 0 }, T::Hash[Symbol, Integer])
-        @offsets = T.let({}, T::Hash[String, Integer])
+        @counts = T.let({ emfile: 0, eaddr_count: 0, thread_errors: 0 }, Counts)
+        @offsets = T.let({}, Offsets)
       end
 
       # Serializes a comprehensive analysis payload upon successful OS termination manually.
@@ -65,11 +72,14 @@ module HttpLoader
       # @param start [Time] process baseline boot parameter mapping
       # @param counts [Hash] dictionary capturing parsed string evaluations tracking OS limits natively
       # @return [Hash] JSON translatable dataset mapping
-      sig { params(peak: Integer, start: Time, counts: T::Hash[Symbol, Integer]).returns(T::Hash[Symbol, T.untyped]) }
+      sig { params(peak: Integer, start: Time, counts: Counts).returns(T::Hash[Symbol, T.untyped]) }
       def generate_payload(peak, start, counts)
         {
-          peak_connections: peak, test_duration_seconds: (Time.now.utc - start).round(2),
-          errors: { emfile: counts[:emfile], eaddrnotavail: counts[:eaddr_count], thread_limit: counts[:thread_errors] }
+          peak_connections: peak, test_duration_seconds: (Time.now - start).round(2),
+          errors: {
+            emfile: counts.fetch(:emfile), eaddrnotavail: counts.fetch(:eaddr_count),
+            thread_limit: counts.fetch(:thread_errors)
+          }
         }
       end
 
@@ -85,6 +95,9 @@ module HttpLoader
 
       # Consumes complete lines appended to a single file since the last offset, tolerating
       # truncation/rotation (offset reset) and never splitting an error token across reads.
+      # Reading from the stored offset to EOF keeps each tick's cost proportional to the freshly
+      # appended bytes rather than to the (unbounded) log size; when nothing new has been written
+      # the read yields an empty string and the offset is left untouched.
       #
       # @param path [String] absolute file path
       # @return [void]
@@ -95,13 +108,12 @@ module HttpLoader
         size = File.size(path)
         offset = @offsets[path] || 0
         offset = 0 if size < offset
-        return if size <= offset
-
-        File.open(path, 'rb') do |file|
-          file.seek(offset)
-          data = file.read(size - offset).to_s
-          @offsets[path] = offset + tally_complete_lines(data)
-        end
+        # `size` as the length caps the read at the current end of file; starting from `offset`
+        # that yields exactly the freshly appended bytes. A length-limited `File.read` returns the
+        # raw bytes (ASCII-8BIT), so arbitrary log bytes never trip UTF-8 validation, and `nil` at
+        # EOF (nothing new appended), which `to_s` folds into the empty string.
+        data = File.read(path, size, offset).to_s
+        @offsets[path] = offset + tally_complete_lines(data)
       end
 
       # Tallies error tokens from whole lines only, returning the number of bytes consumed
@@ -115,7 +127,7 @@ module HttpLoader
         return 0 unless last_nl
 
         chunk = T.must(data[0..last_nl])
-        ERROR_TOKENS.each { |metric, token| @counts[metric] = T.must(@counts[metric]) + chunk.scan(token).size }
+        ERROR_TOKENS.each { |metric, token| @counts[metric] = @counts.fetch(metric) + chunk.scan(token).size }
         chunk.bytesize
       end
 
@@ -123,12 +135,15 @@ module HttpLoader
       #
       # @param counts [Hash] quantitative mapping metrics describing error boundaries natively
       # @return [Array<String>] textual output logs targeting stderr mapped explicitly
-      sig { params(counts: T::Hash[Symbol, Integer]).returns(T::Array[String]) }
+      sig { params(counts: Counts).returns(T::Array[String]) }
       def build_bottleneck_messages(counts)
+        emfile = counts.fetch(:emfile)
+        eaddr = counts.fetch(:eaddr_count)
+        threads = counts.fetch(:thread_errors)
         errors = []
-        errors << "[OS FDs Limit: #{counts[:emfile]} EMFILE]" if T.must(counts[:emfile]).positive?
-        errors << "[OS Ports Limit: #{counts[:eaddr_count]} EADDRNOTAVAIL]" if T.must(counts[:eaddr_count]).positive?
-        errors << "[OS Thread Limit: #{counts[:thread_errors]} ThreadError]" if T.must(counts[:thread_errors]).positive?
+        errors << "[OS FDs Limit: #{emfile} EMFILE]" if emfile.positive?
+        errors << "[OS Ports Limit: #{eaddr} EADDRNOTAVAIL]" if eaddr.positive?
+        errors << "[OS Thread Limit: #{threads} ThreadError]" if threads.positive?
         errors
       end
     end

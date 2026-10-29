@@ -4,9 +4,6 @@ module Async
   class Task
     sig { void }
     def stop; end
-
-    sig { params(duration: Float).void }
-    def sleep(duration); end
   end
 
   class Semaphore

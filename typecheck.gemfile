@@ -1,0 +1,10 @@
+# frozen_string_literal: true
+
+# Used by the Sorbet job and `rake typecheck` only: Tapioca generates the gem RBI files
+# that Sorbet checks `lib/` against. It lives apart from the main Gemfile so that loading
+# Tapioca (and its own dependency graph) never perturbs the runtime or test bundle.
+source 'https://rubygems.org'
+
+gemspec
+
+gem 'tapioca', '~> 0.20', require: false

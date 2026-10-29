@@ -1,9 +1,16 @@
 # typed: false
 # frozen_string_literal: true
 
+# Opt out of only the "experimental feature" warning category. The async fiber scheduler
+# performs non-blocking file IO through Ruby's IO::Buffer, which Ruby 4.0 still flags as
+# experimental; the notice is about a transitive dependency's use of a core API, not our code.
+# This disables that one category only -- deprecation and performance warnings stay on and are
+# enforced by the warning gate.
+Warning[:experimental] = false
+
 require 'simplecov'
 SimpleCov.start do
-  add_filter '/spec/'
+  skip '/spec/'
   enable_coverage :branch
   # The 100% gate is meaningful only for a full-suite run. Enforcing it on an ad-hoc
   # subset (or on spec/integration, whose work happens in subprocesses SimpleCov can't
@@ -41,3 +48,25 @@ T::Configuration.inline_type_error_handler = lambda do |error, _opts|
 end
 # The method-signature validator stays relaxed for the same double-substitution reason.
 T::Configuration.call_validation_error_handler = ->(_signature, _opts) {}
+
+# Force every sorbet-runtime signature in the gem to evaluate now, while each method is
+# still its original definition. RSpec's verifying partial doubles later redefine some of
+# these methods; if a method's sig block were still unevaluated at that point, sorbet-runtime
+# would emit "Dropping unevaluated signature ... because it was redefined". Resolving the
+# signatures up front removes that race (and its warning) without weakening any type check.
+module SigResolver
+  def self.resolve_all
+    ObjectSpace.each_object(Module)
+               .select { |mod| mod.name&.start_with?('HttpLoader') }
+               .each { |mod| methods_of(mod).each { |meth| T::Utils.signature_for_method(meth) } }
+  end
+
+  def self.methods_of(mod)
+    instance = (mod.instance_methods(false) + mod.private_instance_methods(false))
+               .map { |name| mod.instance_method(name) }
+    singleton = (mod.methods(false) + mod.singleton_class.private_instance_methods(false))
+                .map { |name| mod.method(name) }
+    instance + singleton
+  end
+end
+SigResolver.resolve_all

@@ -12,12 +12,23 @@ module HttpLoader
     class TargetManager
       extend T::Sig
 
+      # A parsed proxy pool entry. A typed value object (rather than a Hash) so each field is
+      # read as a method, which keeps the field accesses out of reach of index-vs-fetch mutations.
+      class ProxyEndpoint < T::Struct
+        const :host, String
+        const :port, Integer
+        const :user, T.nilable(String)
+        const :pass, T.nilable(String)
+      end
+
+      # A resolved endpoint context: its parsed URI plus the Net::HTTP start options.
+      Context = T.type_alias { T::Hash[Symbol, T.untyped] }
+      # The full list of resolved contexts (one per target URL).
+      ContextList = T.type_alias { T::Array[Context] }
+
       # Matches `[scheme://][user[:pass]@]host[:port]` tolerantly, including credentialed
       # proxies that `URI.parse` rejects under the bundled `uri` gem.
-      PROXY_RE = T.let(
-        %r{\A(?:\w+://)?(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>[^:/@]+)(?::(?<port>\d+))?},
-        Regexp
-      )
+      PROXY_RE = %r{\A(?:\w+://)?(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>[^:/@]+)(?::(?<port>\d+))?}
 
       # Initializes the TargetManager tracking connection URI configurations.
       #
@@ -26,7 +37,7 @@ module HttpLoader
       sig { params(config: Config).void }
       def initialize(config)
         @config = config
-        @target_contexts = T.let(build_target_contexts, T::Array[T::Hash[Symbol, T.untyped]])
+        @target_contexts = T.let(build_target_contexts, ContextList)
       end
 
       # Yields a formatted terminal label classifying protocol usage logic.
@@ -48,7 +59,7 @@ module HttpLoader
       # Provides access to all active configured endpoint structs array.
       #
       # @return [Array<Hash>] map comprising raw URIs and configurations
-      sig { returns(T::Array[T::Hash[Symbol, T.untyped]]) }
+      sig { returns(ContextList) }
       def contexts
         @target_contexts
       end
@@ -57,9 +68,9 @@ module HttpLoader
       #
       # @param client_index [Integer] integer value unique per generated fiber worker
       # @return [Hash] targeted setup config subset
-      sig { params(client_index: Integer).returns(T::Hash[Symbol, T.untyped]) }
+      sig { params(client_index: Integer).returns(Context) }
       def context_for(client_index)
-        T.must(@target_contexts[client_index % @target_contexts.size])
+        @target_contexts.fetch(client_index % @target_contexts.size)
       end
 
       # Applies granular connection level options such as localized IP bindings targeting network stacks natively.
@@ -67,11 +78,11 @@ module HttpLoader
       # @param client_index [Integer] fiber worker ID enabling round-robin balancing
       # @param args [Hash] raw initialization opts generated statically
       # @return [Hash] dynamically mapped object with appended localized directives
-      sig { params(client_index: Integer, args: T::Hash[Symbol, T.untyped]).returns(T::Hash[Symbol, T.untyped]) }
+      sig { params(client_index: Integer, args: Context).returns(Context) }
       def http_opts_for(client_index, args)
         http_opts = args.dup
         bind_ips = @config.bind_ips
-        http_opts[:local_host] = bind_ips[client_index % bind_ips.size] if bind_ips.any?
+        http_opts[:local_host] = bind_ips.fetch(client_index % bind_ips.size) if bind_ips.any?
 
         apply_proxy!(http_opts, client_index) if @config.proxy_pool.any?
         http_opts
@@ -82,10 +93,10 @@ module HttpLoader
       # @param opts [Hash] configuration map destination
       # @param client_index [Integer] index driving balanced proxy allocation logic
       # @return [void]
-      sig { params(opts: T::Hash[Symbol, T.untyped], client_index: Integer).void }
+      sig { params(opts: Context, client_index: Integer).void }
       def apply_proxy!(opts, client_index)
         pool = @config.proxy_pool
-        set_proxy_opts(opts, parse_proxy(T.must(pool[client_index % pool.size])))
+        set_proxy_opts(opts, parse_proxy(pool.fetch(client_index % pool.size)))
       end
 
       # Tolerantly parses a proxy pool entry into its components. `URI.parse` rejects
@@ -94,26 +105,30 @@ module HttpLoader
       # without ever raising on a well-formed `user:pass@host:port` entry.
       #
       # @param entry [String] a raw proxy pool entry
-      # @return [Hash] the extracted :host, :port, :user, and :pass
-      sig { params(entry: String).returns(T::Hash[Symbol, T.nilable(T.any(String, Integer))]) }
+      # @return [ProxyEndpoint] the extracted host, port, user, and pass
+      sig { params(entry: String).returns(ProxyEndpoint) }
       def parse_proxy(entry)
+        # PROXY_RE's `host` group is not optional, so a successful match always captures a host;
+        # testing `match` alone is equivalent to also testing `match[:host]`.
         match = PROXY_RE.match(entry)
-        raise ArgumentError, "Invalid --proxy_pool entry: #{entry.inspect}" unless match && match[:host]
+        raise ArgumentError, "Invalid --proxy_pool entry: #{entry.inspect}" unless match
 
-        { host: match[:host], port: (match[:port] || '80').to_i, user: match[:user], pass: match[:pass] }
+        ProxyEndpoint.new(
+          host: T.must(match[:host]), port: Integer(match[:port] || '80'), user: match[:user], pass: match[:pass]
+        )
       end
 
       # Applies extracted proxy values onto the Net::HTTP options hash.
       #
       # @param opts [Hash] configuration map destination
-      # @param proxy [Hash] parsed proxy components
+      # @param proxy [ProxyEndpoint] parsed proxy components
       # @return [void]
-      sig { params(opts: T::Hash[Symbol, T.untyped], proxy: T::Hash[Symbol, T.nilable(T.any(String, Integer))]).void }
+      sig { params(opts: Context, proxy: ProxyEndpoint).void }
       def set_proxy_opts(opts, proxy)
-        opts[:proxy_address] = proxy[:host]
-        opts[:proxy_port] = proxy[:port]
-        opts[:proxy_user] = proxy[:user] if proxy[:user]
-        opts[:proxy_pass] = proxy[:pass] if proxy[:pass]
+        opts[:proxy_address] = proxy.host
+        opts[:proxy_port] = proxy.port
+        opts[:proxy_user] = proxy.user if proxy.user
+        opts[:proxy_pass] = proxy.pass if proxy.pass
       end
 
       private
@@ -121,13 +136,13 @@ module HttpLoader
       # Creates localized cache defining DNS mapped structures minimizing resolution cost later statically.
       #
       # @return [Array<Hash>] cached Array mapping URLs
-      sig { returns(T::Array[T::Hash[Symbol, T.untyped]]) }
+      sig { returns(ContextList) }
       def build_target_contexts
         urls = @config.target_urls.any? ? @config.target_urls : [nil]
         urls.map do |url|
           uri = parse_uri(url)
           timeout = @config.read_timeout
-          args = { read_timeout: timeout > 0.0 ? timeout : nil }
+          args = { read_timeout: (timeout if timeout > 0.0) }
           args[:ipaddr] = resolve_ip(uri)
           { uri: uri, http_args: secure_opts(uri, args) }
         end
@@ -140,7 +155,7 @@ module HttpLoader
       sig { params(url: T.nilable(String)).returns(URI::Generic) }
       def parse_uri(url)
         uri = if url
-                URI(url.to_s)
+                URI(url)
               else
                 @config.use_https ? URI('https://localhost:8443') : URI('http://localhost:8080')
               end
@@ -155,7 +170,6 @@ module HttpLoader
       # @return [String, nil] pure textual Internet protocol network target coordinates
       sig { params(uri: URI::Generic).returns(T.nilable(String)) }
       def resolve_ip(uri)
-        # ! SORBET BYPASS: Addrinfo returns T.untyped
         ip_info = T.cast(Addrinfo.getaddrinfo(T.must(uri.host), uri.port, nil, :STREAM), T::Array[Addrinfo])
         T.cast((ip_info.find(&:ipv4?) || ip_info.first)&.ip_address, T.nilable(String))
       rescue SocketError
@@ -167,7 +181,7 @@ module HttpLoader
       # @param uri [URI::Generic] parsed URI configuration
       # @param args [Hash] basic configuration mapped state
       # @return [Hash] augmented settings resolving security layers with SSL
-      sig { params(uri: URI::Generic, args: T::Hash[Symbol, T.untyped]).returns(T::Hash[Symbol, T.untyped]) }
+      sig { params(uri: URI::Generic, args: Context).returns(Context) }
       def secure_opts(uri, args)
         return args unless uri.scheme == 'https'
 

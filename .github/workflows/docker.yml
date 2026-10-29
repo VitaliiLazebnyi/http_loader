@@ -1,0 +1,106 @@
+name: Docker
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/docker.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/docker.yml'
+  schedule:
+    - cron: '31 7 * * 1' # weekly: catch newly-disclosed base-image CVEs
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hadolint:
+    name: hadolint
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    # The pinned release binary is run directly and verified against its published SHA-256.
+    - name: Install hadolint 2.15.1
+      env:
+        HADOLINT_VERSION: 2.15.1
+        HADOLINT_SHA256: c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507 # hadolint-Linux-x86_64
+      run: |
+        curl --fail --silent --show-error --location --output "$RUNNER_TEMP/hadolint" \
+          "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64"
+        echo "$HADOLINT_SHA256  $RUNNER_TEMP/hadolint" | sha256sum --check --strict
+        chmod +x "$RUNNER_TEMP/hadolint"
+    - run: '"$RUNNER_TEMP/hadolint" Dockerfile'
+
+  scan:
+    name: Build and scan image (Trivy)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Build the image
+      run: docker build -t http_loader:ci .
+
+    - name: Install Trivy 0.76.1
+      env:
+        TRIVY_VERSION: 0.76.1
+        TRIVY_SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 # trivy_0.76.1_Linux-64bit.tar.gz
+      run: |
+        archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+        curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" \
+          "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/$archive"
+        echo "$TRIVY_SHA256  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+        tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" trivy
+
+    # Fail on any fixable HIGH/CRITICAL finding. Unfixed CVEs (no upstream patch yet) cannot be
+    # remediated here; the weekly schedule and the pinned-digest base bump keep the image current.
+    - name: Scan for fixable HIGH/CRITICAL vulnerabilities
+      env:
+        TRIVY_NO_PROGRESS: "true"
+        TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+      run: |
+        "$RUNNER_TEMP/trivy" image \
+          --scanners vuln \
+          --ignore-unfixed \
+          --severity HIGH,CRITICAL \
+          --exit-code 1 \
+          http_loader:ci
+
+  warning-gate:
+    name: Warning gate
+    if: ${{ !cancelled() }}
+    needs: [hadolint, scan]
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read # reads the logs of the other jobs of this run
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Fail on any warning or deprecation in the logs of this run
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GATE_JOB_NAME: Warning gate
+      run: script/warning_gate.sh
