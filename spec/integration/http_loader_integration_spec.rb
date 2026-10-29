@@ -42,8 +42,17 @@ RSpec.describe HttpLoader, type: :integration do
     Open3.capture3('ruby', bin_path, 'client', *args)
   end
 
-  def read_client_log
-    File.exist?(client_log) ? File.read(client_log) : ''
+  # Reads the client log, polling up to `timeout` for `await` to appear. The client flushes its
+  # log asynchronously as the harness tears it down, so a fixed sleep races the flush onto disk
+  # under load; waiting for the expected line makes the assertion deterministic.
+  def read_client_log(await: nil, timeout: 15.0)
+    deadline = Time.now + timeout
+    loop do
+      content = File.exist?(client_log) ? File.read(client_log) : ''
+      return content if await.nil? || content.include?(await) || Time.now >= deadline
+
+      sleep 0.1
+    end
   end
 
   # Boots a throwaway local HTTP/1.1 server that keeps connections alive and answers
@@ -83,7 +92,7 @@ RSpec.describe HttpLoader, type: :integration do
 
       expect(status.exitstatus).to eq(0)
       expect(out).to include('Starting test with 2 connections to **HTTP**')
-      expect(read_client_log).to include('Starting 2 HTTP connections')
+      expect(read_client_log(await: 'Starting 2 HTTP connections')).to include('Starting 2 HTTP connections')
     end
   end
 
@@ -95,7 +104,7 @@ RSpec.describe HttpLoader, type: :integration do
 
       expect(status.exitstatus).to eq(0)
       expect(out).to include('Starting test with 2 connections to **HTTPS**')
-      expect(read_client_log).to include('Starting 2 HTTPS connections')
+      expect(read_client_log(await: 'Starting 2 HTTPS connections')).to include('Starting 2 HTTPS connections')
       expect(out).to include('Target duration mathematically reached')
     end
   end
@@ -106,7 +115,7 @@ RSpec.describe HttpLoader, type: :integration do
       _, _err, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(read_client_log).to include('Starting 2 HTTP connections')
+      expect(read_client_log(await: 'Starting 2 HTTP connections')).to include('Starting 2 HTTP connections')
     end
   end
 
@@ -116,7 +125,7 @@ RSpec.describe HttpLoader, type: :integration do
       _, _err, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(read_client_log).to include('Starting 2 HTTP connections')
+      expect(read_client_log(await: 'Starting 2 HTTP connections')).to include('Starting 2 HTTP connections')
     end
   end
 
