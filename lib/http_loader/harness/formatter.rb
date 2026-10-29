@@ -9,23 +9,26 @@ module HttpLoader
     # Formatter handles printing load test statistics dynamically and robustly.
     module Formatter
       extend T::Sig
+      extend T::Helpers
+
+      # Mixed only into Harness; declaring that ancestor lets the bare `config`/`monitor`/`pm` and
+      # `puts`/`format` calls below resolve under `typed: strong` on `self` directly, so there is no
+      # `Kernel.`/`harness.` receiver to mutate into a behaviourally identical self form.
+      requires_ancestor { HttpLoader::Harness }
 
       # Prints an initial banner announcing URL and mode configurations.
       #
       # @return [void]
       sig { void }
       def print_startup_banner
-        harness = T.cast(self, HttpLoader::Harness)
-        Kernel.puts "[Harness] Starting test with #{harness.config.connections} connections to #{startup_target_msg(harness)}"
+        puts "[Harness] Starting test with #{config.connections} connections to #{startup_target_msg}"
       end
 
       # Yields formatted message describing targeted context
       #
-      # @param harness [HttpLoader::Harness] reference to local context
       # @return [String] formatted descriptor based on URLs count
-      sig { params(harness: HttpLoader::Harness).returns(String) }
-      def startup_target_msg(harness)
-        config = harness.config
+      sig { returns(String) }
+      def startup_target_msg
         urls = config.target_urls
         count = urls.size
         return "**MULTIPLE TARGETS** (#{count} URLs)." if count > 1
@@ -40,10 +43,10 @@ module HttpLoader
       sig { void }
       def print_table_header
         rule = '-' * 125
-        Kernel.puts '[Harness] Monitoring resources (Press Ctrl+C to stop)...'
-        Kernel.puts rule
-        Kernel.puts 'Time (UTC) | Real Conns  | Srv CPU/Thrds    | Srv Mem        | Srv Mem/Conn   | Cli CPU/Thrds    | Cli Mem        | Cli Mem/Conn  '
-        Kernel.puts rule
+        puts '[Harness] Monitoring resources (Press Ctrl+C to stop)...'
+        puts rule
+        puts 'Time (UTC) | Real Conns  | Srv CPU/Thrds    | Srv Mem        | Srv Mem/Conn   | Cli CPU/Thrds    | Cli Mem        | Cli Mem/Conn  '
+        puts rule
       end
 
       # Safely renders formatting table rows via string padding strategies.
@@ -52,10 +55,10 @@ module HttpLoader
       # @return [void]
       sig { params(params: T::Hash[Symbol, T.untyped]).void }
       def log_table_row(params)
-        Kernel.puts Kernel.format(
+        puts format(
           '%<t>-10s | %<ac>-11s | %<sc>-16s | %<sm>-14s | %<sk>-14s | %<cc>-16s | %<cm>-14s | %<ck>-14s',
-          t: params[:t], ac: params[:ac], sc: params[:sc], sm: params[:sm],
-          sk: params[:sk], cc: params[:cc], cm: params[:cm], ck: params[:ck]
+          t: params.fetch(:t), ac: params.fetch(:ac), sc: params.fetch(:sc), sm: params.fetch(:sm),
+          sk: params.fetch(:sk), cc: params.fetch(:cc), cm: params.fetch(:cm), ck: params.fetch(:ck)
         )
       end
 
@@ -82,13 +85,12 @@ module HttpLoader
       # @return [void]
       sig { params(active: Integer, c_cpu: String, c_th: Integer, c_m: String).void }
       def print_combined_stats(active, c_cpu, c_th, c_m)
-        harness = T.cast(self, HttpLoader::Harness)
         s_cpu, s_mem, s_th, s_conn = extract_server_stats
-        _cc, _cm, c_kb, _ct = harness.monitor.process_stats(harness.pm.client_pid)
-        c_conn = format_kb_conn(c_kb, active, harness.pm.client_pid)
+        _cc, _cm, c_kb, _ct = monitor.process_stats(pm.client_pid)
+        c_conn = format_kb_conn(c_kb, active, pm.client_pid)
 
         log_table_row(
-          t: Time.now.utc.strftime('%H:%M:%S'), ac: active.to_s,
+          t: Time.now.utc.strftime('%H:%M:%S'), ac: active,
           sc: "#{s_cpu}% / #{s_th}", sm: s_mem, sk: s_conn,
           cc: "#{c_cpu}% / #{c_th}", cm: c_m, ck: c_conn
         )
@@ -99,10 +101,9 @@ module HttpLoader
       # @return [Array<String, String, Integer, String>] data frame array for the internal server metrics
       sig { returns([String, String, Integer, String]) }
       def extract_server_stats
-        harness = T.cast(self, HttpLoader::Harness)
-        s_cpu, s_mem, s_kb, s_th = harness.monitor.process_stats(harness.pm.server_pid)
-        active_s = harness.monitor.count_established_connections(harness.pm.server_pid)
-        s_conn = format_kb_conn(s_kb, active_s, harness.pm.server_pid)
+        s_cpu, s_mem, s_kb, s_th = monitor.process_stats(pm.server_pid)
+        active_s = monitor.count_established_connections(pm.server_pid)
+        s_conn = format_kb_conn(s_kb, active_s, pm.server_pid)
         [s_cpu, s_mem, s_th, s_conn]
       end
 
@@ -111,9 +112,8 @@ module HttpLoader
       # @return [Array<Integer, String, Integer, String>] extracted client variables dataset
       sig { returns([Integer, String, Integer, String]) }
       def extract_client_stats
-        harness = T.cast(self, HttpLoader::Harness)
-        c_cpu, c_mem, _c_kb, c_th = harness.monitor.process_stats(harness.pm.client_pid)
-        active_c = harness.monitor.count_established_connections(harness.pm.client_pid)
+        c_cpu, c_mem, _c_kb, c_th = monitor.process_stats(pm.client_pid)
+        active_c = monitor.count_established_connections(pm.client_pid)
         [active_c, c_cpu, c_th, c_mem]
       end
     end
