@@ -50,10 +50,9 @@ module HttpLoader
         request['User-Agent'] = @config.user_agent
         @config.headers.each { |k, v| request[k] = v }
 
-        http.request(request) do |raw_response|
-          response = T.cast(raw_response, Net::HTTPResponse)
-          response.read_body { |_chunk| nil }
-        end
+        # No block: Net::HTTP reads (and so drains) the whole body, keeping the keep-alive
+        # connection reusable, matching the block-less request in perform_ping?.
+        http.request(request)
       end
 
       # Occupies the lifecycle constraint of the connection honoring periodic heartbeats.
@@ -107,9 +106,7 @@ module HttpLoader
         sleep(cap_to_budget(jittered_interval(1.0 / @config.qps_per_connection, @config.jitter), remaining))
         req = build_request(Net::HTTP::Get.new(uri))
 
-        res = T.cast(http.request(req) do |raw_r|
-          T.cast(raw_r, Net::HTTPResponse).read_body { |_c| nil }
-        end, Net::HTTPResponse)
+        res = T.cast(http.request(req), Net::HTTPResponse)
         log_status(client_index, res)
         success?(res)
       end
@@ -123,7 +120,7 @@ module HttpLoader
       # @return [Boolean] true predicting session extension
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
       def perform_ping?(client_index, uri, http, remaining)
-        sleep(cap_to_budget(jittered_interval(@config.ping_period.to_f, @config.jitter), remaining))
+        sleep(cap_to_budget(jittered_interval(@config.ping_period, @config.jitter), remaining))
         req = build_request(Net::HTTP::Head.new(uri))
 
         res = T.cast(http.request(req), Net::HTTPResponse)

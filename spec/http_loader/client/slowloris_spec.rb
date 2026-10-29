@@ -11,7 +11,7 @@ RSpec.describe HttpLoader::Client::Slowloris do
   let(:config) do
     HttpLoader::Client::Config.new(
       connections: 1, target_urls: [], use_https: false,
-      verbose: false, ping: false, ping_period: 1, http_loader_timeout: 0.1,
+      verbose: false, ping: false, ping_period: 1.0, http_loader_timeout: 0.1,
       connections_per_second: 0, max_concurrent_connections: 1,
       reopen_closed_connections: false, reopen_interval: 0.0,
       read_timeout: 5.0, user_agent: 'A', jitter: 0.0,

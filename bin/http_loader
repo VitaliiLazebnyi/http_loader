@@ -30,7 +30,7 @@ case command
 when 'client'
   # Execute the Load Generation Client logic when the `client` mode is specified.
   # Initiates parsing of client-specific parameters and orchestrates the creation of the Client instance.
-  options = { connections: 1000, use_https: false, target_urls: [], verbose: false, ping: true, ping_period: 5,
+  options = { connections: 1000, use_https: false, target_urls: [], verbose: false, ping: true, ping_period: 5.0,
               http_loader_timeout: 0.0, connections_per_second: 0, max_concurrent_connections: nil,
               reopen_closed_connections: false, reopen_interval: 5.0, read_timeout: 0.0, user_agent: 'Keep-Alive Test',
               ramp_up: 0.0, bind_ips: [], proxy_pool: [], qps_per_connection: 0, headers: {}, slowloris_delay: 0.0 }

@@ -7,7 +7,7 @@ require 'http_loader/client/config'
 RSpec.describe HttpLoader::Client::Config do
   def config(**overrides)
     defaults = {
-      connections: 1, ping_period: 1, max_concurrent_connections: 1, http_loader_timeout: 0.0,
+      connections: 1, ping_period: 1.0, max_concurrent_connections: 1, http_loader_timeout: 0.0,
       connections_per_second: 0, reopen_interval: 0.0, read_timeout: 0.0, ramp_up: 0.0,
       jitter: 0.0, qps_per_connection: 0, slowloris_delay: 0.0
     }

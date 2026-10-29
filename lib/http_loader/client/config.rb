@@ -16,7 +16,7 @@ module HttpLoader
       const :use_https, T::Boolean, default: false
       const :verbose, T::Boolean, default: false
       const :ping, T::Boolean, default: true
-      const :ping_period, Integer, default: 5
+      const :ping_period, Float, default: 5.0
       const :http_loader_timeout, Float, default: 0.0
       const :connections_per_second, Integer, default: 0
       const :max_concurrent_connections, Integer, default: 1000

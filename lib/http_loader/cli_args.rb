@@ -45,7 +45,7 @@ module HttpLoader
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_ping(opts, options)
         opts.on('--[no-]ping', 'Ping') { |v| options[:ping] = T.cast(v, T::Boolean) }
-        opts.on('--ping_period=SECONDS', Integer, 'Ping period') { |v| options[:ping_period] = T.cast(v, Integer) }
+        opts.on('--ping_period=SECONDS', Float, 'Ping period') { |v| options[:ping_period] = T.cast(v, Float) }
       end
 
       # Parses timeout, rate-limiting, and concurrency thresholds.
