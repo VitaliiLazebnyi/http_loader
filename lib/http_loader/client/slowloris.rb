@@ -50,15 +50,13 @@ module HttpLoader
       # @return [void]
       sig { params(io: IO, uri: URI::Generic).void }
       def fire_initial_payload(io, uri)
-        chars = build_payload_headers(uri).chars
-        last = chars.size - 1
-
-        chars.each_with_index do |char, i|
+        build_payload_headers(uri).chars.each_with_index do |char, i|
+          # Pace *before* each byte except the first: this spaces the stream identically while
+          # leaving no trailing pause after the final byte (maintain_hold paces the keep-alive
+          # bytes itself), without a redundant last-index calculation.
+          sleep(jittered_interval(@config.slowloris_delay, @config.jitter)) if i.positive?
           io.write(char)
           io.flush
-          # No trailing pause after the final byte; maintain_hold immediately paces the
-          # subsequent keep-alive bytes, so an extra sleep here is redundant.
-          sleep(jittered_interval(@config.slowloris_delay, @config.jitter)) unless i == last
         end
       end
 
@@ -69,14 +67,13 @@ module HttpLoader
       sig { params(uri: URI::Generic).returns(String) }
       def build_payload_headers(uri)
         path = T.must(uri.path).empty? ? '/' : uri.path
-        query = uri.query ? "?#{uri.query}" : ''
-        payload = "GET #{path}#{query} HTTP/1.1\r\n" \
+        target = uri.query ? "#{path}?#{uri.query}" : path
+        payload = "GET #{target} HTTP/1.1\r\n" \
                   "Host: #{uri.host}\r\n" \
                   "Connection: keep-alive\r\n" \
                   "User-Agent: #{@config.user_agent}\r\n"
         @config.headers.each { |k, v| payload += "#{k}: #{v}\r\n" }
-        payload += 'X-Slowloris: ' # unfinished header
-        payload
+        "#{payload}X-Slowloris: " # deliberately unfinished trailing header
       end
 
       # Keeps an ongoing socket indefinitely occupied via sporadic random byte injection.
