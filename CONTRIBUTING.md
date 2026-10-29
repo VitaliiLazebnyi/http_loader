@@ -72,8 +72,13 @@ docker build -t http_loader:ci .     # hadolint-clean Dockerfile, pinned base di
   with a "Warning gate" job (`script/warning_gate.sh`) that fails the run when the log of any
   job contains a warning or a deprecation notice.
 - **Behavior is specified.** Every behavioral fix needs a regression spec, and every
-  surviving mutant needs a test that kills it (or, when the mutation cannot change observable
-  behavior, simpler code).
+  surviving mutant needs a test that kills it. Prefer a real test over everything else; when a
+  mutation cannot change observable behavior, prefer simpler code that removes it (e.g. a
+  redundant `.utc`/`Float()`/leading `::`, or a `type_alias` constant for an inline generic).
+  Only a mutation that is *provably* equivalent — no runtime test can tell it apart, such as a
+  Sorbet-only assertion or an OpenSSL/`getconf`/`/proc` API that accepts interchangeable
+  inputs — may carry a narrow, per-case ignore in `.mutant.yml`, each with a comment stating
+  why it is equivalent. Never a broad or blanket ignore, and never an inline `mutant:disable`.
 - `lib/` is `# typed: strong`. Add missing external constants to `sorbet/rbi/custom/*.rbi`
   rather than loosening the typed sigil.
 - Update `CHANGELOG.md` for user-visible changes.
