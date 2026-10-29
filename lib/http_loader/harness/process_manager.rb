@@ -20,19 +20,36 @@ module HttpLoader
       # Seconds to wait for the spawned server to accept TCP connections before giving up.
       SERVER_BOOT_TIMEOUT = 15.0
 
-      sig { returns(T.nilable(Integer)) }
-      attr_reader :server_pid, :client_pid
+      # Map of spawned child role (:server / :client) to its OS pid. A static type.
+      Pids = T.type_alias { T::Hash[Symbol, Integer] }
 
-      # Allocates a new supervisor manager evaluating local child architectures natively.
+      # Allocates a new supervisor manager evaluating local child architectures natively. The spawned
+      # child pids live in a single map (empty until a child is spawned) rather than two nil ivars, so
+      # the initial "no pid yet" state is the absence of a key rather than a typed-nil literal.
       #
       # @param config [HttpLoader::Harness::Config] strongly typed harness runtime configurations
       # @return [void]
       sig { params(config: HttpLoader::Harness::Config).void }
       def initialize(config)
         @config = config
-        @server_pid = T.let(nil, T.nilable(Integer))
-        @client_pid = T.let(nil, T.nilable(Integer))
+        @pids = T.let({}, Pids)
         @log_dir = T.let(File.expand_path('../../../logs', __dir__), String)
+      end
+
+      # The spawned server's pid, or nil before the server is spawned.
+      #
+      # @return [Integer, nil] the server child pid
+      sig { returns(T.nilable(Integer)) }
+      def server_pid
+        @pids[:server]
+      end
+
+      # The spawned client's pid, or nil before the client is spawned.
+      #
+      # @return [Integer, nil] the client child pid
+      sig { returns(T.nilable(Integer)) }
+      def client_pid
+        @pids[:client]
       end
 
       # Unilaterally forks background OS processes wiring explicit file descriptor capture bounds natively.
@@ -51,8 +68,8 @@ module HttpLoader
       # @return [void]
       sig { void }
       def cleanup
-        terminate(@server_pid)
-        terminate(@client_pid)
+        terminate(server_pid)
+        terminate(client_pid)
       end
 
       # Resolves active PID statuses ensuring both mapped logic ends remain alive actively.
@@ -60,8 +77,10 @@ module HttpLoader
       # @return [Boolean] true flag implying fatal termination of tracked underlying routines
       sig { returns(T::Boolean) }
       def missing_process?
-        return true if @client_pid && dead?(@client_pid)
-        return true if @server_pid && dead?(@server_pid)
+        cpid = client_pid
+        spid = server_pid
+        return true if cpid && dead?(cpid)
+        return true if spid && dead?(spid)
 
         false
       end
@@ -120,8 +139,8 @@ module HttpLoader
       def spawn_server
         args = ['server']
         args << '--https' if @config.use_https
-        @server_pid = spawn_child(args, 'server.log', 'server.err')
-        puts "[Harness] Started server with PID #{@server_pid}"
+        @pids[:server] = spawn_child(args, 'server.log', 'server.err')
+        puts "[Harness] Started server with PID #{server_pid}"
         wait_for_server
       end
 
@@ -134,8 +153,8 @@ module HttpLoader
       def spawn_client
         client_args = @config.client_args
         extra = client_args.empty? ? ["--connections_count=#{@config.connections}"] : client_args
-        @client_pid = spawn_child(['client', *extra], 'client.stdout.log', 'client.stderr.log')
-        puts "[Harness] Started client with PID #{@client_pid}"
+        @pids[:client] = spawn_child(['client'] + extra, 'client.stdout.log', 'client.stderr.log')
+        puts "[Harness] Started client with PID #{client_pid}"
       end
 
       # Spawns `bin/http_loader <args>` redirecting streams. The command is assembled with
@@ -162,7 +181,9 @@ module HttpLoader
         stop_at = Time.now + SERVER_BOOT_TIMEOUT
         while Time.now < stop_at
           return if port_open?(port)
-          break if @server_pid && dead?(@server_pid)
+
+          spid = server_pid
+          break if spid && dead?(spid)
 
           sleep(0.1)
         end
