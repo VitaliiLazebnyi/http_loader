@@ -30,5 +30,18 @@ mutation:
     # sorbet-runtime checks generics shallowly), so no runtime test can observe it -- same basis as
     # a `sig` block.
     - block{receiver=send{selector=type_alias}}
+    # Numeric coercion of a local variable: `ResourceMonitor#query_getconf`'s `out.to_i` (getconf
+    # output) and `#read_rss_kb`'s `rss_field.to_i` (a `/proc/<pid>/statm` field). The kernel and
+    # getconf only ever emit well-formed non-negative integer strings, so on their guaranteed input
+    # domain `.to_i`, `Integer(...)` and `.to_f` are interchangeable -- the only strings that would
+    # distinguish them (hex, embedded non-digits, fractions) never occur. The receiver is a bare
+    # local (the field/value is extracted to one first), so this prunes nothing but the coercion.
+    # No `lvar.to_f` is ignored, so `Pacing`'s meaningful `start_time.to_f` stays fully mutated.
+    - send{selector=to_i receiver=lvar}
+    # Same numeric-coercion equivalence for `#read_cpu_perc`'s `T.must(tail[11]).to_f` /
+    # `T.must(tail[12]).to_f` (integer jiffy counts from `/proc/<pid>/stat`) and `#fallback_ps_stats`'s
+    # `T.must(rss_kb_str).to_f` (an integer KB field from `ps`). The `T.must(...)` receiver subtree is
+    # already pruned by the `must` ignore above, so this adds no coverage loss beyond the coercion.
+    - send{selector=to_f receiver=send{selector=must}}
 coverage_criteria:
   process_abort: true
