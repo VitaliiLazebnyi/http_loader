@@ -24,8 +24,6 @@ coverage/
 .yardoc/
 doc/
 
-# Misc
-*.json
 # Bundler local config (machine-specific; never commit)
 /.bundle/
 
