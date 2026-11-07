@@ -3,18 +3,21 @@
 
 # Copyright (c) 2026 Vitalii Lazebnyi
 
+require 'ipaddr'
 require 'spec_helper'
 
 RSpec.describe(HttpLoader::Server) do
   let(:server) { HttpLoader::Server.new }
+  # The IPv4 wildcard address (INADDR_ANY), which binds every interface.
+  let(:wildcard) { satisfy('the IPv4 wildcard address') { |host| IPAddr.new(host) == IPAddr.new(0, Socket::AF_INET) } }
 
   before { allow($stdout).to(receive(:puts)) }
 
   describe 'the mock Rack app' do
     let(:response) { server.instance_variable_get(:@app).call({}) }
 
-    it 'answers every request with a fixed 200 OK plaintext body' do
-      expect(response).to(eq([200, { 'Content-Type' => 'text/plain', 'Content-Length' => '2' }, ['OK']]))
+    it 'answers every request with a fixed 200 OK plaintext body, with Rack 3 (lowercase) header names' do
+      expect(response).to(eq([200, { 'content-type' => 'text/plain', 'content-length' => '2' }, ['OK']]))
     end
 
     it 'is a proc (lenient arity), not a strict lambda' do
@@ -47,24 +50,33 @@ RSpec.describe(HttpLoader::Server) do
   end
 
   describe '#start_plaintext' do
-    it 'announces the port and runs the Falcon Rackup handler bound to 0.0.0.0 with the mock app', :aggregate_failures do
-      allow(Rackup::Handler::Falcon).to(receive(:run))
+    before { allow(Rackup::Handler::Falcon).to(receive(:run)) }
+
+    it 'announces the port' do
       expect { server.__send__(:start_plaintext, 8080) }
         .to(output("[Server] Binding natively to plaintext HTTP over port 8080\n").to_stdout)
-      expect(Rackup::Handler::Falcon).to(
-        have_received(:run)
-                .with(be(server.instance_variable_get(:@app)), Host: '0.0.0.0', Port: 8080)
-      )
     end
 
-    it 'installs an interrupt that exits with status 0 once the handler yields' do
-      allow(Rackup::Handler::Falcon).to(receive(:run).and_yield(instance_double(Object)))
-      captured = nil
-      allow(server).to(receive(:setup_interrupt) { |&blk| captured = blk })
-      allow(server).to(receive(:exit))
+    it 'runs the Falcon Rackup handler with the mock app on every IPv4 interface' do
       server.__send__(:start_plaintext, 8080)
-      captured.call
-      expect(server).to(have_received(:exit).with(0))
+      expect(Rackup::Handler::Falcon)
+        .to(have_received(:run).with(be(server.instance_variable_get(:@app)), Host: wildcard, Port: 8080))
+    end
+
+    context 'when the handler yields' do
+      let(:interrupt) do
+        allow(Rackup::Handler::Falcon).to(receive(:run).and_yield(instance_double(Object)))
+        captured = T.let(nil, T.nilable(Proc))
+        allow(server).to(receive(:setup_interrupt) { |&block| captured = block })
+        server.__send__(:start_plaintext, 8080)
+        T.must(captured)
+      end
+
+      it 'installs an interrupt that exits with status 0' do
+        allow(server).to(receive(:exit))
+        interrupt.call
+        expect(server).to(have_received(:exit).with(0))
+      end
     end
   end
 
@@ -84,9 +96,9 @@ RSpec.describe(HttpLoader::Server) do
   end
 
   describe '#run_falcon' do
-    let(:ssl_context) { instance_double(OpenSSL::SSL::SSLContext) }
-    let(:falcon) { instance_double(Falcon::Server)         }
-    let(:task)   { instance_double(Async::Task, wait: nil) }
+    let(:ssl_context) { instance_double(OpenSSL::SSL::SSLContext)      }
+    let(:falcon)      { instance_double(Falcon::Server)                }
+    let(:task)        { instance_double(Async::Task, wait: nil)        }
 
     before do
       allow(server).to(receive(:build_falcon_server).with(8443, ssl_context).and_return(falcon))
@@ -103,51 +115,74 @@ RSpec.describe(HttpLoader::Server) do
     end
 
     it 'installs an interrupt that exits with status 0' do
-      captured = nil
-      allow(server).to(receive(:setup_interrupt) { |&blk| captured = blk })
+      captured = T.let(nil, T.nilable(Proc))
+      allow(server).to(receive(:setup_interrupt) { |&block| captured = block })
       server.__send__(:run_falcon, 8443, ssl_context)
-      captured.call
+      T.must(captured).call
       expect(server).to(have_received(:exit).with(0))
     end
   end
 
   describe '#build_falcon_server' do
+    subject(:built) { server.__send__(:build_falcon_server, 8443, ssl_context) }
+
     let(:ssl_context) { instance_double(OpenSSL::SSL::SSLContext) }
     let(:endpoint) { instance_double(IO::Endpoint::HostEndpoint) }
     let(:secure)   { instance_double(IO::Endpoint::SSLEndpoint)  }
-    let(:adapter)  { instance_double(Protocol::Rack::Adapter)    }
-    let(:falcon)   { instance_double(Falcon::Server)             }
 
     before do
       allow(IO::Endpoint).to(receive(:tcp).and_return(endpoint))
       allow(IO::Endpoint::SSLEndpoint).to(receive(:new).and_return(secure))
-      allow(Protocol::Rack::Adapter).to(receive(:new).and_return(adapter))
-      allow(Falcon::Server).to(receive(:new).and_return(falcon))
+      allow(Protocol::Rack::Adapter).to(receive(:new).and_return(instance_double(Protocol::Rack::Adapter)))
+      allow(Falcon::Server).to(receive(:new).and_return(instance_double(Falcon::Server)))
     end
 
-    it 'wraps the mock app in an HTTPS Falcon server over an SSL endpoint bound to 0.0.0.0', :aggregate_failures do
-      result = server.__send__(:build_falcon_server, 8443, ssl_context)
-      expect(IO::Endpoint).to(have_received(:tcp).with('0.0.0.0', 8443))
+    it 'returns the Falcon server' do
+      # The stubbed Falcon::Server.new returns the same double on every call.
+      expect(built).to(be(Falcon::Server.new))
+    end
+
+    it 'binds a TCP endpoint on every IPv4 interface' do
+      built
+      expect(IO::Endpoint).to(have_received(:tcp).with(wildcard, 8443))
+    end
+
+    it 'wraps the TCP endpoint in TLS with the SSL context' do
+      built
       expect(IO::Endpoint::SSLEndpoint).to(have_received(:new).with(endpoint, ssl_context: ssl_context))
+    end
+
+    it 'adapts the mock app' do
+      built
       expect(Protocol::Rack::Adapter).to(have_received(:new).with(be(server.instance_variable_get(:@app))))
+    end
+
+    it 'serves the adapted app over HTTP/1 with the https scheme on the TLS endpoint' do
+      built
       expect(Falcon::Server).to(
         have_received(:new)
-                .with(adapter, secure, protocol: Async::HTTP::Protocol::HTTP1, scheme: 'https')
+                .with(Protocol::Rack::Adapter.new(nil), secure, protocol: Async::HTTP::Protocol::HTTP1, scheme: 'https')
       )
-      expect(result).to(be(falcon))
     end
   end
 
   describe '#setup_interrupt' do
-    it 'traps INT, prints the shutdown notice, and yields to the supplied block', :aggregate_failures do
-      captured = nil
-      allow(server).to(receive(:trap).with('INT') { |&blk| captured = blk })
-      yielded = false
-      server.__send__(:setup_interrupt) { yielded = true }
-      expect(server).to(have_received(:trap).with('INT'))
-      expect { captured.call('INT') }
+    let(:handler) do
+      captured = T.let(nil, T.nilable(Proc))
+      allow(server).to(receive(:trap).with('INT') { |&block| captured = block })
+      server.__send__(:setup_interrupt) { nil }
+      T.must(captured)
+    end
+
+    it 'traps INT and prints the shutdown notice' do
+      expect { handler.call('INT') }
         .to(output("\n[Server] Shutting down immediately...\n").to_stdout)
-      expect(yielded).to(be(true))
+    end
+
+    it 'yields to the supplied block when INT arrives' do
+      allow(server).to(receive(:trap).with('INT').and_yield('INT'))
+      expect { |probe| server.__send__(:setup_interrupt, &probe) }
+        .to(output.to_stdout.and(yield_control))
     end
   end
 
@@ -174,7 +209,8 @@ RSpec.describe(HttpLoader::Server) do
 
     let(:rsa) { OpenSSL::PKey::RSA.new(2048) }
 
-    it 'mints a v3 localhost certificate (serial 1) carrying the key, signed so it self-verifies', :aggregate_failures do
+    it 'mints a v3 localhost certificate (serial 1) carrying the key, signed so it self-verifies',
+       :aggregate_failures do
       # parse_cert_info was applied
       expect(cert.subject.to_s).to(eq('/CN=localhost'))
       expect(cert.serial).to(eq(1))
@@ -187,7 +223,8 @@ RSpec.describe(HttpLoader::Server) do
   describe '#generate_ssl_context' do
     subject(:context) { server.__send__(:generate_ssl_context) }
 
-    it 'returns a context pairing a 2048-bit RSA key with a certificate that verifies against it', :aggregate_failures do
+    it 'returns a context pairing a 2048-bit RSA key with a certificate that verifies against it',
+       :aggregate_failures do
       expect(context.is_a?(OpenSSL::SSL::SSLContext)).to(be(true))
       expect(context.key.is_a?(OpenSSL::PKey::RSA)).to(be(true))
       expect(context.key.n.num_bits).to(eq(2048))
