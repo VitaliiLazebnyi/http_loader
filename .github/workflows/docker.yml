@@ -61,10 +61,10 @@ jobs:
     - name: Build the image
       run: docker build -t http_loader:ci .
 
-    - name: Install Trivy 0.76.1
+    - name: Install Trivy 0.76.2
       env:
-        TRIVY_VERSION: 0.76.1
-        TRIVY_SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 # trivy_0.76.1_Linux-64bit.tar.gz
+        TRIVY_VERSION: 0.76.2
+        TRIVY_SHA256: bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf # trivy_0.76.2_Linux-64bit.tar.gz
       run: |
         archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
         curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" \

@@ -3,7 +3,7 @@
 # (not -slim) is used deliberately: it already ships the toolchain the native gem
 # extensions (io-event and friends) compile against, so no apt layer is needed.
 # Pinned by digest to the newest 4.0.9 release; `rake outdated` and Dependabot flag drift.
-FROM ruby:4.0.9@sha256:69af6414ff991a513b535b162735b5177b381f7e4a08045b48e5a707d144cd57
+FROM ruby:4.0.9@sha256:07042b74555ff2eef7365abd72d39cba6e499ab63e2d2942fd34d4778338495b
 
 # BUNDLE_PATH keeps gems inside the project tree; CI=true turns on the 100% coverage gate.
 ENV LANG=C.UTF-8 \
@@ -17,7 +17,7 @@ WORKDIR /app
 # matches the Gemfile.lock "BUNDLED WITH" pin.
 COPY Gemfile Gemfile.lock http_loader.gemspec ./
 COPY lib/http_loader/version.rb lib/http_loader/version.rb
-RUN gem install bundler:4.0.20 --no-document \
+RUN gem install bundler:4.0.24 --no-document \
  && bundle install
 
 # The ruby:4.0.9 base image ships json 2.18.0 as a default gem (CVE-2026-33210). The bundle

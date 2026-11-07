@@ -26,6 +26,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Shared `Client::Pacing` mixin for the jittered-sleep and keep-alive-budget arithmetic that
   was previously duplicated across the client engine and the HTTP/Slowloris sessions.
 - Dropped the deprecated `Async::Task#sleep` in favor of the reactor-aware `Kernel#sleep`.
+- Dependencies updated to their newest releases (2026-11-07): rack 3.2.8, sorbet and
+  sorbet-runtime 0.6.13645, rubocop 1.92.2, rubocop-md 3.0.0, RSpec 3.13.x patch releases,
+  Bundler 4.0.24, the `ruby:4.0.9` base image digest, Trivy 0.76.2, and the pinned
+  `ruby/setup-ruby`, `github/codeql-action` and `zizmorcore/zizmor-action` SHAs.
 
 ### Fixed
 - CI gates: RuboCop offenses and Sorbet `--typed strong` errors now pass (added a prism RBI shim).
