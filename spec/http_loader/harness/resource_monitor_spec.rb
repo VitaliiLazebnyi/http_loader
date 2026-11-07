@@ -138,7 +138,7 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
       allow(Time).to(receive(:now).and_return(Time.at(0), Time.at(0.3)))
       monitor.__send__(:calculate_cpu, 1, 100.0)
       # delta 10 ticks / 100 CLK_TCK / 0.3s * 100 = 33.333...% -> 33.3 (a Float, not 33 or 33.33).
-      expect(monitor.__send__(:calculate_cpu, 1, 110.0)).to(eql(33.3))
+      expect(monitor.__send__(:calculate_cpu, 1, 110.0)).to(be(33.3))
     end
 
     it 'uses the CLK_TCK fallback of 100 when getconf fails' do
@@ -165,8 +165,8 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
       expect(monitor.process_stats(123)).to(eq(['12.3', '1.24 MB', 1268.0, 2]))
     end
 
-    it 'reports the RSS as a Float (eql is type-strict)' do
-      expect(monitor.process_stats(123).fetch(2)).to(eql(1268.0))
+    it 'reports the RSS as a Float (be is type-strict)' do
+      expect(monitor.process_stats(123).fetch(2)).to(be(1268.0))
     end
 
     it 'floors the thread count at zero for an empty ps -M result' do
