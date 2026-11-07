@@ -3,6 +3,7 @@
 
 require 'sorbet-runtime'
 require 'fileutils'
+require 'stringio'
 require_relative 'file_limits'
 require_relative 'harness/config'
 require_relative 'harness/resource_monitor'
@@ -49,7 +50,7 @@ module HttpLoader
     # @return [void]
     sig { void }
     def start
-      T.cast($stdout, IO).sync = true
+      T.let($stdout, T.any(IO, StringIO)).sync = true
       print_startup_banner
       bump_file_limits
 

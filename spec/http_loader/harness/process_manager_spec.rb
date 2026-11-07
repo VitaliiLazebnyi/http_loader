@@ -293,7 +293,8 @@ RSpec.describe HttpLoader::Harness::ProcessManager do
       allow(manager).to receive_messages(port_open?: false, dead?: false, sleep: nil)
       t = Time.now
       allow(Time).to receive(:now).and_return(t, t, t + 100)
-      manager.send(:wait_for_server) # @pids has no :server
+      # @pids has no :server, so the poll runs to the deadline and reports the timeout.
+      expect { manager.send(:wait_for_server) }.to output(/did not become ready/).to_stderr
       expect(manager).not_to have_received(:dead?)
     end
 
