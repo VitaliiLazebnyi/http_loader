@@ -10,6 +10,7 @@ module HttpLoader
     # Handles normal and QPS-driven HTTP keep-alive connections.
     class HttpSession
       extend T::Sig
+      include Pacing
 
       # Constructs a new HTTP pooling session instance.
       #
@@ -18,8 +19,8 @@ module HttpLoader
       # @return [void]
       sig { params(config: Config, logger: Logger).void }
       def initialize(config, logger)
-        @config = T.let(config, Config)
-        @logger = T.let(logger, Logger)
+        @config = config
+        @logger = logger
       end
 
       # Executes a standard compliant keep-alive pipeline.
@@ -49,10 +50,9 @@ module HttpLoader
         request['User-Agent'] = @config.user_agent
         @config.headers.each { |k, v| request[k] = v }
 
-        http.request(request) do |raw_response|
-          response = T.cast(raw_response, Net::HTTPResponse)
-          response.read_body { |_chunk| nil }
-        end
+        # No block: Net::HTTP reads (and so drains) the whole body, keeping the keep-alive
+        # connection reusable, matching the block-less request in perform_ping?.
+        http.request(request)
       end
 
       # Occupies the lifecycle constraint of the connection honoring periodic heartbeats.
@@ -65,7 +65,7 @@ module HttpLoader
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, start_time: Time).void }
       def maintain_keepalive(client_index, uri, http, start_time)
         loop do
-          remaining = remaining_budget(start_time)
+          remaining = budget_remaining(@config.http_loader_timeout, start_time)
           if remaining && remaining <= 0.0
             @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing.")
             break
@@ -73,31 +73,6 @@ module HttpLoader
 
           break unless process_heartbeat?(client_index, uri, http, remaining)
         end
-      end
-
-      # Seconds left before the keep-alive deadline, or nil when the lifetime is unbounded
-      # (`http_loader_timeout == 0`). Used to cap each heartbeat sleep so the connection
-      # never overruns its deadline by up to a full (jittered) interval.
-      #
-      # @param start_time [Time] the connection's spawn timestamp
-      # @return [Float, nil] remaining seconds, or nil if unbounded
-      sig { params(start_time: Time).returns(T.nilable(Float)) }
-      def remaining_budget(start_time)
-        return nil unless @config.http_loader_timeout > 0.0
-
-        @config.http_loader_timeout - (Time.now - start_time)
-      end
-
-      # Caps a computed sleep so it never sleeps past the remaining keep-alive budget.
-      #
-      # @param base [Float] the desired sleep duration
-      # @param remaining [Float, nil] remaining budget, or nil if unbounded
-      # @return [Float] the capped sleep duration
-      sig { params(base: Float, remaining: T.nilable(Float)).returns(Float) }
-      def cap_sleep(base, remaining)
-        return base unless remaining
-
-        [base, remaining].min
       end
 
       # Analyzes global configurations selecting appropriate recurrent payloads or static hibernation.
@@ -114,7 +89,7 @@ module HttpLoader
         elsif @config.ping
           perform_ping?(client_index, uri, http, remaining)
         else
-          sleep(cap_sleep(calculate_sleep(1.0), remaining))
+          sleep(cap_to_budget(jittered_interval(1.0, @config.jitter), remaining))
           true
         end
       end
@@ -128,12 +103,10 @@ module HttpLoader
       # @return [Boolean] success logic representing connection continuation validation
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
       def perform_qps?(client_index, uri, http, remaining)
-        sleep(cap_sleep(calculate_sleep(1.0 / @config.qps_per_connection), remaining))
+        sleep(cap_to_budget(jittered_interval(1.0 / @config.qps_per_connection, @config.jitter), remaining))
         req = build_request(Net::HTTP::Get.new(uri))
 
-        res = T.cast(http.request(req) do |raw_r|
-          T.cast(raw_r, Net::HTTPResponse).read_body { |_c| nil }
-        end, Net::HTTPResponse)
+        res = T.cast(http.request(req), Net::HTTPResponse)
         log_status(client_index, res)
         success?(res)
       end
@@ -147,7 +120,7 @@ module HttpLoader
       # @return [Boolean] true predicting session extension
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
       def perform_ping?(client_index, uri, http, remaining)
-        sleep(cap_sleep(calculate_sleep(@config.ping_period.to_f), remaining))
+        sleep(cap_to_budget(jittered_interval(@config.ping_period, @config.jitter), remaining))
         req = build_request(Net::HTTP::Head.new(uri))
 
         res = T.cast(http.request(req), Net::HTTPResponse)
@@ -187,18 +160,6 @@ module HttpLoader
         return if success?(res)
 
         @logger.status("[Client #{client_index}] Upstream returned HTTP #{res.code}")
-      end
-
-      # Determines physical sleep timer using standard pseudo-random distributions.
-      #
-      # @param base_seconds [Float] minimum strict boundary logic
-      # @return [Float] processed output accommodating jitter configurations
-      sig { params(base_seconds: Float).returns(Float) }
-      def calculate_sleep(base_seconds)
-        return base_seconds if @config.jitter.zero?
-
-        variance = base_seconds * @config.jitter
-        [0.0, base_seconds + rand(-variance..variance)].max
       end
     end
   end

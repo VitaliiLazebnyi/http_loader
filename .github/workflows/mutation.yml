@@ -1,0 +1,67 @@
+name: Mutation testing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+
+jobs:
+  mutant:
+    name: Mutant
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+
+    # Mutant parses the code with the `parser` gem (`parser/current`), whose newest release has no
+    # grammar for Ruby 3.4 or 4.0 and warns on any other Ruby. Mutation testing therefore runs on
+    # Ruby 3.3.13, the oldest supported Ruby; the AST (and thus the mutations) is identical on 4.0.
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: "3.3.13"
+        bundler-cache: true
+    - name: Check the Ruby version
+      run: script/check_ruby.sh 3.3.13
+    # Pull requests only mutate subjects touched since the base branch (fast feedback);
+    # pushes to main run the complete set. Any alive mutation fails the build.
+    - name: Mutant (changed subjects)
+      if: github.event_name == 'pull_request'
+      run: bundle exec mutant run --since origin/main
+    - name: Mutant (full run)
+      if: github.event_name != 'pull_request'
+      run: bundle exec mutant run
+
+  warning-gate:
+    name: Warning gate
+    if: ${{ !cancelled() }}
+    needs: [mutant]
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read # reads the logs of the other jobs of this run
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Fail on any warning or deprecation in the logs of this run
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GATE_JOB_NAME: Warning gate
+      run: script/warning_gate.sh

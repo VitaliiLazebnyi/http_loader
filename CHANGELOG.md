@@ -7,6 +7,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Hardened verification suite.** RuboCop (all plugins, no todo), Sorbet via Tapioca-generated
+  RBIs (`lib/` is `# typed: strong`), YARD 100%, Reek, Flay, bundler-audit, an "outdated"
+  dependency gate with documented holds, mutation testing (Mutant), an inline-suppression
+  scanner, and a warning gate that fails any CI job log containing a warning or deprecation.
+  See `CONTRIBUTING.md`. Pinned, least-privilege GitHub Actions workflows; a hadolint-clean
+  Dockerfile pinned to the newest `ruby:4.0.9` digest and scanned with Trivy.
+- Ruby 3.3+ is now supported (tested on 3.3.13, 3.4.12 and 4.0.9).
 - **Native numeric parameter validation (REQ-CLI-023).** `Client::Config#validate!` and
   `Harness::Config#validate!` reject out-of-bounds numeric flags (e.g. `--connections_count=0`,
   negative timing/jitter values) with a clean `Configuration Error` instead of hanging or
@@ -14,6 +21,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Shared best-effort `RLIMIT_NOFILE` bump applied by the standalone client as well as the harness.
 - Bounded TCP readiness poll for the spawned server, replacing a fixed `sleep`.
 - Always-on status channel so `--track_status_codes` no longer silently requires `--verbose`.
+
+### Changed
+- Shared `Client::Pacing` mixin for the jittered-sleep and keep-alive-budget arithmetic that
+  was previously duplicated across the client engine and the HTTP/Slowloris sessions.
+- Dropped the deprecated `Async::Task#sleep` in favor of the reactor-aware `Kernel#sleep`.
 
 ### Fixed
 - CI gates: RuboCop offenses and Sorbet `--typed strong` errors now pass (added a prism RBI shim).

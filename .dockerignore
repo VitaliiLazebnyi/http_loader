@@ -1,4 +1,5 @@
 .git
+.github
 vendor
 coverage
 logs
@@ -6,4 +7,6 @@ doc
 .yardoc
 tmp
 *.gem
+sorbet/rbi/gems
+typecheck.gemfile.lock
 CODE_REVIEW.md

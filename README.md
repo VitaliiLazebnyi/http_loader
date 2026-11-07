@@ -22,7 +22,7 @@ Traditional load testing tools (like `wrk`, Apache Bench, or Locust) are heavily
 ## Technical Dependencies
 
 **Strict Requirements**
-- **Ruby 4.0.2** (the gemspec requires `>= 4.0`; any Ruby ≥ 4.0 with native `Fiber::Scheduler` support should work).
+- **Ruby 3.3+** (the gemspec requires `>= 3.3`; developed on 4.0.9). CI runs the suite on 3.3.13, 3.4.12 and 4.0.9. Any Ruby with native `Fiber::Scheduler` support works.
 - **Core Gems**: `rack`, `rackup`, `falcon`, `async`, `async-http`
 
 **Installation**
@@ -260,3 +260,44 @@ sudo tcpdump -i lo0 port 8080 -A
 ```
 
 *Note: You cannot intercept HTTPS (port `8443`) natively with `tcpdump` because it leverages block-cipher encryption. To inspect TLS loads, you would need to proxy the Ruby client bindings organically through a platform like `mitmproxy` and natively dump the Root CA into your macOS keychain.*
+
+---
+
+## 🛠️ Development & Quality Gates
+
+This repository is held to a "zero warnings, zero suppressions, everything checked" standard.
+Every gate below runs in CI (each workflow ending with a warning gate that fails on any
+warning or deprecation in the logs) and can be run locally:
+
+```bash
+bundle exec rake        # spec (100% line+branch), rubocop + suppressions, sorbet, yard, reek, flay, audit
+bundle exec rake mutant # mutation testing: every mutant must be killed (run on Ruby 3.3.x)
+bundle exec rake outdated
+```
+
+| Gate | Tool |
+| --- | --- |
+| Tests + coverage | RSpec + SimpleCov (100% line **and** branch, no skipped/pending/focused examples) |
+| Lint | RuboCop with every plugin, no todo file, no inline directives |
+| Suppression scan | `script/forbidden_suppressions.sh` (no `rubocop:disable`, `:nocov:`, `nosec`, `T.unsafe`, …) |
+| Types | Sorbet `srb tc` against Tapioca-generated RBIs; `lib/` is `# typed: strong` |
+| Docs | YARD (100% documented) |
+| Smells / duplication | Reek (`.reek.yml`) and Flay (mass 24, score 0) |
+| Dependencies | bundler-audit, and an "outdated" gate with documented holds (`script/outdated_holds.yml`) |
+| Mutation | Mutant — every mutant killed (`.mutant.yml`) |
+| Workflows / shell | actionlint, zizmor, ShellCheck |
+| Secrets | gitleaks (full history) |
+| Container | hadolint + Trivy image scan (fail on fixable HIGH/CRITICAL) |
+
+Install the pre-commit hook with `git config core.hooksPath .githooks`. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the full rules.
+
+### Docker
+
+A `Dockerfile` (pinned to the newest `ruby:4.0.9` image by digest) and `docker-compose.yml`
+reproduce the Linux CI environment, including the native `/proc` resource-monitoring paths:
+
+```bash
+docker compose run --build --rm ci     # full gate
+docker compose run --build --rm test   # rspec only
+```

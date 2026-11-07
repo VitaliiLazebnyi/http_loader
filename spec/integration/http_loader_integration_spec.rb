@@ -6,7 +6,6 @@ require 'open3'
 require 'fileutils'
 require 'json'
 require 'socket'
-# Justified Exception: E2E Integration tests organically require complex sequential process bootstrapping mathematically stretching isolated expectation boundaries.
 RSpec.describe HttpLoader, type: :integration do
   let(:bin_path) { File.expand_path('../../bin/http_loader', __dir__) }
   let(:log_dir) { File.expand_path('../../logs', __dir__) }
@@ -43,8 +42,17 @@ RSpec.describe HttpLoader, type: :integration do
     Open3.capture3('ruby', bin_path, 'client', *args)
   end
 
-  def read_client_log
-    File.exist?(client_log) ? File.read(client_log) : ''
+  # Reads the client log, polling up to `timeout` for `await` to appear. The client flushes its
+  # log asynchronously as the harness tears it down, so a fixed sleep races the flush onto disk
+  # under load; waiting for the expected line makes the assertion deterministic.
+  def read_client_log(await: nil, timeout: 15.0)
+    deadline = Time.now + timeout
+    loop do
+      content = File.exist?(client_log) ? File.read(client_log) : ''
+      return content if await.nil? || content.include?(await) || Time.now >= deadline
+
+      sleep 0.1
+    end
   end
 
   # Boots a throwaway local HTTP/1.1 server that keeps connections alive and answers
@@ -83,8 +91,8 @@ RSpec.describe HttpLoader, type: :integration do
       out, _, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(out).to match(/Starting test with 2 connections to \*\*HTTP\*\*/)
-      expect(read_client_log).to match(/Starting 2 HTTP connections/)
+      expect(out).to include('Starting test with 2 connections to **HTTP**')
+      expect(read_client_log(await: 'Starting 2 HTTP connections')).to include('Starting 2 HTTP connections')
     end
   end
 
@@ -95,9 +103,9 @@ RSpec.describe HttpLoader, type: :integration do
       out, _, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(out).to match(/Starting test with 2 connections to \*\*HTTPS\*\*/)
-      expect(read_client_log).to match(/Starting 2 HTTPS connections/)
-      expect(out).to match(/Target duration mathematically reached/)
+      expect(out).to include('Starting test with 2 connections to **HTTPS**')
+      expect(read_client_log(await: 'Starting 2 HTTPS connections')).to include('Starting 2 HTTPS connections')
+      expect(out).to include('Target duration mathematically reached')
     end
   end
 
@@ -107,7 +115,7 @@ RSpec.describe HttpLoader, type: :integration do
       _, _err, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(read_client_log).to match(/Starting 2 HTTP connections/)
+      expect(read_client_log(await: 'Starting 2 HTTP connections')).to include('Starting 2 HTTP connections')
     end
   end
 
@@ -117,7 +125,7 @@ RSpec.describe HttpLoader, type: :integration do
       _, _err, status = run_harness(args)
 
       expect(status.exitstatus).to eq(0)
-      expect(read_client_log).to match(/Starting 2 HTTP connections/)
+      expect(read_client_log(await: 'Starting 2 HTTP connections')).to include('Starting 2 HTTP connections')
     end
   end
 
@@ -129,7 +137,7 @@ RSpec.describe HttpLoader, type: :integration do
         out, _err, status = run_harness(args)
 
         expect(status.exitstatus).to eq(0)
-        expect(out).to match(/\*\*EXTERNAL URL\*\*/)
+        expect(out).to include('**EXTERNAL URL**')
 
         telemetry_file = File.join(log_dir, 'telemetry.json')
         expect(File.exist?(telemetry_file)).to be true
@@ -144,19 +152,19 @@ RSpec.describe HttpLoader, type: :integration do
     it 'fast-fails with a Configuration Error on connections_count=0 instead of deadlocking' do
       _out, err, status = run_client(['--connections_count=0'])
       expect(status.exitstatus).to eq(1)
-      expect(err).to match(/Configuration Error/)
+      expect(err).to include('Configuration Error')
     end
 
     it 'fast-fails on a non-numeric flag value' do
       _out, err, status = run_client(['--connections_count=abc'])
       expect(status.exitstatus).to eq(1)
-      expect(err).to match(/Configuration Error/)
+      expect(err).to include('Configuration Error')
     end
 
     it 'fast-fails on a malformed target URL' do
       _out, err, status = run_client(['--connections_count=1', '--url=http://bad host/'])
       expect(status.exitstatus).to eq(1)
-      expect(err).to match(/Configuration Error/)
+      expect(err).to include('Configuration Error')
     end
   end
 end

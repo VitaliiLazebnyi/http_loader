@@ -6,6 +6,7 @@ require_relative 'http_loader/version'
 require_relative 'http_loader/server'
 require_relative 'http_loader/client'
 require_relative 'http_loader/harness'
+require_relative 'http_loader/cli_args'
 
 # @author Vitalii Lazebnyi
 # @since 0.1.0

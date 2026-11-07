@@ -1,0 +1,14 @@
+# Gems that are deliberately NOT at their newest release because an upstream gemspec forbids it.
+# `rake outdated` fails for any other outdated gem, and for a hold that is no longer needed.
+# Each entry quotes the exact blocking constraint (checked against rubygems.org on 2026-10-28).
+diff-lcs:
+  newest: 2.0.0
+  blocked_by:
+    - 'rspec-expectations 3.13.5: diff-lcs >= 1.2.0, < 2.0'
+    - 'rspec-mocks 3.13.8: diff-lcs >= 1.2.0, < 2.0'
+prism:
+  newest: 2.1.0
+  blocked_by:
+    - 'rubocop-ast 1.50.0: prism ~> 1.7'
+    - 'flay 2.14.4: prism ~> 1.7'
+    - 'rbi 0.5.0: prism ~> 1.0'
