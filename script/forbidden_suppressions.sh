@@ -23,6 +23,11 @@ check() {
 
 check 'RuboCop directive' 'rubocop:(disable|enable|todo)'
 check 'Reek suppression' ':reek:'
+check 'Reek detector disabled or narrowed' 'enabled: *false|exclude:|max_[a-z_]+:' '\.reek\.yml'
+# Flay's default mass (16) and a Flog limit of 20, the strictest settings of the sibling gems.
+above_16='(1[7-9]|[2-9][0-9]|[0-9]{3,})'
+above_20='(2[1-9]|[3-9][0-9]|[0-9]{3,})'
+check 'Flay mass or Flog limit raised' "FLAY_MASS = ${above_16}|FLOG_METHOD_THRESHOLD = ${above_20}" 'Rakefile'
 check 'SimpleCov exclusion' ':nocov:|nocov_token|(add_filter|skip)\b.*(lib|exe)\b'
 check 'mutant suppression' 'mutant:disable'
 check 'YARD exclusion' ':nodoc:|@!visibility +private|@private'

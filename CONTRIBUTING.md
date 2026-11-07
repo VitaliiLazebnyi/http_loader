@@ -33,9 +33,9 @@ on any finding and on any warning in the output of any of them:
   - `rake typecheck`: Tapioca generates the gem RBIs, then `srb tc` reports no errors; `lib/` is `# typed: strong`,
     the scripts and spec support modules `# typed: strict`, the specs `# typed: true` (with Sorbet's RSpec support);
   - `rake yard`: YARD reports 100% documented, private methods included, without warnings;
-  - `rake reek`, `rake flay`, `rake flog`, `rake debride`: no code smell (`.reek.yml`), no structural duplication
-    (Flay mass 24), no method with a Flog score above 25, and no method without a caller, in `lib/`, `bin/`,
-    `script/` and the `Rakefile`;
+  - `rake reek`, `rake flay`, `rake flog`, `rake debride`: no code smell (Reek's default configuration, every
+    detector), no structural duplication (Flay's default mass, 16), no method with a Flog score above 20, and no
+    method without a caller, in `lib/`, `bin/`, `script/` and the `Rakefile`;
   - `rake audit`: bundler-audit: no dependency with a known vulnerability;
 - `rake outdated`: every gem at its newest release, except the holds in `script/outdated_holds.yml`;
 - `gem build --strict` and the executable itself;

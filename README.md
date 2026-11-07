@@ -411,7 +411,7 @@ bundle exec rake outdated
 | Suppression scan     | `script/forbidden_suppressions.sh` (no `rubocop:disable`, `:nocov:`, `nosec`, `T.unsafe`, …) |
 | Types                | Sorbet `srb tc` against Tapioca-generated RBIs; `lib/` is `# typed: strong`                  |
 | Docs                 | YARD (100% documented)                                                                       |
-| Smells / duplication | Reek (`.reek.yml`) and Flay (mass 24, score 0)                                               |
+| Smells / duplication | Reek (default configuration), Flay (mass 16, score 0) and Flog (at most 20 per method)       |
 | Dependencies         | bundler-audit, OSV-Scanner, `npm audit` (low), outdated gate (`script/outdated_holds.yml`)   |
 | Mutation             | Mutant — every mutant killed (`.mutant.yml`)                                                 |
 | Workflows / shell    | actionlint, zizmor, ShellCheck                                                               |
