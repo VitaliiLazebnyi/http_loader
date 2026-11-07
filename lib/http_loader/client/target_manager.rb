@@ -64,14 +64,6 @@ module HttpLoader
         end
       end
 
-      # Provides access to all active configured endpoint structs array.
-      #
-      # @return [Array<Target>] one resolved endpoint per target URL
-      sig { returns(T::Array[Target]) }
-      def contexts
-        @target_contexts
-      end
-
       # Retrieves specific connection settings distributing nodes evenly using deterministic boundaries.
       #
       # @param client_index [Integer] integer value unique per generated fiber worker

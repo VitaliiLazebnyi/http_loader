@@ -69,8 +69,8 @@ module HttpLoader
         end
       Client.new(CliArgs::ClientOptions.config(options)).start
       0
-    rescue ArgumentError, OptionParser::ParseError, URI::Error, TypeError => e
-      configuration_error(e)
+    rescue ArgumentError, OptionParser::ParseError, URI::Error, TypeError => error
+      configuration_error(error)
     end
 
     # Parses the server flags and runs the local test server on 8080 (HTTP) or 8443 (HTTPS).
@@ -85,8 +85,8 @@ module HttpLoader
       end
       Server.new.start(use_https: use_https, port: use_https ? 8443 : 8080)
       0
-    rescue OptionParser::ParseError => e
-      configuration_error(e)
+    rescue OptionParser::ParseError => error
+      configuration_error(error)
     end
 
     # Parses the harness flags and runs the harness. The client subprocess receives the same flags.
@@ -102,8 +102,8 @@ module HttpLoader
         end
       Harness.new(CliArgs::HarnessOptions.config(options, client_args)).start
       0
-    rescue ArgumentError, OptionParser::ParseError, URI::Error, TypeError => e
-      configuration_error(e)
+    rescue ArgumentError, OptionParser::ParseError, URI::Error, TypeError => error
+      configuration_error(error)
     end
 
     # Parses the flags of one subcommand into a copy of its default option values.

@@ -45,6 +45,10 @@ Style/Copyright:
   Exclude:
     - '**/*.md'
 
+# Rescued exceptions are named `error`, as in leechtop-downloader, rather than the default `e`.
+Naming/RescuedExceptionsVariableName:
+  PreferredName: error
+
 # Sorbet signatures name every parameter, including the block, so anonymous block forwarding (`&`) cannot
 # be used in typed code.
 Naming/BlockForwarding:

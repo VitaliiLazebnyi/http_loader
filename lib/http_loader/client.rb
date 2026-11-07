@@ -75,10 +75,10 @@ module HttpLoader
       sem = Async::Semaphore.new(@config.max_concurrent_connections, parent: task)
 
       conn_tasks = T.let([], ConnTasks)
-      @config.connections.times do |i|
+      @config.connections.times do |index|
         ramp = calc_ramp
-        perform_sleep(ramp) if i.positive? && ramp > 0.0
-        conn_tasks << sem.async { exec_conn(i) }
+        perform_sleep(ramp) if index.positive? && ramp > 0.0
+        conn_tasks << sem.async { exec_conn(index) }
       end
 
       conn_tasks.each(&:wait)
@@ -151,8 +151,8 @@ module HttpLoader
         dispatch_sess(idx, uri, http, start_t)
       end
       @logger.info("[Client #{idx}] Connection gracefully closed.")
-    rescue StandardError => e
-      handle_err(idx, e)
+    rescue StandardError => error
+      handle_err(idx, error)
     end
 
     # Fetches final connection contexts from TargetManager.

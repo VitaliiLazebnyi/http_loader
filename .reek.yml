@@ -78,11 +78,3 @@ detectors:
   ManualDispatch:
     enabled: false
 
-  # Idiomatic one-letter names are clearer than invented longer ones here: `k`/`v` for a header
-  # key/value pair, `i` for a loop index, `e` for a rescued exception.
-  UncommunicativeVariableName:
-    accept:
-      - e
-      - i
-      - k
-      - v

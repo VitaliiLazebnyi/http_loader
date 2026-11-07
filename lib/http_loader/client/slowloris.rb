@@ -54,11 +54,11 @@ module HttpLoader
       # @return [void]
       sig { params(io: T.any(IO, OpenSSL::SSL::SSLSocket), uri: URI::Generic).void }
       def fire_initial_payload(io, uri)
-        build_payload_headers(uri).chars.each_with_index do |char, i|
+        build_payload_headers(uri).chars.each_with_index do |char, index|
           # Pace *before* each byte except the first: this spaces the stream identically while
           # leaving no trailing pause after the final byte (maintain_hold paces the keep-alive
           # bytes itself), without a redundant last-index calculation.
-          sleep(jittered_interval(@config.slowloris_delay, @config.jitter)) if i.positive?
+          sleep(jittered_interval(@config.slowloris_delay, @config.jitter)) if index.positive?
           io.write(char)
           io.flush
         end
@@ -76,7 +76,7 @@ module HttpLoader
                   "Host: #{uri.host}\r\n" \
                   "Connection: keep-alive\r\n" \
                   "User-Agent: #{@config.user_agent}\r\n"
-        @config.headers.each { |k, v| payload += "#{k}: #{v}\r\n" }
+        @config.headers.each { |name, value| payload += "#{name}: #{value}\r\n" }
         # The trailing header is deliberately left unfinished.
         "#{payload}X-Slowloris: "
       end

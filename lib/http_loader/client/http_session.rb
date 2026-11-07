@@ -51,7 +51,7 @@ module HttpLoader
         request = Net::HTTP::Get.new(uri)
         request['Connection'] = 'keep-alive'
         request['User-Agent'] = @config.user_agent
-        @config.headers.each { |k, v| request[k] = v }
+        @config.headers.each { |name, value| request[name] = value }
 
         # No block: Net::HTTP reads (and so drains) the whole body, keeping the keep-alive
         # connection reusable, matching the block-less request in perform_ping?.
@@ -137,7 +137,7 @@ module HttpLoader
       def build_request(req)
         req['Connection'] = 'keep-alive'
         req['User-Agent'] = @config.user_agent
-        @config.headers.each { |k, v| req[k] = v }
+        @config.headers.each { |name, value| req[name] = value }
         req
       end
 

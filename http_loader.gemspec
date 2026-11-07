@@ -63,7 +63,9 @@ Gem::Specification.new do |spec|
   spec.add_dependency('sorbet-runtime', '~> 0.6')
 
   spec.add_development_dependency('bundler-audit', '~> 0.9')
+  spec.add_development_dependency('debride', '~> 1.15')
   spec.add_development_dependency('flay', '~> 2.14')
+  spec.add_development_dependency('flog', '~> 4.9')
   spec.add_development_dependency('memory_profiler', '~> 1.1')
   spec.add_development_dependency('mutant', '~> 0.17')
   spec.add_development_dependency('mutant-rspec', '~> 0.17')

@@ -85,9 +85,9 @@ Cryptographic signing ensures end-to-end security and integrity verification of 
 ```ruby
 spec.cert_chain = ['certs/http_loader-public_cert.pem']
 if $PROGRAM_NAME.end_with?('gem') && File.exist?(File.expand_path('~/.gem/gem-private_key.pem'))
-    spec.signing_key = File.expand_path('~/.gem/gem-private_key.pem')
+  spec.signing_key = File.expand_path('~/.gem/gem-private_key.pem')
 else
-    nil
+  nil
 end
 ```
 

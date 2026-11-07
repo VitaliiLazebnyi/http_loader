@@ -12,8 +12,8 @@ RSpec.describe(HttpLoader::Client::TargetManager) do
     )
   end
 
-  let(:overrides)  { {}                                  }
-  let(:first_args) { manager.contexts.fetch(0).http_args }
+  let(:overrides)  { {}                               }
+  let(:first_args) { manager.context_for(0).http_args }
 
   before { allow(Addrinfo).to(receive(:getaddrinfo).and_return([])) }
 
@@ -68,7 +68,7 @@ RSpec.describe(HttpLoader::Client::TargetManager) do
     end
   end
 
-  describe '#contexts' do
+  describe 'the resolved targets' do
     it 'leaves ipaddr nil when Addrinfo yields nothing' do
       expect(first_args.fetch(:ipaddr).nil?).to(be(true))
     end
@@ -134,7 +134,7 @@ RSpec.describe(HttpLoader::Client::TargetManager) do
       let(:overrides) { { target_urls: [], use_https: false } }
 
       it 'targets http://localhost:8080' do
-        expect(manager.contexts.fetch(0).uri.to_s).to(eq('http://localhost:8080'))
+        expect(manager.context_for(0).uri.to_s).to(eq('http://localhost:8080'))
       end
     end
 
@@ -142,7 +142,7 @@ RSpec.describe(HttpLoader::Client::TargetManager) do
       let(:overrides) { { target_urls: [], use_https: true } }
 
       it 'targets https://localhost:8443' do
-        expect(manager.contexts.fetch(0).uri.to_s).to(eq('https://localhost:8443'))
+        expect(manager.context_for(0).uri.to_s).to(eq('https://localhost:8443'))
       end
     end
   end

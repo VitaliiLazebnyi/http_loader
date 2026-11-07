@@ -171,12 +171,12 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_core(opts, options)
-        opts.on('--connections_count=COUNT', Integer, 'Total connection count') do |v|
-          options[:connections] = T.cast(v, Integer)
+        opts.on('--connections_count=COUNT', Integer, 'Total connection count') do |value|
+          options[:connections] = T.cast(value, Integer)
         end
         opts.on('--https', 'Use HTTPS natively') { options[:use_https] = true }
-        opts.on('--url=URL', 'Comma-separated target URLs') do |v|
-          options[:target_urls] = CliArgs.split_list(T.cast(v, String))
+        opts.on('--url=URL', 'Comma-separated target URLs') do |value|
+          options[:target_urls] = CliArgs.split_list(T.cast(value, String))
         end
         opts.on('--verbose', 'Verbose logging') { options[:verbose] = true }
       end
@@ -188,9 +188,9 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_ping(opts, options)
-        opts.on('--[no-]ping', 'Enable keep-alive pings') { |v| options[:ping] = T.cast(v, T::Boolean) }
-        opts.on('--ping_period=SECONDS', Float, 'Seconds between pings') do |v|
-          options[:ping_period] = T.cast(v, Float)
+        opts.on('--[no-]ping', 'Enable keep-alive pings') { |value| options[:ping] = T.cast(value, T::Boolean) }
+        opts.on('--ping_period=SECONDS', Float, 'Seconds between pings') do |value|
+          options[:ping_period] = T.cast(value, Float)
         end
       end
 
@@ -201,14 +201,14 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_timeouts(opts, options)
-        opts.on('--http_loader_timeout=S', Float, 'Keep-alive budget in seconds') do |v|
-          options[:http_loader_timeout] = T.cast(v, Float)
+        opts.on('--http_loader_timeout=S', Float, 'Keep-alive budget in seconds') do |value|
+          options[:http_loader_timeout] = T.cast(value, Float)
         end
-        opts.on('--connections_per_second=R', Integer, 'Connection ramp rate') do |v|
-          options[:connections_per_second] = T.cast(v, Integer)
+        opts.on('--connections_per_second=R', Integer, 'Connection ramp rate') do |value|
+          options[:connections_per_second] = T.cast(value, Integer)
         end
-        opts.on('--max_concurrent_connections=C', Integer, 'Concurrency cap') do |v|
-          options[:max_concurrent_connections] = T.cast(v, Integer)
+        opts.on('--max_concurrent_connections=C', Integer, 'Concurrency cap') do |value|
+          options[:max_concurrent_connections] = T.cast(value, Integer)
         end
         parse_advanced(opts, options)
       end
@@ -223,10 +223,12 @@ module HttpLoader
         opts.on('--reopen_closed_connections', 'Reopen closed connections') do
           options[:reopen_closed_connections] = true
         end
-        opts.on('--reopen_interval=S', Float, 'Delay before reopening') do |v|
-          options[:reopen_interval] = T.cast(v, Float)
+        opts.on('--reopen_interval=S', Float, 'Delay before reopening') do |value|
+          options[:reopen_interval] = T.cast(value, Float)
         end
-        opts.on('--read_timeout=S', Float, 'Socket read timeout') { |v| options[:read_timeout] = T.cast(v, Float) }
+        opts.on('--read_timeout=S', Float, 'Socket read timeout') do |value|
+          options[:read_timeout] = T.cast(value, Float)
+        end
         parse_tracking(opts, options)
       end
 
@@ -237,8 +239,8 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_tracking(opts, options)
-        opts.on('--user_agent=A', 'User-Agent header') { |v| options[:user_agent] = T.cast(v, String) }
-        opts.on('--jitter=F', Float, 'Randomize sleep durations') { |v| options[:jitter] = T.cast(v, Float) }
+        opts.on('--user_agent=A', 'User-Agent header') { |value| options[:user_agent] = T.cast(value, String) }
+        opts.on('--jitter=F', Float, 'Randomize sleep durations') { |value| options[:jitter] = T.cast(value, Float) }
         opts.on('--track_status_codes', 'Track HTTP status codes') { options[:track_status_codes] = true }
         parse_endpoints(opts, options)
       end
@@ -250,12 +252,12 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_endpoints(opts, options)
-        opts.on('--ramp_up=S', Float, 'Ramp-up window in seconds') { |v| options[:ramp_up] = T.cast(v, Float) }
-        opts.on('--bind_ips=IPS', 'Comma-separated source IPs') do |v|
-          options[:bind_ips] = CliArgs.split_list(T.cast(v, String))
+        opts.on('--ramp_up=S', Float, 'Ramp-up window in seconds') { |value| options[:ramp_up] = T.cast(value, Float) }
+        opts.on('--bind_ips=IPS', 'Comma-separated source IPs') do |value|
+          options[:bind_ips] = CliArgs.split_list(T.cast(value, String))
         end
-        opts.on('--proxy_pool=U', 'Comma-separated proxy URIs') do |v|
-          options[:proxy_pool] = CliArgs.split_list(T.cast(v, String))
+        opts.on('--proxy_pool=U', 'Comma-separated proxy URIs') do |value|
+          options[:proxy_pool] = CliArgs.split_list(T.cast(value, String))
         end
         parse_slowloris(opts, options)
       end
@@ -267,10 +269,10 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_slowloris(opts, options)
-        opts.on('--qps_per_connection=R', Integer, 'Per-connection QPS cap') do |v|
-          options[:qps_per_connection] = T.cast(v, Integer)
+        opts.on('--qps_per_connection=R', Integer, 'Per-connection QPS cap') do |value|
+          options[:qps_per_connection] = T.cast(value, Integer)
         end
-        opts.on('--headers=L', 'Repeatable Key: Value header') { |v| parse_headers(T.cast(v, String), options) }
+        opts.on('--headers=L', 'Repeatable Key: Value header') { |value| parse_headers(T.cast(value, String), options) }
         parse_slowloris_delays(opts, options)
       end
 
@@ -309,8 +311,8 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_slowloris_delays(opts, options)
-        opts.on('--slowloris_delay=S', Float, 'Slowloris byte gap in seconds') do |v|
-          options[:slowloris_delay] = T.cast(v, Float)
+        opts.on('--slowloris_delay=S', Float, 'Slowloris byte gap in seconds') do |value|
+          options[:slowloris_delay] = T.cast(value, Float)
         end
         opts.on('--export_json=FILE', 'Accepted but ignored by the client subprocess')
         opts.on('--target_duration=S', 'Accepted but ignored; honoured by the harness only')
@@ -366,12 +368,12 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_harness_core(opts, options)
-        opts.on('--connections_count=C', Integer, 'Total connection count') do |v|
-          options[:connections] = T.cast(v, Integer)
+        opts.on('--connections_count=C', Integer, 'Total connection count') do |value|
+          options[:connections] = T.cast(value, Integer)
         end
         opts.on('--https', 'Use HTTPS natively') { options[:use_https] = true }
-        opts.on('--url=U', 'Comma-separated target URLs') do |v|
-          options[:target_urls] = CliArgs.split_list(T.cast(v, String))
+        opts.on('--url=U', 'Comma-separated target URLs') do |value|
+          options[:target_urls] = CliArgs.split_list(T.cast(value, String))
         end
       end
 
@@ -382,11 +384,11 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_harness_extras(opts, options)
-        opts.on('--export_json=FILE', 'Write the JSON run report to FILE') do |v|
-          options[:export_json] = T.cast(v, String)
+        opts.on('--export_json=FILE', 'Write the JSON run report to FILE') do |value|
+          options[:export_json] = T.cast(value, String)
         end
-        opts.on('--target_duration=S', Float, 'Stop after S seconds') do |v|
-          options[:target_duration] = T.cast(v, Float)
+        opts.on('--target_duration=S', Float, 'Stop after S seconds') do |value|
+          options[:target_duration] = T.cast(value, Float)
         end
       end
 
