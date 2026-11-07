@@ -110,8 +110,8 @@ module HttpLoader
 
         warn(
           "[Client] Warning: --connections_count (#{connections}) exceeds " \
-          "--max_concurrent_connections (#{max_concurrent_connections}); " \
-          'surplus connections are queued and, in keep-alive modes, may never open.'
+            "--max_concurrent_connections (#{max_concurrent_connections}); " \
+            'surplus connections are queued and, in keep-alive modes, may never open.'
         )
       end
     end

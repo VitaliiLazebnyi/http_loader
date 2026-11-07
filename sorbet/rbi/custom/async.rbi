@@ -1,4 +1,5 @@
 # typed: strict
+
 # Copyright (c) 2026 Vitalii Lazebnyi
 
 module Async
@@ -8,7 +9,14 @@ module Async
   end
 
   class Semaphore
-    sig { params(arguments: T.untyped, parent: T.untyped, options: T.untyped, block: T.nilable(T.proc.returns(T.untyped))).returns(::Async::Task) }
+    sig do
+      params(
+        arguments: T.untyped,
+        parent: T.untyped,
+        options: T.untyped,
+        block: T.nilable(T.proc.returns(T.untyped))
+      ).returns(::Async::Task)
+    end
     def async(*arguments, parent: nil, **options, &block); end
   end
 end

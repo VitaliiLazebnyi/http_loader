@@ -94,11 +94,11 @@ RSpec.describe(HttpLoader::CliArgs) do
       bind_ips = "--bind_ips=#{TestAddresses.ip(1)}, #{TestAddresses.ip(2)}"
       expect(CliParsing.client(['--ramp_up=2.0', bind_ips, '--proxy_pool=http://p1, http://p2']))
         .to(eq(
-              headers: {},
-              ramp_up: 2.0,
-              bind_ips: [TestAddresses.ip(1), TestAddresses.ip(2)],
-              proxy_pool: ['http://p1', 'http://p2']
-            ))
+          headers: {},
+          ramp_up: 2.0,
+          bind_ips: [TestAddresses.ip(1), TestAddresses.ip(2)],
+          proxy_pool: ['http://p1', 'http://p2']
+        ))
     end
 
     it 'parses the slowloris flags' do
@@ -256,13 +256,13 @@ RSpec.describe(HttpLoader::CliArgs) do
       options = HttpLoader::CliArgs::HarnessOptions::DEFAULTS.merge(connections: 9, export_json: 'run.json')
       expect(HttpLoader::CliArgs::HarnessOptions.config(options, ['--verbose']).serialize)
         .to(eq(
-              'connections' => 9,
-              'target_urls' => [],
-              'use_https' => false,
-              'client_args' => ['--verbose'],
-              'export_json' => 'run.json',
-              'target_duration' => 0.0
-            ))
+          'connections' => 9,
+          'target_urls' => [],
+          'use_https' => false,
+          'client_args' => ['--verbose'],
+          'export_json' => 'run.json',
+          'target_duration' => 0.0
+        ))
     end
 
     it 'rejects a wrongly typed option value' do

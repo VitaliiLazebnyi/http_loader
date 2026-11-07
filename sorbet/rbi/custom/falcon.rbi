@@ -1,4 +1,5 @@
 # typed: strict
+
 # Copyright (c) 2026 Vitalii Lazebnyi
 
 class IO
@@ -33,11 +34,7 @@ end
 module Falcon
   class Server
     sig do
-      params(
-        arguments: T.untyped,
-        utilization_registry: T.untyped,
-        options: T.untyped
-      ).void
+      params(arguments: T.untyped, utilization_registry: T.untyped, options: T.untyped).void
     end
     def initialize(*arguments, utilization_registry: nil, **options); end
 

@@ -16,7 +16,7 @@ module CliParsing
   def self.client(argv)
     options = T.let({ headers: {} }, T::Hash[Symbol, Object])
     OptionParser.new { |opts| HttpLoader::CliArgs::ClientParser.parse(opts, options) }
-                .parse!(argv)
+      .parse!(argv)
     options
   end
 
@@ -26,7 +26,7 @@ module CliParsing
   def self.harness(argv)
     options = T.let({}, T::Hash[Symbol, Object])
     OptionParser.new { |opts| HttpLoader::CliArgs::HarnessParser.parse(opts, options) }
-                .parse!(argv)
+      .parse!(argv)
     options
   end
 
@@ -34,14 +34,14 @@ module CliParsing
   sig { returns(String) }
   def self.client_help
     OptionParser.new { |opts| HttpLoader::CliArgs::ClientParser.parse(opts, { headers: {} }) }
-                .to_s
+      .to_s
   end
 
   # @return [String] the generated --help text of the harness flags
   sig { returns(String) }
   def self.harness_help
     OptionParser.new { |opts| HttpLoader::CliArgs::HarnessParser.parse(opts, {}) }
-                .to_s
+      .to_s
   end
 
   # @param value [String] one `--headers` value

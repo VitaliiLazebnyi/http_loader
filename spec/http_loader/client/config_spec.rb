@@ -71,7 +71,7 @@ RSpec.describe(HttpLoader::Client::Config) do
         expect { ConfigFactory.client(connections: 3, max_concurrent_connections: 2).validate! }
           .to(output(
             '[Client] Warning: --connections_count (3) exceeds --max_concurrent_connections (2); ' \
-            "surplus connections are queued and, in keep-alive modes, may never open.\n"
+              "surplus connections are queued and, in keep-alive modes, may never open.\n"
           ).to_stderr)
       end
 

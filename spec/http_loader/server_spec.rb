@@ -210,7 +210,7 @@ RSpec.describe(HttpLoader::Server) do
     let(:rsa) { OpenSSL::PKey::RSA.new(2048) }
 
     it 'mints a v3 localhost certificate (serial 1) carrying the key, signed so it self-verifies',
-       :aggregate_failures do
+      :aggregate_failures do
       # parse_cert_info was applied
       expect(cert.subject.to_s).to(eq('/CN=localhost'))
       expect(cert.serial).to(eq(1))
@@ -224,7 +224,7 @@ RSpec.describe(HttpLoader::Server) do
     subject(:context) { server.__send__(:generate_ssl_context) }
 
     it 'returns a context pairing a 2048-bit RSA key with a certificate that verifies against it',
-       :aggregate_failures do
+      :aggregate_failures do
       expect(context.is_a?(OpenSSL::SSL::SSLContext)).to(be(true))
       expect(context.key.is_a?(OpenSSL::PKey::RSA)).to(be(true))
       expect(context.key.n.num_bits).to(eq(2048))

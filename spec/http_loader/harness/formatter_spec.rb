@@ -50,7 +50,7 @@ RSpec.describe(HttpLoader::Harness::Formatter) do
             '[Harness] Monitoring resources (Press Ctrl+C to stop)...',
             '-' * 125,
             'Time (UTC) | Real Conns  | Srv CPU/Thrds    | Srv Mem        | Srv Mem/Conn   | ' \
-            'Cli CPU/Thrds    | Cli Mem        | Cli Mem/Conn  ',
+              'Cli CPU/Thrds    | Cli Mem        | Cli Mem/Conn  ',
             '-' * 125
           ]
         )
@@ -93,7 +93,7 @@ RSpec.describe(HttpLoader::Harness::Formatter) do
         eq(
           [
             '12:34:56   | 10          | 50.0% / 8        | 100MB          | 128.0 KB       | 30.0% / 4        | ' \
-            '60MB           | 102.4 KB      '
+              '60MB           | 102.4 KB      '
           ]
         )
       )
@@ -133,7 +133,7 @@ RSpec.describe(HttpLoader::Harness::Formatter) do
         eq(
           [
             '07:34:56   | 10          | 50.0% / 8        | 100MB          | 128.0 KB       | 30.0% / 4        | ' \
-            '60MB           | 102.4 KB      '
+              '60MB           | 102.4 KB      '
           ]
         )
       )

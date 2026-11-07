@@ -5,11 +5,13 @@
 # signature style this gem is written in; each one names the cop it conflicts with.
 plugins:
   - rubocop-md
+  - rubocop-packaging
   - rubocop-performance
   - rubocop-rake
   - rubocop-rspec
   - rubocop-sorbet
   - rubocop-thread_safety
+  - rubocop-yard
 
 require:
   - rubocop-ai
@@ -28,8 +30,30 @@ AllCops:
     - 'doc/**/*'
     - '.yardoc/**/*'
     - '.mutant/**/*'
+    - 'tools/node_modules/**/*'
+  Include:
+    - '**/*.gemspec'
+    - '**/*.md'
+    - '**/*.rb'
+    - '**/Gemfile'
+    - '**/Rakefile'
+    - 'bin/*'
+    - 'typecheck.gemfile'
 
 # --- Settings (not exemptions) ---------------------------------------------------------------------------
+
+# Continuation lines are indented by a fixed two spaces rather than aligned with the first argument, so every
+# indentation is a multiple of two (editorconfig-checker), as in leechtop-downloader.
+Layout/ArgumentAlignment:
+  EnforcedStyle: with_fixed_indentation
+Layout/ArrayAlignment:
+  EnforcedStyle: with_fixed_indentation
+Layout/LineEndStringConcatenationIndentation:
+  EnforcedStyle: indented
+Layout/MultilineMethodCallIndentation:
+  EnforcedStyle: indented
+Layout/ParameterAlignment:
+  EnforcedStyle: with_fixed_indentation
 
 # The same width as Markdown (markdownlint MD013), YAML (yamllint) and every other file (.editorconfig).
 Layout/LineLength:
@@ -108,7 +132,14 @@ Sorbet/StrictSigil:
     - 'lib/**/*.rb'
     - 'script/**/*.rb'
     - 'sorbet/**/*.rb'
-    - 'sorbet/**/*.rbi'
+    - 'spec/support/**/*.rb'
+  # RUBYOPT loads this file into every Ruby process before any gem (including `gem build`, which runs without the
+  # bundle), so it cannot require sorbet-runtime to declare signatures; it is `typed: true`.
+  Exclude:
+    - 'script/upstream_warnings.rb'
+Sorbet/EnforceSignatures:
+  Exclude:
+    - 'script/upstream_warnings.rb'
 
 # Prefers Symbol hash keys. HTTP header maps are String-keyed by protocol: Net::HTTP request headers and
 # Rack 3 response headers (the Rack SPEC requires String names). Its autocorrect turns them into Symbols,

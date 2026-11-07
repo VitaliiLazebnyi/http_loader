@@ -101,7 +101,7 @@ RSpec.describe(HttpLoader::Harness::Telemetry) do
       expect($stdout).to(
         have_received(:puts).with(
           '   => BOTTLENECK ACTIVE: [OS FDs Limit: 1 EMFILE] | ' \
-          '[OS Ports Limit: 1 EADDRNOTAVAIL] | [OS Thread Limit: 1 ThreadError]'
+            '[OS Ports Limit: 1 EADDRNOTAVAIL] | [OS Thread Limit: 1 ThreadError]'
         )
       )
     end

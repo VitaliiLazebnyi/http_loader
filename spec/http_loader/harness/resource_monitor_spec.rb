@@ -202,8 +202,8 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
         allow(File).to(
           receive(:read).with('/proc/123/net/tcp').and_return(
             "  sl local rem st ... inode\n  " \
-            "0: 0100007F:1F90 0100007F:C000 01 00:00 00 00 0 0 555 1\n  " \
-            "1: 0100007F:1F91 00000000:0000 0A 00:00 00 00 0 0 999 1\n"
+              "0: 0100007F:1F90 0100007F:C000 01 00:00 00 00 0 0 555 1\n  " \
+              "1: 0100007F:1F91 00000000:0000 0A 00:00 00 00 0 0 999 1\n"
           )
         )
         allow(File).to(
@@ -239,7 +239,7 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
     it 'counts only (ESTABLISHED) lines via lsof when /proc/pid/fd is absent' do
       allow(File).to(receive(:directory?).with('/proc/123/fd').and_return(false))
       lsof = "COMMAND PID\nruby 123 TCP *:8080 (ESTABLISHED)\nruby 123 TCP *:9 (LISTEN)\n" \
-             "ruby 123 TCP *:7 (ESTABLISHED)\n"
+        "ruby 123 TCP *:7 (ESTABLISHED)\n"
       allow(Open3).to(receive(:capture2).with('lsof', '-p', '123', '-n', '-P').and_return([lsof, nil]))
       expect(monitor.count_established_connections(123)).to(eq(2))
     end
@@ -257,8 +257,8 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
       allow(File).to(
         receive(:read).with('/proc/9/net/tcp').and_return(
           "  sl local rem st ... inode\n  " \
-          "0: 0100007F:1F90 0100007F:C000 01 00:00 00 00 0 0 555 1\n  " \
-          "1: 0100007F:1F91 00000000:0000 0A 00:00 00 00 0 0 999 1\n"
+            "0: 0100007F:1F90 0100007F:C000 01 00:00 00 00 0 0 555 1\n  " \
+            "1: 0100007F:1F91 00000000:0000 0A 00:00 00 00 0 0 999 1\n"
         )
       )
     end

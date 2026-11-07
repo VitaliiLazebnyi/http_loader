@@ -269,7 +269,7 @@ RSpec.describe(HttpLoader::Harness) do
 
   describe '#missing_socket?' do
     it 'logs a full UTC-stamped disconnect row and warns when a target peaked then dropped to zero',
-       :aggregate_failures do
+      :aggregate_failures do
       allow(harness).to(receive(:log_table_row))
       # 17:34:56 UTC
       allow(Time).to(receive(:now).and_return(Time.new(2020, 1, 2, 12, 34, 56, '-05:00')))

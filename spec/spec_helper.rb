@@ -3,40 +3,9 @@
 
 # Copyright (c) 2026 Vitalii Lazebnyi
 
-# Opt out of only the "experimental feature" warning category. The async fiber scheduler
-# performs non-blocking file IO through Ruby's IO::Buffer, which Ruby 4.0 still flags as
-# experimental; the notice is about a transitive dependency's use of a core API, not our code.
-# This disables that one category only -- deprecation and performance warnings stay on and are
-# enforced by the warning gate.
-Warning[:experimental] = false
-
-require 'sorbet-runtime'
-
-# Drops exactly one warning that `ruby -w` reports in a dependency and that cannot be fixed here:
-# protocol-http 0.72.1 (the newest release; its main branch is unchanged) assigns `rescue => error`
-# without using `error` in lib/protocol/http/body/streamable.rb. Only that message from that file is
-# dropped, and only in the test process; every other warning still reaches stderr and the warning gate.
-module UpstreamWarningFilter
-  extend T::Sig
-
-  # The one dropped warning: the file and the message are both pinned.
-  IGNORED = Regexp.new(
-    '/protocol-http-[\d.]+/lib/protocol/http/body/streamable\.rb:\d+: ' \
-    'warning: assigned but unused variable - error\n\z'
-  )
-  private_constant :IGNORED
-
-  # @param message [String] the warning text
-  # @param category [Symbol, nil] the warning category
-  # @return [void]
-  sig { params(message: String, category: T.nilable(Symbol)).void }
-  def warn(message, category: nil)
-    return if message.match?(IGNORED)
-
-    super
-  end
-end
-Warning.singleton_class.prepend(UpstreamWarningFilter)
+# The few upstream warnings the dependencies emit about their own code (see the file) are dropped exactly; every
+# other warning stays visible. RUBYOPT already loads the file in script/check and CI; this covers a plain `rspec`.
+require_relative '../script/upstream_warnings'
 
 require 'simplecov'
 SimpleCov.skip('/spec/')
@@ -49,6 +18,7 @@ SimpleCov.start
 
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
 require 'http_loader'
+require 'sorbet-runtime'
 require 'stringio'
 
 Dir[File.join(__dir__, 'support', '**', '*.rb')].each { |f| require(f) }

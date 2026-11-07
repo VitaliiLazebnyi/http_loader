@@ -85,7 +85,7 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
     end
 
     it 'paces every byte but the first with the slowloris delay, then caps the keep-alive pace to the budget',
-       :aggregate_failures do
+      :aggregate_failures do
       slowloris.run(0, URI('http://local/'), http, Time.at(0))
       written = File.size(io.path)
       expect(slowloris).to(have_received(:sleep).with(1.0).exactly(written - 2).times)

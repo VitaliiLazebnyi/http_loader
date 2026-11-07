@@ -12,11 +12,11 @@ Gem::Specification.new do |spec|
 
   spec.summary       = 'High-concurrency asynchronous load testing console tool for HTTP/HTTPS.'
   spec.description   = 'HttpLoader is a powerful, high-concurrency performance and load testing ' \
-                       'console tool. Built on asynchronous Ruby, it evaluates server limits by ' \
-                       'opening massive numbers of persistent connections and holding them open. ' \
-                       'It utilizes event-driven I/O with optional periodic ping requests to keep ' \
-                       'connections active, allowing you to rigorously benchmark maximum concurrent ' \
-                       'socket capacity with precision and minimal client-side overhead.'
+    'console tool. Built on asynchronous Ruby, it evaluates server limits by ' \
+    'opening massive numbers of persistent connections and holding them open. ' \
+    'It utilizes event-driven I/O with optional periodic ping requests to keep ' \
+    'connections active, allowing you to rigorously benchmark maximum concurrent ' \
+    'socket capacity with precision and minimal client-side overhead.'
   spec.homepage      = 'https://github.com/VitaliiLazebnyi/http_loader'
   spec.license       = 'MIT'
   spec.required_ruby_version = '>= 3.3'
@@ -75,11 +75,13 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency('rubocop', '~> 1.86')
   spec.add_development_dependency('rubocop-ai', '~> 0.1')
   spec.add_development_dependency('rubocop-md', '~> 3.0')
+  spec.add_development_dependency('rubocop-packaging', '~> 0.6')
   spec.add_development_dependency('rubocop-performance', '~> 1.26')
   spec.add_development_dependency('rubocop-rake', '~> 0.7')
   spec.add_development_dependency('rubocop-rspec', '~> 3.9')
   spec.add_development_dependency('rubocop-sorbet', '~> 0.17')
-  spec.add_development_dependency('rubocop-thread_safety', '~> 0.7')
+  spec.add_development_dependency('rubocop-thread_safety', '~> 0.8')
+  spec.add_development_dependency('rubocop-yard', '~> 1.3')
   spec.add_development_dependency('ruby-prof', '~> 2.0')
   spec.add_development_dependency('simplecov', '~> 1.3')
   spec.add_development_dependency('sorbet', '~> 0.6')

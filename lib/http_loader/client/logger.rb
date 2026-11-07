@@ -126,7 +126,7 @@ module HttpLoader
 
       # Appends one queued message to the file for its channel; an unknown channel is dropped.
       #
-      # @param msg [Array<T.any(Symbol, String)>] the log level tuple targeting IO
+      # @param msg [Array<Symbol, String>] the channel and the message
       # @return [void]
       sig { params(msg: T::Array[T.any(Symbol, String)]).void }
       def write_msg(msg)
