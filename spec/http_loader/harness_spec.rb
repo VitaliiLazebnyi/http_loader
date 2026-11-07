@@ -37,14 +37,25 @@ RSpec.describe(HttpLoader::Harness) do
       expect(harness.instance_variable_get(:@peak_connections)).to(eq(0))
     end
 
-    it 'wires telemetry with the logs dir and export path, plus a process manager and resource monitor', :aggregate_failures do
-      allow(HttpLoader::Harness::Telemetry).to(receive(:new).and_call_original)
-      allow(HttpLoader::Harness::ProcessManager).to(receive(:new).and_call_original)
-      HttpLoader::Harness.new(config)
-      # spec/http_loader -> repo root, then /logs
-      log_dir = File.expand_path('../../logs', __dir__)
-      expect(HttpLoader::Harness::Telemetry).to(have_received(:new).with(log_dir, 'logs/telemetry.json'))
-      expect(HttpLoader::Harness::ProcessManager).to(have_received(:new).with(config))
+    context 'when wiring its collaborators' do
+      before do
+        allow(HttpLoader::Harness::Telemetry).to(receive(:new).and_call_original)
+        allow(HttpLoader::Harness::ProcessManager).to(receive(:new).and_call_original)
+        HttpLoader::Harness.new(config)
+      end
+
+      it 'gives telemetry the repository logs dir and the export path' do
+        # spec/http_loader -> repo root, then /logs
+        expect(HttpLoader::Harness::Telemetry)
+          .to(have_received(:new).with(File.expand_path('../../logs', __dir__), 'logs/telemetry.json'))
+      end
+
+      it('builds a process manager from the config') do
+        expect(HttpLoader::Harness::ProcessManager).to(have_received(:new).with(config))
+      end
+    end
+
+    it 'builds a resource monitor' do
       expect(harness.monitor.is_a?(HttpLoader::Harness::ResourceMonitor)).to(be(true))
     end
 
@@ -60,13 +71,16 @@ RSpec.describe(HttpLoader::Harness) do
       allow(harness).to(receive(:run_lifecycle))
     end
 
-    it 'enables synchronous stdout, prints the banner, bumps limits, and runs the lifecycle', :aggregate_failures do
-      allow($stdout).to(receive(:sync=))
-      harness.start
-      expect($stdout).to(have_received(:sync=).with(true))
-      expect(harness).to(have_received(:print_startup_banner))
-      expect(harness).to(have_received(:bump_file_limits))
-      expect(harness).to(have_received(:run_lifecycle))
+    context 'when started' do
+      before do
+        allow($stdout).to(receive(:sync=))
+        harness.start
+      end
+
+      it('enables synchronous stdout') { expect($stdout).to(have_received(:sync=).with(true)) }
+      it('prints the banner') { expect(harness).to(have_received(:print_startup_banner)) }
+      it('bumps the file limits') { expect(harness).to(have_received(:bump_file_limits)) }
+      it('runs the lifecycle') { expect(harness).to(have_received(:run_lifecycle)) }
     end
   end
 
@@ -87,31 +101,47 @@ RSpec.describe(HttpLoader::Harness) do
       expect(calls).to(eq(%i[spawn monitor]))
     end
 
-    it 'always exports telemetry (with peak connections and start time) and cleans up, even on error', :aggregate_failures do
-      allow(harness).to(receive(:monitor_resources).and_raise(StandardError))
-      start_time = harness.instance_variable_get(:@start_time)
-      harness.instance_variable_set(:@peak_connections, 7)
-      expect { harness.__send__(:run_lifecycle) }
-        .to(raise_error(StandardError))
-      expect(telemetry).to(have_received(:export!).with(7, start_time))
-      expect(pm).to(have_received(:cleanup))
+    context 'when monitoring raises' do
+      before do
+        allow(harness).to(receive(:monitor_resources).and_raise(StandardError))
+        harness.instance_variable_set(:@peak_connections, 7)
+        harness.__send__(:run_lifecycle)
+      rescue StandardError
+        nil
+      end
+
+      it 're-raises the error' do
+        expect { harness.__send__(:run_lifecycle) }
+          .to(raise_error(StandardError))
+      end
+
+      it 'still exports telemetry with the peak connections and the start time' do
+        expect(telemetry).to(have_received(:export!).with(7, harness.instance_variable_get(:@start_time)))
+      end
+
+      it('still cleans up') { expect(pm).to(have_received(:cleanup)) }
     end
 
-    it 'installs an INT handler that reports, cleans up, and exits 0', :aggregate_failures do
-      captured = nil
-      allow(harness).to(receive(:trap).with('INT') { |&blk| captured = blk })
-      allow(harness).to(receive(:exit))
-      cleanups = 0
-      allow(pm).to(receive(:cleanup) { cleanups += 1 })
-      # the ensure block cleans up once
-      harness.__send__(:run_lifecycle)
-      # the handler is registered, not run inline
-      expect(harness).to(have_received(:trap).with('INT'))
-      expect { captured.call }
-        .to(output(/\n\[Harness\] Caught interrupt, cleaning up processes\.\.\./).to_stdout)
-      # the handler cleaned up a second time
-      expect(cleanups).to(eq(2))
-      expect(harness).to(have_received(:exit).with(0))
+    context 'with the INT handler' do
+      let(:handler) do
+        captured = T.let(nil, T.nilable(Proc))
+        allow(harness).to(receive(:trap).with('INT') { |&block| captured = block })
+        # The ensure block cleans up once; the handler is registered, not run inline.
+        harness.__send__(:run_lifecycle)
+        T.must(captured)
+      end
+
+      it 'reports the interrupt' do
+        expect { handler.call }
+          .to(output(/\n\[Harness\] Caught interrupt, cleaning up processes\.\.\./).to_stdout)
+      end
+
+      it 'cleans up again and exits 0', :aggregate_failures do
+        expect { handler.call }
+          .to(output.to_stdout)
+        expect(pm).to(have_received(:cleanup).twice)
+        expect(harness).to(have_received(:exit).with(0))
+      end
     end
   end
 
@@ -238,7 +268,8 @@ RSpec.describe(HttpLoader::Harness) do
   end
 
   describe '#missing_socket?' do
-    it 'logs a full UTC-stamped disconnect row and warns when a target peaked then dropped to zero', :aggregate_failures do
+    it 'logs a full UTC-stamped disconnect row and warns when a target peaked then dropped to zero',
+       :aggregate_failures do
       allow(harness).to(receive(:log_table_row))
       # 17:34:56 UTC
       allow(Time).to(receive(:now).and_return(Time.new(2020, 1, 2, 12, 34, 56, '-05:00')))
