@@ -35,6 +35,23 @@ RSpec.configure do |config|
   end
 
   config.shared_context_metadata_behavior = :apply_to_host_groups
+
+  # Every example runs with $stdout and $stderr captured, and fails if it wrote anything there
+  # that it did not assert itself (with the `output` matcher or a stubbed puts/warn). A stray
+  # line would otherwise land in the CI log, where the warning gate cannot tell a test's
+  # expected message from a real warning.
+  config.around do |example|
+    streams = [$stdout, $stderr]
+    $stdout = StringIO.new
+    $stderr = StringIO.new
+    begin
+      example.run
+    ensure
+      leaked = { stdout: $stdout.string, stderr: $stderr.string }.reject { |_, text| text.empty? }
+      $stdout, $stderr = streams
+    end
+    raise "Example wrote unasserted output: #{leaked.inspect}" unless leaked.empty?
+  end
 end
 require 'sorbet-runtime'
 # Keep inline type checks (T.let / T.cast / T.must) live so a genuinely wrong-typed

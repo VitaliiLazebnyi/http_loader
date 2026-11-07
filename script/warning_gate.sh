@@ -7,7 +7,7 @@
 # the gate job itself, whose own log quotes the pattern).
 set -euo pipefail
 
-pattern='warning:|WARNING:|DEPRECATION|DEPRECATED|##\[warning\]|is deprecated|will be deprecated|Node\.js [0-9]+ actions are deprecated'
+pattern='[Ww]arning:|WARNING:|DEPRECATION|DEPRECATED|##\[warning\]|is deprecated|will be deprecated|Node\.js [0-9]+ actions are deprecated'
 # The one kind of matching line that is not a warning: CodeQL prints the JSON schema of its
 # extractor options, whose "title"/"description" fields document a deprecated option ("DEPRECATED
 # - Whether to use buildless ..."). Only such JSON documentation fields are skipped; the same
