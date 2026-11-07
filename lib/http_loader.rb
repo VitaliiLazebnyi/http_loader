@@ -4,6 +4,7 @@
 # Copyright (c) 2026 Vitalii Lazebnyi
 
 require 'sorbet-runtime'
+require_relative 'http_loader/cli'
 require_relative 'http_loader/cli_args'
 require_relative 'http_loader/client'
 require_relative 'http_loader/harness'

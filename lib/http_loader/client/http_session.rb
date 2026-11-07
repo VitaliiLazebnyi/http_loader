@@ -67,17 +67,13 @@ module HttpLoader
       # @return [void]
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, start_time: Time).void }
       def maintain_keepalive(client_index, uri, http, start_time)
-        loop do
-          remaining = budget_remaining(@config.http_loader_timeout, start_time)
-          if remaining && remaining <= 0.0
-            @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing.")
-            break
-          else
-            nil
-          end
-
+        remaining = budget_remaining(@config.http_loader_timeout, start_time)
+        until budget_spent?(remaining)
           break unless process_heartbeat?(client_index, uri, http, remaining)
+
+          remaining = budget_remaining(@config.http_loader_timeout, start_time)
         end
+        @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing.") if budget_spent?(remaining)
       end
 
       # Analyzes global configurations selecting appropriate recurrent payloads or static hibernation.

@@ -105,7 +105,8 @@ module HttpLoader
     sig { returns(T::Boolean) }
     def duration_exceeded?
       target = @config.target_duration
-      elapsed = Time.now - @start_time # Time#- already yields Float seconds (instant-based)
+      # Time#- already yields Float seconds (instant-based).
+      elapsed = Time.now - @start_time
       return false if target <= 0.0 || elapsed < target
 
       puts("[Harness] Target duration mathematically reached (#{target}s). auto-shutdown.")

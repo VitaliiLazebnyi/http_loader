@@ -58,6 +58,24 @@ RSpec/PredicateMatcher:
 RSpec/DescribedClass:
   EnforcedStyle: explicit
 
+# Layout/MultilineArrayLineBreaks, MultilineHashKeyLineBreaks and MultilineMethodArgumentLineBreaks (all
+# enabled) put every element of a multi-line literal or call on its own line. The length cops therefore count
+# such a literal or call as one line (as standalone_migrations does for examples); their default maximums stay.
+Metrics/BlockLength:
+  CountAsOne: &count_as_one
+    - array
+    - hash
+    - heredoc
+    - method_call
+Metrics/ClassLength:
+  CountAsOne: *count_as_one
+Metrics/MethodLength:
+  CountAsOne: *count_as_one
+Metrics/ModuleLength:
+  CountAsOne: *count_as_one
+RSpec/ExampleLength:
+  CountAsOne: *count_as_one
+
 # Style/MissingElse requires an `else` on every `if` and `case`; with Style/EmptyElse at its default style
 # ("both") the two cops contradict each other on `else nil`. The "empty" style still rejects an empty `else`.
 Style/EmptyElse:
@@ -100,11 +118,18 @@ Style/StringHashKeys:
 Style/HashLookupMethod:
   Enabled: false
 
+# Requires a comment directly above each public `def`. Sorbet and yard-sorbet put the YARD comment above
+# the `sig`, which separates it from the `def`, so the cop reports every documented method. `rake yard`
+# fails unless every public API object is documented, which enforces the same rule.
+Style/DocumentationMethod:
+  Enabled: false
+
 # --- Disabled: forbid the Sorbet signature syntax itself -------------------------------------------------
-# These cops exist for codebases that write their types as RBS comments (`#: (Integer) -> void`). They
-# forbid `sig`, `extend T::Sig`, `T.let`, `T.type_alias`, `T::Struct` and `T::Helpers`, which this gem uses
-# for runtime-checked signatures; Sorbet/EnforceSignatures (enabled, `sig` style) requires a `sig` on every
-# method, and `typed: strong` requires `T.let` on every instance variable.
+# These cops exist for codebases that write their types as RBS comments (`#: (Integer) -> void`, `#: as
+# Integer`, `#: as !nil`). They forbid `sig`, `extend T::Sig`, `T.let`, `T.cast`, `T.must`, `T.type_alias`,
+# `T::Struct` and `T::Helpers`, the runtime-checked forms this gem uses: Sorbet/EnforceSignatures (enabled,
+# `sig` style) requires a `sig` on every method, and `typed: strong` requires `T.let` on every instance
+# variable and a checked `T.cast` wherever an untyped library value (OptionParser, Async) enters typed code.
 Sorbet/ForbidSig:
   Enabled: false
 Sorbet/ForbidTSig:
@@ -112,6 +137,10 @@ Sorbet/ForbidTSig:
 Sorbet/ForbidSigWithRuntime:
   Enabled: false
 Sorbet/ForbidTLet:
+  Enabled: false
+Sorbet/ForbidTCast:
+  Enabled: false
+Sorbet/ForbidTMust:
   Enabled: false
 Sorbet/ForbidTTypeAlias:
   Enabled: false

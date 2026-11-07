@@ -15,16 +15,20 @@ module HttpLoader
 
       # The error-token table: metric name => log token. A static type, checked by `srb tc`.
       Tokens = T.type_alias { T::Hash[Symbol, String] }
+      private_constant :Tokens
       # The running per-metric error tallies. A static type, checked by `srb tc`.
       Counts = T.type_alias { T::Hash[Symbol, Integer] }
+      public_constant :Counts
       # The per-file byte offsets consumed so far. A static type, checked by `srb tc`.
       Offsets = T.type_alias { T::Hash[String, Integer] }
+      private_constant :Offsets
 
       # Error tokens harvested from the client logs, keyed by the payload metric name.
       ERROR_TOKENS = T.let(
         { emfile: 'ERROR_EMFILE', eaddr_count: 'ERROR_EADDRNOTAVAIL', thread_errors: 'ERROR_THREADLIMIT' }.freeze,
         Tokens
       )
+      public_constant :ERROR_TOKENS
 
       # Mounts the telemetry sub-engine mapping disk outputs transparently tracking boundaries.
       #
@@ -74,7 +78,7 @@ module HttpLoader
       # @param start [Time] process baseline boot parameter mapping
       # @param counts [Hash] dictionary capturing parsed string evaluations tracking OS limits natively
       # @return [Hash] JSON translatable dataset mapping
-      sig { params(peak: Integer, start: Time, counts: Counts).returns(T::Hash[Symbol, T.untyped]) }
+      sig { params(peak: Integer, start: Time, counts: Counts).returns(T::Hash[Symbol, Object]) }
       def generate_payload(peak, start, counts)
         {
           peak_connections: peak,

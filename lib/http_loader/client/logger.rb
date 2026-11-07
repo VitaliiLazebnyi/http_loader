@@ -18,8 +18,10 @@ module HttpLoader
 
       # The queued-message channel => the basename it is appended to. A static type (`srb tc`).
       Channels = T.type_alias { T::Hash[Symbol, String] }
+      private_constant :Channels
       # Maps a log channel to its on-disk file; an unknown channel maps to nothing and is dropped.
       CHANNELS = T.let({ info: 'client.log', error: 'client.err' }.freeze, Channels)
+      public_constant :CHANNELS
 
       # Initializes a new Logger instance, creating internal queues for asynchronous work.
       #

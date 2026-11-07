@@ -5,11 +5,149 @@
 
 require 'optparse'
 require 'sorbet-runtime'
+require_relative 'client/config'
+require_relative 'harness/config'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
   # Extracted arguments parsers for strict metric compliance.
   module CliArgs
+    extend T::Sig
+
+    # Splits a comma-delimited CLI list, trimming whitespace and dropping empty
+    # entries so that stray commas (e.g. `--url=,http://x` or `--url=`) can never
+    # inject a blank token that later crashes URI/IP resolution.
+    #
+    # @param raw [String] the raw comma-separated flag value
+    # @return [Array<String>] the cleaned list of non-empty tokens
+    sig { params(raw: String).returns(T::Array[String]) }
+    def self.split_list(raw)
+      tokens = raw.split(',')
+      tokens.map!(&:strip)
+      tokens.reject!(&:empty?)
+      tokens
+    end
+
+    # The client options: their values before parsing, and the Client::Config built from the parsed values.
+    class ClientOptions
+      extend T::Sig
+
+      # The value of every client option before any flag is parsed. A nil concurrency cap means "one slot per
+      # connection" (see ClientOptions.config).
+      DEFAULTS = T.let(
+        {
+          connections: 1000,
+          use_https: false,
+          target_urls: [].freeze,
+          verbose: false,
+          ping: true,
+          ping_period: 5.0,
+          http_loader_timeout: 0.0,
+          connections_per_second: 0,
+          max_concurrent_connections: nil,
+          reopen_closed_connections: false,
+          reopen_interval: 5.0,
+          read_timeout: 0.0,
+          user_agent: 'Keep-Alive Test',
+          jitter: 1.0,
+          track_status_codes: false,
+          ramp_up: 0.0,
+          bind_ips: [].freeze,
+          proxy_pool: [].freeze,
+          qps_per_connection: 0,
+          headers: {}.freeze,
+          slowloris_delay: 0.0
+        }.freeze,
+        T::Hash[Symbol, Object]
+      )
+      public_constant :DEFAULTS
+
+      # The parsed option values, as Client::Config takes them. `T.cast` to this shape checks every value.
+      Values =
+        T.type_alias do
+          {
+            connections: Integer,
+            use_https: T::Boolean,
+            target_urls: T::Array[String],
+            verbose: T::Boolean,
+            ping: T::Boolean,
+            ping_period: Float,
+            http_loader_timeout: Float,
+            connections_per_second: Integer,
+            max_concurrent_connections: Integer,
+            reopen_closed_connections: T::Boolean,
+            reopen_interval: Float,
+            read_timeout: Float,
+            user_agent: String,
+            jitter: Float,
+            track_status_codes: T::Boolean,
+            ramp_up: Float,
+            bind_ips: T::Array[String],
+            proxy_pool: T::Array[String],
+            qps_per_connection: Integer,
+            headers: T::Hash[String, String],
+            slowloris_delay: Float
+          }
+        end
+      private_constant :Values
+
+      # A fresh, mutable copy of DEFAULTS for one parse; `--headers` adds to its own header map.
+      #
+      # @return [Hash{Symbol => Object}] the option values to parse into
+      sig { returns(T::Hash[Symbol, Object]) }
+      def self.defaults
+        DEFAULTS.merge(headers: {})
+      end
+
+      # Builds the client configuration from parsed option values.
+      #
+      # @param options [Hash{Symbol => Object}] the option values, starting from .defaults
+      # @return [Client::Config] the configuration; the concurrency cap defaults to the connection count
+      # @raise [TypeError] if an option value has the wrong type or an unknown option is present
+      sig { params(options: T::Hash[Symbol, Object]).returns(Client::Config) }
+      def self.config(options)
+        cap = options.fetch(:max_concurrent_connections) || options.fetch(:connections)
+        Client::Config.new(**T.cast(options.merge(max_concurrent_connections: cap), Values))
+      end
+    end
+
+    # The harness options: their values before parsing, and the Harness::Config built from the parsed values.
+    class HarnessOptions
+      extend T::Sig
+
+      # The value of every harness option before any flag is parsed.
+      DEFAULTS = T.let(
+        { connections: 1000, use_https: false, target_urls: [].freeze, export_json: nil, target_duration: 0.0 }.freeze,
+        T::Hash[Symbol, Object]
+      )
+      public_constant :DEFAULTS
+
+      # The parsed option values plus the forwarded client flags, as Harness::Config takes them.
+      Values =
+        T.type_alias do
+          {
+            connections: Integer,
+            use_https: T::Boolean,
+            target_urls: T::Array[String],
+            client_args: T::Array[String],
+            export_json: T.nilable(String),
+            target_duration: Float
+          }
+        end
+      private_constant :Values
+
+      # Builds the harness configuration from parsed option values.
+      #
+      # @param options [Hash{Symbol => Object}] the option values, starting from DEFAULTS
+      # @param client_args [Array<String>] the flags forwarded to the client subprocess
+      # @return [Harness::Config] the configuration
+      # @raise [TypeError] if an option value has the wrong type or an unknown option is present
+      sig { params(options: T::Hash[Symbol, Object], client_args: T::Array[String]).returns(Harness::Config) }
+      def self.config(options, client_args)
+        Harness::Config.new(**T.cast(options.merge(client_args: client_args), Values))
+      end
+    end
+
     # ClientParser configures OptionParser mapping specifically for Client configurations
     class ClientParser
       extend T::Sig
@@ -38,7 +176,7 @@ module HttpLoader
         end
         opts.on('--https', 'Use HTTPS natively') { options[:use_https] = true }
         opts.on('--url=URL', 'Comma-separated target URLs') do |v|
-          options[:target_urls] = split_list(T.cast(v, String))
+          options[:target_urls] = CliArgs.split_list(T.cast(v, String))
         end
         opts.on('--verbose', 'Verbose logging') { options[:verbose] = true }
       end
@@ -114,23 +252,12 @@ module HttpLoader
       def self.parse_endpoints(opts, options)
         opts.on('--ramp_up=S', Float, 'Ramp-up window in seconds') { |v| options[:ramp_up] = T.cast(v, Float) }
         opts.on('--bind_ips=IPS', 'Comma-separated source IPs') do |v|
-          options[:bind_ips] = split_list(T.cast(v, String))
+          options[:bind_ips] = CliArgs.split_list(T.cast(v, String))
         end
         opts.on('--proxy_pool=U', 'Comma-separated proxy URIs') do |v|
-          options[:proxy_pool] = split_list(T.cast(v, String))
+          options[:proxy_pool] = CliArgs.split_list(T.cast(v, String))
         end
         parse_slowloris(opts, options)
-      end
-
-      # Splits a comma-delimited CLI list, trimming whitespace and dropping empty
-      # entries so that stray commas (e.g. `--url=,http://x` or `--url=`) can never
-      # inject a blank token that later crashes URI/IP resolution.
-      #
-      # @param raw [String] the raw comma-separated flag value
-      # @return [Array<String>] the cleaned list of non-empty tokens
-      sig { params(raw: String).returns(T::Array[String]) }
-      def self.split_list(raw)
-        raw.split(',').map(&:strip).reject(&:empty?)
       end
 
       # Parses parameters triggering the slowloris strategy.
@@ -194,49 +321,6 @@ module HttpLoader
     class HarnessParser
       extend T::Sig
 
-      # Orchestrator to parse harness structural args while ignoring client ones.
-      #
-      # @param opts [OptionParser] the active parser instance
-      # @param options [Hash] the configuration map to populate
-      # @return [void]
-      sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
-      def self.parse(opts, options)
-        parse_harness_core(opts, options)
-        parse_harness_extras(opts, options)
-        ignore_core_args(opts)
-      end
-
-      # Parses core connection args for harness.
-      #
-      # @param opts [OptionParser] option parser
-      # @param options [Hash] map
-      # @return [void]
-      sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
-      def self.parse_harness_core(opts, options)
-        opts.on('--connections_count=C', Integer, 'Total connection count') do |v|
-          options[:connections] = T.cast(v, Integer)
-        end
-        opts.on('--https', 'Use HTTPS natively') { options[:use_https] = true }
-        opts.on('--url=U', 'Comma-separated target URLs') do |v|
-          options[:target_urls] = ClientParser.split_list(T.cast(v, String))
-        end
-      end
-
-      # Parses extra settings for harness.
-      #
-      # @param opts [OptionParser] parser
-      # @param options [Hash] map
-      # @return [void]
-      sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
-      def self.parse_harness_extras(opts, options)
-        opts.on('--export_json=FILE', 'Write the JSON run report to FILE') do |v|
-          options[:export_json] = T.cast(v, String)
-        end
-        opts.on('--target_duration=S', Float, 'Stop after S seconds') do |v|
-          options[:target_duration] = T.cast(v, Float)
-        end
-      end
-
       # Client-only flags the harness accepts but ignores: it forwards the original argv to the
       # client subprocess verbatim, and only needs OptionParser not to reject these while it
       # extracts its own structural flags. Listing them as data (rather than one no-op handler
@@ -261,6 +345,50 @@ module HttpLoader
         --headers=LIST
         --slowloris_delay=S
       ].freeze
+      public_constant :IGNORED_CLIENT_FLAGS
+
+      # Orchestrator to parse harness structural args while ignoring client ones.
+      #
+      # @param opts [OptionParser] the active parser instance
+      # @param options [Hash] the configuration map to populate
+      # @return [void]
+      sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
+      def self.parse(opts, options)
+        parse_harness_core(opts, options)
+        parse_harness_extras(opts, options)
+        ignore_core_args(opts)
+      end
+
+      # Parses core connection args for harness.
+      #
+      # @param opts [OptionParser] option parser
+      # @param options [Hash] map
+      # @return [void]
+      sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
+      def self.parse_harness_core(opts, options)
+        opts.on('--connections_count=C', Integer, 'Total connection count') do |v|
+          options[:connections] = T.cast(v, Integer)
+        end
+        opts.on('--https', 'Use HTTPS natively') { options[:use_https] = true }
+        opts.on('--url=U', 'Comma-separated target URLs') do |v|
+          options[:target_urls] = CliArgs.split_list(T.cast(v, String))
+        end
+      end
+
+      # Parses extra settings for harness.
+      #
+      # @param opts [OptionParser] parser
+      # @param options [Hash] map
+      # @return [void]
+      sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
+      def self.parse_harness_extras(opts, options)
+        opts.on('--export_json=FILE', 'Write the JSON run report to FILE') do |v|
+          options[:export_json] = T.cast(v, String)
+        end
+        opts.on('--target_duration=S', Float, 'Stop after S seconds') do |v|
+          options[:target_duration] = T.cast(v, Float)
+        end
+      end
 
       # Registers a discarding handler for every client-only flag so OptionParser tolerates
       # them during the harness's own structural parse. A block-less `on` registers the flag

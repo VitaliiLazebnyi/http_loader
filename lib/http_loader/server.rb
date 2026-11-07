@@ -7,11 +7,13 @@ require 'async'
 require 'falcon/server'
 require 'io/endpoint/host_endpoint'
 require 'io/endpoint/ssl_endpoint'
+require 'ipaddr'
 require 'openssl'
 require 'protocol/rack/adapter'
 require 'rack'
 require 'rackup'
 require 'rackup/handler/falcon'
+require 'socket'
 require 'sorbet-runtime'
 
 # Primary namespace for the load testing framework.
@@ -24,10 +26,13 @@ module HttpLoader
     # `[status, headers, body]` triple. A static type, checked by `srb tc`.
     RackApp =
       T.type_alias do
-        T.proc.params(
-          arg0: T::Hash[String, T.untyped]
-        ).returns(T::Array[T.any(Integer, T::Hash[String, String], T.untyped)])
+        T.proc.params(env: T::Hash[String, Object]).returns([Integer, T::Hash[String, String], T::Array[String]])
       end
+    private_constant :RackApp
+
+    # The address that binds every IPv4 interface (INADDR_ANY), so that remote load generators can connect.
+    BIND_ADDRESS = T.let(IPAddr.new(Socket::INADDR_ANY, Socket::AF_INET).to_s, String)
+    private_constant :BIND_ADDRESS
 
     # Allocates the Rack mapped mock layer simulating an identical, ultra-efficient mock endpoint.
     #
@@ -36,7 +41,7 @@ module HttpLoader
     def initialize
       @app = T.let(
         proc do |_env|
-          [200, { 'Content-Type' => 'text/plain', 'Content-Length' => '2' }, ['OK']]
+          [200, { 'content-type' => 'text/plain', 'content-length' => '2' }, ['OK']]
         end,
         RackApp
       )
@@ -94,7 +99,7 @@ module HttpLoader
     # @return [Falcon::Server] internally mapped interface natively wrapping the app
     sig { params(port: Integer, context: OpenSSL::SSL::SSLContext).returns(::Falcon::Server) }
     def build_falcon_server(port, context)
-      endpoint = IO::Endpoint.tcp('0.0.0.0', port)
+      endpoint = IO::Endpoint.tcp(BIND_ADDRESS, port)
       secure = IO::Endpoint::SSLEndpoint.new(endpoint, ssl_context: context)
       adapter = Protocol::Rack::Adapter.new(@app)
       Falcon::Server.new(adapter, secure, protocol: Async::HTTP::Protocol::HTTP1, scheme: 'https')
@@ -107,7 +112,7 @@ module HttpLoader
     sig { params(port: Integer).void }
     def start_plaintext(port)
       puts("[Server] Binding natively to plaintext HTTP over port #{port}")
-      Rackup::Handler::Falcon.run(@app, Host: '0.0.0.0', Port: port) do |_server|
+      Rackup::Handler::Falcon.run(@app, Host: BIND_ADDRESS, Port: port) do |_server|
         setup_interrupt { exit(0) }
       end
     end
@@ -124,7 +129,8 @@ module HttpLoader
       end
     end
 
-    # Assembles an ephemeral RSA asymmetric signing layer satisfying secure validation without CA dependencies naturally.
+    # Assembles an ephemeral RSA asymmetric signing layer satisfying secure validation without CA
+    # dependencies naturally.
     #
     # @return [OpenSSL::SSL::SSLContext] fully integrated validation context mapping
     sig { returns(OpenSSL::SSL::SSLContext) }
@@ -147,7 +153,7 @@ module HttpLoader
       cert = OpenSSL::X509::Certificate.new
       parse_cert_info(cert)
       cert.public_key = rsa.public_key
-      # RFC 5280 §4.1.2.2 requires a positive serial number; 0 is rejected by strict clients.
+      # RFC 5280 section 4.1.2.2 requires a positive serial number; 0 is rejected by strict clients.
       cert.serial = 1
       cert.version = 2
       # `OpenSSL::X509::Certificate#sign` finalises and returns the (now signed) certificate, so it is

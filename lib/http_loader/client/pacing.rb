@@ -48,6 +48,15 @@ module HttpLoader
         timeout - (Time.now - start_time)
       end
 
+      # Whether a keep-alive budget is used up. An unbounded lifetime (nil) never is.
+      #
+      # @param remaining [Float, nil] remaining budget, or nil if unbounded
+      # @return [Boolean] true once no time is left
+      sig { params(remaining: T.nilable(Float)).returns(T::Boolean) }
+      def budget_spent?(remaining)
+        !remaining.nil? && remaining <= 0.0
+      end
+
       # Caps a computed sleep so it never sleeps past the remaining keep-alive budget.
       #
       # @param base [Float] the desired sleep duration

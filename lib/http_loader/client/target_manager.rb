@@ -24,13 +24,16 @@ module HttpLoader
       end
 
       # A resolved endpoint context: its parsed URI plus the Net::HTTP start options.
-      Context = T.type_alias { T::Hash[Symbol, T.untyped] }
+      Context = T.type_alias { T::Hash[Symbol, Object] }
+      private_constant :Context
       # The full list of resolved contexts (one per target URL).
       ContextList = T.type_alias { T::Array[Context] }
+      private_constant :ContextList
 
       # Matches `[scheme://][user[:pass]@]host[:port]` tolerantly, including credentialed
       # proxies that `URI.parse` rejects under the bundled `uri` gem.
       PROXY_RE = %r{\A(?:\w+://)?(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>[^:/@]+)(?::(?<port>\d+))?}
+      private_constant :PROXY_RE
 
       # Initializes the TargetManager tracking connection URI configurations.
       #

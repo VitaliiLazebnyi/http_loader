@@ -76,7 +76,8 @@ module HttpLoader
                   "Connection: keep-alive\r\n" \
                   "User-Agent: #{@config.user_agent}\r\n"
         @config.headers.each { |k, v| payload += "#{k}: #{v}\r\n" }
-        "#{payload}X-Slowloris: " # deliberately unfinished trailing header
+        # The trailing header is deliberately left unfinished.
+        "#{payload}X-Slowloris: "
       end
 
       # Keeps an ongoing socket indefinitely occupied via sporadic random byte injection.
@@ -87,19 +88,14 @@ module HttpLoader
       # @return [void]
       sig { params(client_index: Integer, io: IO, start_time: Time).void }
       def maintain_hold(client_index, io, start_time)
-        loop do
-          remaining = budget_remaining(@config.http_loader_timeout, start_time)
-          if remaining && remaining <= 0.0
-            @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing Slowloris thread.")
-            break
-          else
-            nil
-          end
-
+        remaining = budget_remaining(@config.http_loader_timeout, start_time)
+        until budget_spent?(remaining)
           io.write(rand(97..122).chr)
           io.flush
           sleep(cap_to_budget(jittered_interval(@config.slowloris_delay, @config.jitter), remaining))
+          remaining = budget_remaining(@config.http_loader_timeout, start_time)
         end
+        @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing Slowloris thread.")
       end
     end
   end

@@ -18,6 +18,27 @@ module HttpLoader
       # `Kernel.`/`harness.` receiver to mutate into a behaviourally identical self form.
       requires_ancestor { HttpLoader::Harness }
 
+      # One row of the metrics table: time, connections, then CPU, memory and memory per connection of the
+      # server and of the client.
+      ROW_FORMAT = '%<t>-10s | %<ac>-11s | %<sc>-16s | %<sm>-14s | %<sk>-14s | %<cc>-16s | %<cm>-14s | %<ck>-14s'
+      private_constant :ROW_FORMAT
+
+      # The column headings of the metrics table.
+      HEADINGS = T.let(
+        {
+          t: 'Time (UTC)',
+          ac: 'Real Conns',
+          sc: 'Srv CPU/Thrds',
+          sm: 'Srv Mem',
+          sk: 'Srv Mem/Conn',
+          cc: 'Cli CPU/Thrds',
+          cm: 'Cli Mem',
+          ck: 'Cli Mem/Conn'
+        }.freeze,
+        T::Hash[Symbol, String]
+      )
+      private_constant :HEADINGS
+
       # Prints an initial banner announcing URL and mode configurations.
       #
       # @return [void]
@@ -47,7 +68,7 @@ module HttpLoader
         rule = '-' * 125
         puts('[Harness] Monitoring resources (Press Ctrl+C to stop)...')
         puts(rule)
-        puts('Time (UTC) | Real Conns  | Srv CPU/Thrds    | Srv Mem        | Srv Mem/Conn   | Cli CPU/Thrds    | Cli Mem        | Cli Mem/Conn  ')
+        puts(format(ROW_FORMAT, HEADINGS))
         puts(rule)
       end
 
@@ -55,21 +76,9 @@ module HttpLoader
       #
       # @param params [Hash] keyword arguments containing metric fields
       # @return [void]
-      sig { params(params: T::Hash[Symbol, T.untyped]).void }
+      sig { params(params: T::Hash[Symbol, Object]).void }
       def log_table_row(params)
-        puts(
-          format(
-            '%<t>-10s | %<ac>-11s | %<sc>-16s | %<sm>-14s | %<sk>-14s | %<cc>-16s | %<cm>-14s | %<ck>-14s',
-            t: params.fetch(:t),
-            ac: params.fetch(:ac),
-            sc: params.fetch(:sc),
-            sm: params.fetch(:sm),
-            sk: params.fetch(:sk),
-            cc: params.fetch(:cc),
-            cm: params.fetch(:cm),
-            ck: params.fetch(:ck)
-          )
-        )
+        puts(format(ROW_FORMAT, params))
       end
 
       # Computes KB overhead proportionally to established sockets natively.

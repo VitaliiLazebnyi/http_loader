@@ -3,10 +3,12 @@
 
 # Copyright (c) 2026 Vitalii Lazebnyi
 
+require 'ipaddr'
 require 'rbconfig'
 require 'shellwords'
 require 'socket'
 require 'sorbet-runtime'
+require_relative 'process_control'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -14,16 +16,24 @@ module HttpLoader
     # Manages child process lifecycles natively and checks status dynamically.
     class ProcessManager
       extend T::Sig
+      include ProcessControl
 
       # Absolute path to the CLI entrypoint, resolved independently of the current
       # working directory so the harness works when invoked from anywhere.
       BIN_PATH = T.let(File.expand_path('../../../bin/http_loader', __dir__), String)
+      public_constant :BIN_PATH
 
       # Seconds to wait for the spawned server to accept TCP connections before giving up.
       SERVER_BOOT_TIMEOUT = 15.0
+      private_constant :SERVER_BOOT_TIMEOUT
+
+      # The IPv4 loopback address (INADDR_LOOPBACK) the readiness probe connects to.
+      LOOPBACK = T.let(IPAddr.new(Socket::INADDR_LOOPBACK, Socket::AF_INET).to_s, String)
+      private_constant :LOOPBACK
 
       # Map of spawned child role (:server / :client) to its OS pid. A static type.
       Pids = T.type_alias { T::Hash[Symbol, Integer] }
+      private_constant :Pids
 
       # Allocates a new supervisor manager evaluating local child architectures natively. The spawned
       # child pids live in a single map (empty until a child is spawned) rather than two nil ivars, so
@@ -89,51 +99,6 @@ module HttpLoader
 
       private
 
-      # Escalating, reaping terminator for a single child PID.
-      #
-      # @param pid [Integer, nil] the target process id
-      # @return [void]
-      sig { params(pid: T.nilable(Integer)).void }
-      def terminate(pid)
-        return unless pid
-
-        signal_quietly('INT', pid)
-        return if reaped?(pid, deadline: 3.0)
-
-        signal_quietly('KILL', pid)
-        reaped?(pid, deadline: 2.0)
-      end
-
-      # Polls `waitpid(WNOHANG)` until the child is reaped or the deadline passes.
-      #
-      # @param pid [Integer] the process id
-      # @param deadline [Float] seconds to wait
-      # @return [Boolean] true if the child was reaped
-      sig { params(pid: Integer, deadline: Float).returns(T::Boolean) }
-      def reaped?(pid, deadline:)
-        stop_at = Time.now + deadline
-        while Time.now < stop_at
-          return true if Process.waitpid(pid, Process::WNOHANG)
-
-          sleep(0.05)
-        end
-        false
-      rescue Errno::ECHILD, Errno::ESRCH
-        true
-      end
-
-      # Sends a signal, swallowing "already gone" errors.
-      #
-      # @param sig [String] the signal name
-      # @param pid [Integer] the target process id
-      # @return [void]
-      sig { params(sig: String, pid: Integer).void }
-      def signal_quietly(sig, pid)
-        Process.kill(sig, pid)
-      rescue StandardError
-        nil
-      end
-
       # Triggers Ruby's async native wrapper bindings spawning local HTTP1 endpoints natively via falcon bounds.
       #
       # @return [void]
@@ -198,23 +163,11 @@ module HttpLoader
       # @return [Boolean] true if a TCP connection succeeds
       sig { params(port: Integer).returns(T::Boolean) }
       def port_open?(port)
-        sock = T.let(TCPSocket.new('127.0.0.1', port), TCPSocket)
+        sock = T.let(TCPSocket.new(LOOPBACK, port), TCPSocket)
         sock.close
         true
       rescue StandardError
         false
-      end
-
-      # Low-level POSIX call checking SIG status mapping logic externally.
-      #
-      # @param pid [Integer] system explicit PID string mapping
-      # @return [Boolean] evaluation declaring mortality manually
-      sig { params(pid: Integer).returns(T::Boolean) }
-      def dead?(pid)
-        Process.getpgid(pid)
-        false
-      rescue Errno::ESRCH
-        true
       end
     end
   end

@@ -29,6 +29,7 @@ module HttpLoader
 
     # The spawned per-connection worker tasks. A static type, checked by `srb tc`.
     ConnTasks = T.type_alias { T::Array[Async::Task] }
+    private_constant :ConnTasks
 
     sig { returns(HttpLoader::Client::Logger) }
     attr_reader :logger
@@ -159,9 +160,9 @@ module HttpLoader
     # @param idx [Integer] the connection identifier
     # @param ctx [Hash] the partial context map
     # @return [Hash] the fully resolved HTTP start arguments
-    sig { params(idx: Integer, ctx: T::Hash[Symbol, T.untyped]).returns(T::Hash[Symbol, T.untyped]) }
+    sig { params(idx: Integer, ctx: T::Hash[Symbol, Object]).returns(T::Hash[Symbol, Object]) }
     def fetch_opts(idx, ctx)
-      args = T.cast(ctx[:http_args], T::Hash[Symbol, T.untyped])
+      args = T.cast(ctx[:http_args], T::Hash[Symbol, Object])
       @target_manager.http_opts_for(idx, args)
     end
 
@@ -171,7 +172,7 @@ module HttpLoader
     # @param opts [Hash] injected configuration options for HTTP
     # @param block [Proc] yieldable closure receiving HTTP connection instantiated
     # @return [void]
-    sig { params(uri: URI::Generic, opts: T::Hash[Symbol, T.untyped], block: T.proc.params(arg: Net::HTTP).void).void }
+    sig { params(uri: URI::Generic, opts: T::Hash[Symbol, Object], block: T.proc.params(arg: Net::HTTP).void).void }
     def start_http(uri, opts, &block)
       Net::HTTP.start(T.must(uri.host), uri.port, **opts, &block)
     end
