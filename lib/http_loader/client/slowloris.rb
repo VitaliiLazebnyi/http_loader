@@ -3,6 +3,7 @@
 
 # Copyright (c) 2026 Vitalii Lazebnyi
 
+require 'openssl'
 require 'sorbet-runtime'
 require_relative 'pacing'
 
@@ -48,10 +49,10 @@ module HttpLoader
 
       # Writes the HTTP payload character by character with configurable artificial delay constraints.
       #
-      # @param io [IO] the physical IO bound socket instance
+      # @param io [IO, OpenSSL::SSL::SSLSocket] the connection's socket (TLS-wrapped for HTTPS)
       # @param uri [URI::Generic] the targeted request identifier
       # @return [void]
-      sig { params(io: IO, uri: URI::Generic).void }
+      sig { params(io: T.any(IO, OpenSSL::SSL::SSLSocket), uri: URI::Generic).void }
       def fire_initial_payload(io, uri)
         build_payload_headers(uri).chars.each_with_index do |char, i|
           # Pace *before* each byte except the first: this spaces the stream identically while
@@ -83,10 +84,10 @@ module HttpLoader
       # Keeps an ongoing socket indefinitely occupied via sporadic random byte injection.
       #
       # @param client_index [Integer] numeric connection index used by logging
-      # @param io [IO] underlying network IO byte writer
+      # @param io [IO, OpenSSL::SSL::SSLSocket] the connection's socket (TLS-wrapped for HTTPS)
       # @param start_time [Time] lifecycle origination period
       # @return [void]
-      sig { params(client_index: Integer, io: IO, start_time: Time).void }
+      sig { params(client_index: Integer, io: T.any(IO, OpenSSL::SSL::SSLSocket), start_time: Time).void }
       def maintain_hold(client_index, io, start_time)
         remaining = budget_remaining(@config.http_loader_timeout, start_time)
         until budget_spent?(remaining)

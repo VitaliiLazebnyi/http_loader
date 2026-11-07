@@ -24,7 +24,7 @@ RSpec.describe(HttpLoader::Client::Pacing) do
       expect(pacer.jittered_interval(10.0, 0.5)).to(eq(0.0))
     end
 
-    it 'draws from the symmetric +/- variance range' do
+    it 'draws from the symmetric +/- variance range', :aggregate_failures do
       allow(pacer).to(
         receive(:rand) { |range| expect(range).to(eq(-5.0..5.0)) }
         .and_return(0.0)

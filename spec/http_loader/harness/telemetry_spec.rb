@@ -141,7 +141,7 @@ RSpec.describe(HttpLoader::Harness::Telemetry) do
       expect($stdout).not_to(have_received(:puts))
     end
 
-    it 'swallows a read error without printing or raising' do
+    it 'swallows a read error without printing or raising', :aggregate_failures do
       allow(File).to(receive(:size).and_raise(StandardError))
       write_log("ERROR_EMFILE\n")
       expect { telemetry.check_bottlenecks! }
@@ -161,7 +161,8 @@ RSpec.describe(HttpLoader::Harness::Telemetry) do
     it 'resets its offset and re-reads from the start when a log is truncated/rotated' do
       write_log("ERROR_EMFILE this first generation line is deliberately long\n")
       telemetry.check_bottlenecks!
-      write_log("ERROR_THREADLIMIT\n") # shorter than the stored offset => rotation
+      # shorter than the stored offset => rotation
+      write_log("ERROR_THREADLIMIT\n")
       telemetry.check_bottlenecks!
       telemetry.export!(0, Time.now)
       expect(payload[:errors]).to(eq(emfile: 1, eaddrnotavail: 0, thread_limit: 1))

@@ -20,7 +20,7 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
   describe '#process_stats routing' do
     before { allow(monitor).to(receive_messages(native_linux_stats: :native, fallback_ps_stats: :fallback)) }
 
-    it 'returns the EXTERNAL tuple for a nil pid without touching /proc' do
+    it 'returns the EXTERNAL tuple for a nil pid without touching /proc', :aggregate_failures do
       expect(monitor.process_stats(nil)).to(eq(['EXTERNAL', 'EXTERNAL', 0.0, 0]))
       expect(monitor).not_to(have_received(:native_linux_stats))
     end
@@ -31,21 +31,21 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
       expect(monitor.process_stats(5)).to(eq(:native))
     end
 
-    it 'falls back to ps (with the pid) when statm is missing (stat present)' do
+    it 'falls back to ps (with the pid) when statm is missing (stat present)', :aggregate_failures do
       allow(File).to(receive(:exist?).with('/proc/5/stat').and_return(true))
       allow(File).to(receive(:exist?).with('/proc/5/statm').and_return(false))
       expect(monitor.process_stats(5)).to(eq(:fallback))
       expect(monitor).to(have_received(:fallback_ps_stats).with(5))
     end
 
-    it 'falls back to ps (with the pid) when stat is missing (statm present)' do
+    it 'falls back to ps (with the pid) when stat is missing (statm present)', :aggregate_failures do
       allow(File).to(receive(:exist?).with('/proc/5/stat').and_return(false))
       allow(File).to(receive(:exist?).with('/proc/5/statm').and_return(true))
       expect(monitor.process_stats(5)).to(eq(:fallback))
       expect(monitor).to(have_received(:fallback_ps_stats).with(5))
     end
 
-    it 'falls back to ps (with the pid) when native stats raise' do
+    it 'falls back to ps (with the pid) when native stats raise', :aggregate_failures do
       allow(File).to(receive(:exist?).and_return(true))
       allow(monitor).to(receive(:native_linux_stats).and_raise(StandardError))
       expect(monitor.process_stats(5)).to(eq(:fallback))
@@ -76,7 +76,7 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
       expect(monitor.process_stats(123)[3]).to(eq(1))
     end
 
-    it 'formats RSS as pages*page_size to two decimal MB and reports the raw KB float' do
+    it 'formats RSS as pages*page_size to two decimal MB and reports the raw KB float', :aggregate_failures do
       # statm pages 317 * 4096 B / 1024 = 1268.0 KB; /1024 = 1.23828125 MB -> 1.24.
       stats = monitor.process_stats(123)
       expect(stats[1]).to(eq('1.24 MB'))
@@ -85,10 +85,11 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
 
     it 'honours a non-default page size from getconf' do
       stub_getconf(page: "8192\n")
-      expect(HttpLoader::Harness::ResourceMonitor.new.process_stats(123)[2]).to(eq(2536.0)) # 317 * 8192 / 1024
+      # 317 * 8192 / 1024
+      expect(HttpLoader::Harness::ResourceMonitor.new.process_stats(123)[2]).to(eq(2536.0))
     end
 
-    it 'reports 0.0 CPU on the first sample and the CLK_TCK/interval-scaled delta on the second' do
+    it 'reports 0.0 CPU on the first sample and the CLK_TCK/interval-scaled delta on the second', :aggregate_failures do
       now = Time.now
       allow(Time).to(receive(:now).and_return(now))
       expect(monitor.process_stats(123)[0]).to(eq('0.0'))
@@ -109,10 +110,11 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
       allow(File).to(receive(:read).with('/proc/456/statm').and_return("10240 317 1 1 1 1 1\n"))
       allow(File).to(receive(:read).with('/proc/456/status').and_return("Threads:   1\n"))
       allow(Time).to(receive(:now).and_return(now + 2.0))
-      expect(monitor.process_stats(456)[0]).to(eq('0.0')) # 456's first sample, not a delta vs 123
+      # 456's first sample, not a delta vs 123
+      expect(monitor.process_stats(456)[0]).to(eq('0.0'))
     end
 
-    it 'uses the default page size (4096) when getconf returns zero or raises' do
+    it 'uses the default page size (4096) when getconf returns zero or raises', :aggregate_failures do
       stub_getconf(page: "0\n")
       expect(HttpLoader::Harness::ResourceMonitor.new.process_stats(123)[2]).to(eq(1268.0))
       allow(Open3).to(receive(:capture2).with('getconf', 'PAGE_SIZE').and_raise(StandardError))
@@ -122,29 +124,31 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
 
   describe '#calculate_cpu' do
     it 'returns 0.0 on the first observation of a pid' do
-      expect(monitor.send(:calculate_cpu, 1, 100.0)).to(eq(0.0))
+      expect(monitor.__send__(:calculate_cpu, 1, 100.0)).to(eq(0.0))
     end
 
     it 'tracks each pid independently (a different pid is a first observation, not a cross-pid delta)' do
       now = Time.now
       allow(Time).to(receive(:now).and_return(now, now + 1.0))
-      monitor.send(:calculate_cpu, 1, 100.0) # pid 1: first sample
-      expect(monitor.send(:calculate_cpu, 2, 500.0)).to(eq(0.0)) # pid 2: its own first sample => 0.0
+      # pid 1: first sample
+      monitor.__send__(:calculate_cpu, 1, 100.0)
+      # pid 2: its own first sample => 0.0
+      expect(monitor.__send__(:calculate_cpu, 2, 500.0)).to(eq(0.0))
     end
 
     it 'returns 0.0 when no time has elapsed since the previous sample' do
       now = Time.now
       allow(Time).to(receive(:now).and_return(now))
-      monitor.send(:calculate_cpu, 1, 100.0)
-      expect(monitor.send(:calculate_cpu, 1, 200.0)).to(eq(0.0))
+      monitor.__send__(:calculate_cpu, 1, 100.0)
+      expect(monitor.__send__(:calculate_cpu, 1, 200.0)).to(eq(0.0))
     end
 
     it 'scales the tick delta by CLK_TCK and the sub-second interval, rounded to one decimal' do
       now = Time.now
       allow(Time).to(receive(:now).and_return(now, now + 0.3))
-      monitor.send(:calculate_cpu, 1, 100.0)
+      monitor.__send__(:calculate_cpu, 1, 100.0)
       # delta 10 ticks / 100 CLK_TCK / 0.3s * 100 = 33.333...% -> 33.3 (a Float, not 33 or 33.33).
-      expect(monitor.send(:calculate_cpu, 1, 110.0)).to(eq(33.3).and(be_a(Float)))
+      expect(monitor.__send__(:calculate_cpu, 1, 110.0)).to(eq(33.3).and(be_a(Float)))
     end
 
     it 'uses the CLK_TCK fallback of 100 when getconf fails' do
@@ -153,15 +157,16 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
       fresh = HttpLoader::Harness::ResourceMonitor.new
       now = Time.now
       allow(Time).to(receive(:now).and_return(now, now + 1.0))
-      fresh.send(:calculate_cpu, 1, 100.0)
-      expect(fresh.send(:calculate_cpu, 1, 200.0)).to(eq(100.0)) # 100 ticks / 100 / 1s * 100
+      fresh.__send__(:calculate_cpu, 1, 100.0)
+      # 100 ticks / 100 / 1s * 100
+      expect(fresh.__send__(:calculate_cpu, 1, 200.0)).to(eq(100.0))
     end
   end
 
   describe '#process_stats ps fallback path' do
     before { allow(File).to(receive(:exist?).and_return(false)) }
 
-    it 'parses a multi-space ps row and counts ps -M rows minus the header' do
+    it 'parses a multi-space ps row and counts ps -M rows minus the header', :aggregate_failures do
       allow(Open3).to(
         receive(:capture2).with('ps', '-o', '%cpu,rss', '-p', '123')
                                                 .and_return(["%CPU   RSS\n  12.3   1268\n", nil])
@@ -217,14 +222,17 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
         receive(:readlines).with('/proc/123/net/tcp').and_return(
           [
             "  sl local rem st ... inode\n",
-            "  0: 0100007F:1F90 0100007F:C000 01 00:00 00 00 0 0 555 1\n", # ESTABLISHED (st 01)
-            "  1: 0100007F:1F91 00000000:0000 0A 00:00 00 00 0 0 999 1\n"  # LISTEN (st 0A)
+            # ESTABLISHED (st 01)
+            "  0: 0100007F:1F90 0100007F:C000 01 00:00 00 00 0 0 555 1\n",
+            # LISTEN (st 0A)
+            "  1: 0100007F:1F91 00000000:0000 0A 00:00 00 00 0 0 999 1\n"
           ]
         )
       )
       allow(File).to(
         receive(:readlines).with('/proc/123/net/tcp6').and_return(
-          ["  sl local rem st ... inode\n", "  0: 0100007F:1F90 0100007F:C000 01 00:00 00 00 0 0 777 1\n"] # ESTABLISHED inode 777
+          # ESTABLISHED inode 777
+          ["  sl local rem st ... inode\n", "  0: 0100007F:1F90 0100007F:C000 01 00:00 00 00 0 0 777 1\n"]
         )
       )
       allow(Dir).to(
@@ -237,11 +245,16 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
                                                         /proc/123/fd/5
                                                       ])
       )
-      allow(File).to(receive(:readlink).with('/proc/123/fd/1').and_return('socket:[555]')) # established tcp
-      allow(File).to(receive(:readlink).with('/proc/123/fd/2').and_return('socket:[999]')) # listening tcp inode
-      allow(File).to(receive(:readlink).with('/proc/123/fd/3').and_return(File::NULL)) # non-socket
-      allow(File).to(receive(:readlink).with('/proc/123/fd/4').and_return('socket:[777]')) # established tcp6
-      allow(File).to(receive(:readlink).with('/proc/123/fd/5').and_raise(StandardError)) # rescued => false
+      # established tcp
+      allow(File).to(receive(:readlink).with('/proc/123/fd/1').and_return('socket:[555]'))
+      # listening tcp inode
+      allow(File).to(receive(:readlink).with('/proc/123/fd/2').and_return('socket:[999]'))
+      # non-socket
+      allow(File).to(receive(:readlink).with('/proc/123/fd/3').and_return(File::NULL))
+      # established tcp6
+      allow(File).to(receive(:readlink).with('/proc/123/fd/4').and_return('socket:[777]'))
+      # rescued => false
+      allow(File).to(receive(:readlink).with('/proc/123/fd/5').and_raise(StandardError))
       expect(monitor.count_established_connections(123)).to(eq(2))
     end
 
@@ -293,12 +306,14 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
         receive(:readlines).with('/proc/9/net/tcp').and_return(
           [
             "  sl local rem st ... inode\n",
-            "  0: 0100007F:1F90 0100007F:C000 01 00:00 00 00 0 0 555 1\n", # ESTABLISHED (st 01)
-            "  1: 0100007F:1F91 00000000:0000 0A 00:00 00 00 0 0 999 1\n"  # LISTEN (st 0A) -> skipped
+            # ESTABLISHED (st 01)
+            "  0: 0100007F:1F90 0100007F:C000 01 00:00 00 00 0 0 555 1\n",
+            # LISTEN (st 0A) -> skipped
+            "  1: 0100007F:1F91 00000000:0000 0A 00:00 00 00 0 0 999 1\n"
           ]
         )
       )
-      expect(monitor.send(:established_inodes, 9)).to(eq(['555']))
+      expect(monitor.__send__(:established_inodes, 9)).to(eq(['555']))
     end
 
     it 'merges inodes from both proto files, in tcp-then-tcp6 order, when both are present' do
@@ -317,24 +332,24 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
           ["  sl local rem st ... inode\n", "  0: ::1:1F90 ::1:C000 01 00:00 00 00 0 0 777 1\n"]
         )
       )
-      expect(monitor.send(:established_inodes, 9)).to(eq(%w[555 777]))
+      expect(monitor.__send__(:established_inodes, 9)).to(eq(%w[555 777]))
     end
   end
 
   describe '#socket_inode (private)' do
     it 'extracts the inode from a bare socket symlink target' do
       allow(File).to(receive(:readlink).with('/proc/9/fd/3').and_return('socket:[12345]'))
-      expect(monitor.send(:socket_inode, '/proc/9/fd/3')).to(eq('12345'))
+      expect(monitor.__send__(:socket_inode, '/proc/9/fd/3')).to(eq('12345'))
     end
 
     it 'returns nil for a non-socket descriptor target' do
       allow(File).to(receive(:readlink).with('/proc/9/fd/4').and_return(File::NULL))
-      expect(monitor.send(:socket_inode, '/proc/9/fd/4').nil?).to(be(true))
+      expect(monitor.__send__(:socket_inode, '/proc/9/fd/4').nil?).to(be(true))
     end
 
     it 'anchors the match, rejecting a socket:[n] fragment embedded in a longer target' do
       allow(File).to(receive(:readlink).with('/proc/9/fd/5').and_return('anon_inode:socket:[7]x'))
-      expect(monitor.send(:socket_inode, '/proc/9/fd/5').nil?).to(be(true))
+      expect(monitor.__send__(:socket_inode, '/proc/9/fd/5').nil?).to(be(true))
     end
   end
 
@@ -342,9 +357,11 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
     it 'maps socket fds to inodes, dropping non-sockets and descriptors that vanish mid-walk' do
       allow(Dir).to(receive(:glob).with('/proc/9/fd/*').and_return(%w[/proc/9/fd/1 /proc/9/fd/2 /proc/9/fd/3]))
       allow(File).to(receive(:readlink).with('/proc/9/fd/1').and_return('socket:[100]'))
-      allow(File).to(receive(:readlink).with('/proc/9/fd/2').and_return(File::NULL))   # non-socket -> dropped
-      allow(File).to(receive(:readlink).with('/proc/9/fd/3').and_raise(StandardError)) # vanished -> rescued, dropped
-      expect(monitor.send(:fd_socket_inodes, 9)).to(eq(['100']))
+      # non-socket -> dropped
+      allow(File).to(receive(:readlink).with('/proc/9/fd/2').and_return(File::NULL))
+      # vanished -> rescued, dropped
+      allow(File).to(receive(:readlink).with('/proc/9/fd/3').and_raise(StandardError))
+      expect(monitor.__send__(:fd_socket_inodes, 9)).to(eq(['100']))
     end
   end
 
@@ -352,25 +369,26 @@ RSpec.describe(HttpLoader::Harness::ResourceMonitor) do
     it 'counts only the fd inodes that appear in the established set' do
       allow(monitor).to(receive(:established_inodes).with(9).and_return(%w[100 300]))
       allow(monitor).to(receive(:fd_socket_inodes).with(9).and_return(%w[100 200 300]))
-      expect(monitor.send(:count_linux_connections, 9)).to(eq(2)) # 100 and 300 established; 200 is not
+      # 100 and 300 established; 200 is not
+      expect(monitor.__send__(:count_linux_connections, 9)).to(eq(2))
     end
   end
 
   describe '#record_cpu_sample history bounding' do
     it 'keeps exactly CPU_HISTORY_LIMIT entries once that many distinct pids are seen' do
-      HttpLoader::Harness::ResourceMonitor::CPU_HISTORY_LIMIT.times { |pid| monitor.send(:record_cpu_sample, pid, 1.0, Time.now) }
+      HttpLoader::Harness::ResourceMonitor::CPU_HISTORY_LIMIT.times { |pid| monitor.__send__(:record_cpu_sample, pid, 1.0, Time.now) }
       expect(monitor.instance_variable_get(:@cpu_prev).size).to(eq(HttpLoader::Harness::ResourceMonitor::CPU_HISTORY_LIMIT))
     end
 
     it 'never exceeds CPU_HISTORY_LIMIT as more pids arrive' do
-      (HttpLoader::Harness::ResourceMonitor::CPU_HISTORY_LIMIT + 50).times { |pid| monitor.send(:record_cpu_sample, pid, 1.0, Time.now) }
+      (HttpLoader::Harness::ResourceMonitor::CPU_HISTORY_LIMIT + 50).times { |pid| monitor.__send__(:record_cpu_sample, pid, 1.0, Time.now) }
       expect(monitor.instance_variable_get(:@cpu_prev).size).to(eq(HttpLoader::Harness::ResourceMonitor::CPU_HISTORY_LIMIT))
     end
 
-    it 'returns the previous sample for a repeated pid and nil on first sighting' do
+    it 'returns the previous sample for a repeated pid and nil on first sighting', :aggregate_failures do
       t = Time.now
-      expect(monitor.send(:record_cpu_sample, 7, 10.0, t).nil?).to(be(true))
-      expect(monitor.send(:record_cpu_sample, 7, 20.0, t)).to(eq(ticks: 10.0, time: t))
+      expect(monitor.__send__(:record_cpu_sample, 7, 10.0, t).nil?).to(be(true))
+      expect(monitor.__send__(:record_cpu_sample, 7, 20.0, t)).to(eq(ticks: 10.0, time: t))
     end
   end
 end

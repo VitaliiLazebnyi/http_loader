@@ -26,13 +26,14 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
       expect(manager.instance_variable_get(:@config)).to(eq(config))
     end
 
-    it 'starts with no server or client pid recorded' do
+    it 'starts with no server or client pid recorded', :aggregate_failures do
       expect(manager.server_pid.nil?).to(be(true))
       expect(manager.client_pid.nil?).to(be(true))
     end
 
     it 'resolves the log directory to the absolute project logs path' do
-      project_root = File.expand_path('../../..', __dir__) # spec/http_loader/harness -> repo root
+      # spec/http_loader/harness -> repo root
+      project_root = File.expand_path('../../..', __dir__)
       expect(manager.instance_variable_get(:@log_dir)).to(eq(File.join(project_root, 'logs')))
     end
   end
@@ -71,12 +72,12 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
   describe '#dead?' do
     it 'is false when getpgid resolves the process group' do
       allow(Process).to(receive(:getpgid).with(123).and_return(456))
-      expect(manager.send(:dead?, 123)).to(be(false))
+      expect(manager.__send__(:dead?, 123)).to(be(false))
     end
 
     it 'is true when getpgid raises ESRCH (no such process)' do
       allow(Process).to(receive(:getpgid).with(123).and_raise(Errno::ESRCH))
-      expect(manager.send(:dead?, 123)).to(be(true))
+      expect(manager.__send__(:dead?, 123)).to(be(true))
     end
   end
 
@@ -89,7 +90,7 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
       expect(FileUtils).to(have_received(:mkdir_p).with(log_dir))
     end
 
-    it 'spawns only the client when target URLs are configured' do
+    it 'spawns only the client when target URLs are configured', :aggregate_failures do
       allow(manager).to(receive_messages(spawn_server: nil, spawn_client: nil))
       manager.spawn_processes
       expect(manager).not_to(have_received(:spawn_server))
@@ -114,7 +115,7 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
   end
 
   describe '#cleanup' do
-    it 'terminates both the server and client pids' do
+    it 'terminates both the server and client pids', :aggregate_failures do
       record_pid(:server, 10)
       record_pid(:client, 20)
       allow(manager).to(receive(:terminate))
@@ -127,23 +128,23 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
   describe '#terminate' do
     it 'does nothing for a nil pid' do
       allow(Process).to(receive(:kill))
-      manager.send(:terminate, nil)
+      manager.__send__(:terminate, nil)
       expect(Process).not_to(have_received(:kill))
     end
 
-    it 'sends SIGINT and stops when the child is reaped within the 3s grace period' do
+    it 'sends SIGINT and stops when the child is reaped within the 3s grace period', :aggregate_failures do
       allow(manager).to(receive(:signal_quietly))
       allow(manager).to(receive(:reaped?).with(556, deadline: 3.0).and_return(true))
-      manager.send(:terminate, 556)
+      manager.__send__(:terminate, 556)
       expect(manager).to(have_received(:signal_quietly).with('INT', 556))
       expect(manager).not_to(have_received(:signal_quietly).with('KILL', 556))
     end
 
-    it 'escalates to SIGKILL and reaps with a 2s deadline when SIGINT does not reap' do
+    it 'escalates to SIGKILL and reaps with a 2s deadline when SIGINT does not reap', :aggregate_failures do
       allow(manager).to(receive(:signal_quietly))
       allow(manager).to(receive(:reaped?).with(556, deadline: 3.0).and_return(false))
       allow(manager).to(receive(:reaped?).with(556, deadline: 2.0).and_return(true))
-      manager.send(:terminate, 556)
+      manager.__send__(:terminate, 556)
       expect(manager).to(have_received(:signal_quietly).with('KILL', 556))
       expect(manager).to(have_received(:reaped?).with(556, deadline: 2.0))
     end
@@ -152,25 +153,25 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
   describe '#reaped?' do
     it 'returns true as soon as waitpid(WNOHANG) reaps the child' do
       allow(Process).to(receive(:waitpid).with(1, Process::WNOHANG).and_return(1))
-      expect(manager.send(:reaped?, 1, deadline: 1.0)).to(be(true))
+      expect(manager.__send__(:reaped?, 1, deadline: 1.0)).to(be(true))
     end
 
     it 'returns true when the child is already gone (ECHILD)' do
       allow(Process).to(receive(:waitpid).and_raise(Errno::ECHILD))
-      expect(manager.send(:reaped?, 1, deadline: 1.0)).to(be(true))
+      expect(manager.__send__(:reaped?, 1, deadline: 1.0)).to(be(true))
     end
 
     it 'returns true when the pid is unknown (ESRCH)' do
       allow(Process).to(receive(:waitpid).and_raise(Errno::ESRCH))
-      expect(manager.send(:reaped?, 1, deadline: 1.0)).to(be(true))
+      expect(manager.__send__(:reaped?, 1, deadline: 1.0)).to(be(true))
     end
 
-    it 'polls with a 0.05s backoff and gives up (false) once the deadline passes' do
+    it 'polls with a 0.05s backoff and gives up (false) once the deadline passes', :aggregate_failures do
       allow(manager).to(receive(:sleep))
       allow(Process).to(receive(:waitpid).and_return(nil))
       t = Time.now
       allow(Time).to(receive(:now).and_return(t, t + 0.5, t + 2))
-      expect(manager.send(:reaped?, 1, deadline: 1.0)).to(be(false))
+      expect(manager.__send__(:reaped?, 1, deadline: 1.0)).to(be(false))
       expect(manager).to(have_received(:sleep).with(0.05))
     end
   end
@@ -178,13 +179,13 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
   describe '#signal_quietly' do
     it 'sends the named signal to the pid' do
       allow(Process).to(receive(:kill))
-      manager.send(:signal_quietly, 'TERM', 42)
+      manager.__send__(:signal_quietly, 'TERM', 42)
       expect(Process).to(have_received(:kill).with('TERM', 42))
     end
 
     it 'swallows a raised error rather than propagating it' do
       allow(Process).to(receive(:kill).and_raise(Errno::ESRCH))
-      expect { manager.send(:signal_quietly, 'INT', 42) }
+      expect { manager.__send__(:signal_quietly, 'INT', 42) }
         .not_to(raise_error)
     end
   end
@@ -195,8 +196,8 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
       allow(manager).to(receive(:puts))
     end
 
-    it 'spawns the plain server subcommand into server.log/server.err and records the pid' do
-      manager.send(:spawn_server)
+    it 'spawns the plain server subcommand into server.log/server.err and records the pid', :aggregate_failures do
+      manager.__send__(:spawn_server)
       expect(manager).to(have_received(:spawn_child).with(['server'], 'server.log', 'server.err'))
       expect(manager.server_pid).to(eq(998))
     end
@@ -207,12 +208,12 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
       )
       mgr = HttpLoader::Harness::ProcessManager.new(cfg)
       allow(mgr).to(receive_messages(spawn_child: 998, wait_for_server: nil, puts: nil))
-      mgr.send(:spawn_server)
+      mgr.__send__(:spawn_server)
       expect(mgr).to(have_received(:spawn_child).with(%w[server --https], 'server.log', 'server.err'))
     end
 
-    it 'announces the server pid and then waits for readiness' do
-      manager.send(:spawn_server)
+    it 'announces the server pid and then waits for readiness', :aggregate_failures do
+      manager.__send__(:spawn_server)
       expect(manager).to(have_received(:puts).with('[Harness] Started server with PID 998'))
       expect(manager).to(have_received(:wait_for_server))
     end
@@ -222,7 +223,7 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
     before { allow(manager).to(receive_messages(spawn_child: 999, puts: nil)) }
 
     it 'defaults the client args to the configured connection count when none are given' do
-      manager.send(:spawn_client)
+      manager.__send__(:spawn_client)
       expect(manager).to(
         have_received(:spawn_child)
                 .with(['client', '--connections_count=1'], 'client.stdout.log', 'client.stderr.log')
@@ -235,7 +236,7 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
       )
       mgr = HttpLoader::Harness::ProcessManager.new(cfg)
       allow(mgr).to(receive_messages(spawn_child: 999, puts: nil))
-      mgr.send(:spawn_client)
+      mgr.__send__(:spawn_client)
       expect(mgr).to(
         have_received(:spawn_child).with(
           ['client', '--verbose'],
@@ -246,15 +247,15 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
     end
 
     it 'announces the client pid' do
-      manager.send(:spawn_client)
+      manager.__send__(:spawn_client)
       expect(manager).to(have_received(:puts).with('[Harness] Started client with PID 999'))
     end
   end
 
   describe '#spawn_child' do
-    it 'spawns the resolved interpreter and absolute bin path with the args, redirecting both streams' do
+    it 'spawns the resolved interpreter and absolute bin path with the args, redirecting both streams', :aggregate_failures do
       allow(Process).to(receive(:spawn).and_return(777))
-      pid = manager.send(:spawn_child, %w[server --https], 'o.log', 'e.log')
+      pid = manager.__send__(:spawn_child, %w[server --https], 'o.log', 'e.log')
       expected_command = Shellwords.join(
         [
           RbConfig.ruby,
@@ -275,13 +276,13 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
   end
 
   describe '#wait_for_server' do
-    it 'returns as soon as the HTTP port (8080) is open, before any backoff sleep' do
+    it 'returns as soon as the HTTP port (8080) is open, before any backoff sleep', :aggregate_failures do
       allow(manager).to(receive_messages(port_open?: true, dead?: false))
       allow(manager).to(receive(:sleep))
       record_pid(:server, 111)
       t = Time.now
       allow(Time).to(receive(:now).and_return(t, t, t + 100))
-      expect { manager.send(:wait_for_server) }
+      expect { manager.__send__(:wait_for_server) }
         .not_to(output.to_stderr)
       expect(manager).to(have_received(:port_open?).with(8080))
       expect(manager).not_to(have_received(:sleep))
@@ -294,55 +295,55 @@ RSpec.describe(HttpLoader::Harness::ProcessManager) do
       mgr = HttpLoader::Harness::ProcessManager.new(cfg)
       allow(mgr).to(receive_messages(port_open?: true, dead?: false))
       mgr.instance_variable_get(:@pids)[:server] = 111
-      mgr.send(:wait_for_server)
+      mgr.__send__(:wait_for_server)
       expect(mgr).to(have_received(:port_open?).with(8443))
     end
 
-    it 'breaks (without a further backoff sleep) and warns when the server dies before binding' do
+    it 'breaks (without a further backoff sleep) and warns when the server dies before binding', :aggregate_failures do
       allow(manager).to(receive_messages(port_open?: false, dead?: true))
       allow(manager).to(receive(:sleep))
       record_pid(:server, 111)
       t = Time.now
       allow(Time).to(receive(:now).and_return(t, t, t + 100))
-      expect { manager.send(:wait_for_server) }
+      expect { manager.__send__(:wait_for_server) }
         .to(output(/did not become ready/).to_stderr)
       expect(manager).not_to(have_received(:sleep))
       expect(manager).to(have_received(:dead?).with(111))
     end
 
-    it 'does not probe liveness while no server pid is recorded yet' do
+    it 'does not probe liveness while no server pid is recorded yet', :aggregate_failures do
       allow(manager).to(receive_messages(port_open?: false, dead?: false, sleep: nil))
       t = Time.now
       allow(Time).to(receive(:now).and_return(t, t, t + 100))
       # @pids has no :server, so the poll runs to the deadline and reports the timeout.
-      expect { manager.send(:wait_for_server) }
+      expect { manager.__send__(:wait_for_server) }
         .to(output(/did not become ready/).to_stderr)
       expect(manager).not_to(have_received(:dead?))
     end
 
-    it 'backs off 0.1s per poll and warns (naming the port and timeout) after the deadline elapses' do
+    it 'backs off 0.1s per poll and warns (naming the port and timeout) after the deadline elapses', :aggregate_failures do
       allow(manager).to(receive_messages(port_open?: false, dead?: false))
       allow(manager).to(receive(:sleep))
       t = Time.now
       allow(Time).to(receive(:now).and_return(t, t, t + 100))
       record_pid(:server, 111)
-      expect { manager.send(:wait_for_server) }
+      expect { manager.__send__(:wait_for_server) }
         .to(output("[Harness] Warning: server did not become ready on port 8080 within 15.0s.\n").to_stderr)
       expect(manager).to(have_received(:sleep).with(0.1))
     end
   end
 
   describe '#port_open?' do
-    it 'opens and closes a TCP connection to localhost and returns true on success' do
+    it 'opens and closes a TCP connection to localhost and returns true on success', :aggregate_failures do
       socket = instance_double(TCPSocket, close: nil)
       allow(TCPSocket).to(receive(:new).with('127.0.0.1', 8080).and_return(socket))
-      expect(manager.send(:port_open?, 8080)).to(be(true))
+      expect(manager.__send__(:port_open?, 8080)).to(be(true))
       expect(socket).to(have_received(:close))
     end
 
     it 'returns false when the connection is refused' do
       allow(TCPSocket).to(receive(:new).and_raise(Errno::ECONNREFUSED))
-      expect(manager.send(:port_open?, 8080)).to(be(false))
+      expect(manager.__send__(:port_open?, 8080)).to(be(false))
     end
   end
 end

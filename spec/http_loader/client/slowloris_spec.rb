@@ -63,7 +63,7 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
   end
 
   describe '#run guards' do
-    it 'writes nothing and never reads the socket when slowloris_delay is 0' do
+    it 'writes nothing and never reads the socket when slowloris_delay is 0', :aggregate_failures do
       slow = HttpLoader::Client::Slowloris.new(config.with(slowloris_delay: 0.0), logger)
       allow(slow).to(receive(:sleep))
       slow.run(0, uri, http, Time.now)
@@ -79,7 +79,7 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
   end
 
   describe '#run streaming' do
-    it 'streams the exact incomplete request then one keep-alive byte, logging the client index' do
+    it 'streams the exact incomplete request then one keep-alive byte, logging the client index', :aggregate_failures do
       start = Time.now
       freeze_after_one(start)
       slowloris.run(3, uri, http, start)
@@ -115,12 +115,13 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
       )
     end
 
-    it 'paces every payload byte except the last, then paces the keep-alive within budget' do
+    it 'paces every payload byte except the last, then paces the keep-alive within budget', :aggregate_failures do
       start = Time.now
       freeze_after_one(start)
       slowloris.run(0, uri, http, start)
       expect(slowloris).to(have_received(:sleep).with(1.0).exactly(payload.length - 1).times)
-      expect(slowloris).to(have_received(:sleep).with(0.1).once) # cap_to_budget(1.0, 0.1)
+      # cap_to_budget(1.0, 0.1)
+      expect(slowloris).to(have_received(:sleep).with(0.1).once)
     end
 
     it 'flushes after every payload byte and after the keep-alive byte' do
@@ -136,22 +137,25 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
     # fixed sequence, so each keep-alive decision is deterministic and the loop always terminates.
     before { allow(slowloris).to(receive(:fire_initial_payload)) }
 
-    it 'writes one keep-alive byte within budget, flushing and pacing to the remaining budget' do
+    it 'writes one keep-alive byte within budget, flushing and pacing to the remaining budget', :aggregate_failures do
       allow(slowloris).to(receive(:budget_remaining).and_return(0.1, 0.0))
       start = Time.now
       slowloris.run(5, uri, http, start)
-      expect(io.string).to(eq('a')) # rand(97..122) => 97 => 'a'
+      # rand(97..122) => 97 => 'a'
+      expect(io.string).to(eq('a'))
       expect(io).to(have_received(:flush).once)
       expect(slowloris).to(have_received(:rand).with(97..122))
-      expect(slowloris).to(have_received(:sleep).with(0.1)) # cap_to_budget(1.0, 0.1)
+      # cap_to_budget(1.0, 0.1)
+      expect(slowloris).to(have_received(:sleep).with(0.1))
       expect(slowloris).to(have_received(:budget_remaining).with(config.http_loader_timeout, start).at_least(:once))
     end
 
-    it 'logs (with the client index) and stops when the budget is exactly exhausted' do
+    it 'logs (with the client index) and stops when the budget is exactly exhausted', :aggregate_failures do
       allow(slowloris).to(receive(:budget_remaining).and_return(0.0, -1.0))
       slowloris.run(7, uri, http, Time.now)
       expect(logger).to(have_received(:info).with('[Client 7] Keep-alive timeout reached, closing Slowloris thread.'))
-      expect(io).not_to(have_received(:write)) # broke before writing a keep-alive byte
+      # broke before writing a keep-alive byte
+      expect(io).not_to(have_received(:write))
     end
 
     it 'stops on a negative (overrun) budget rather than only on exactly zero' do
@@ -165,7 +169,8 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
       allow(unbounded).to(receive_messages(fire_initial_payload: nil, sleep: nil, rand: 97))
       socket = instance_double(Net::BufferedIO, io: io)
       allow(http).to(receive(:instance_variable_get).with(:@socket).and_return(socket))
-      allow(io).to(receive(:write).and_raise('stop-the-loop')) # otherwise the hold never ends
+      # otherwise the hold never ends
+      allow(io).to(receive(:write).and_raise('stop-the-loop'))
       expect { unbounded.run(0, uri, http, Time.now) }
         .to(raise_error('stop-the-loop'))
     end

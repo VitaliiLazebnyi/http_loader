@@ -89,7 +89,7 @@ RSpec.describe(HttpLoader, type: :integration) do
   end
 
   describe 'Mode 1: Fundamental HTTP Plaintext Mode' do
-    it 'spawns HTTP Server and Client natively mapping successfully' do
+    it 'spawns HTTP Server and Client natively mapping successfully', :aggregate_failures do
       args = ['--connections_count=2', '--target_duration=3.0', '--verbose']
       out, _, status = run_harness(args)
 
@@ -100,7 +100,7 @@ RSpec.describe(HttpLoader, type: :integration) do
   end
 
   describe 'Mode 2: Encrypted HTTPS TLS Architecture' do
-    it 'bootstraps secure contexts actively avoiding TLS handshaking drops seamlessly' do
+    it 'bootstraps secure contexts actively avoiding TLS handshaking drops seamlessly', :aggregate_failures do
       args = [
         '--connections_count=2',
         '--target_duration=6.0',
@@ -119,7 +119,7 @@ RSpec.describe(HttpLoader, type: :integration) do
   end
 
   describe 'Mode 3: QPS Payload Active Simulation' do
-    it 'maps rhythmic GET payloads cleanly across active tunnels' do
+    it 'maps rhythmic GET payloads cleanly across active tunnels', :aggregate_failures do
       args = ['--connections_count=2', '--target_duration=3.0', '--qps_per_connection=5', '--no-ping', '--verbose']
       _, _err, status = run_harness(args)
 
@@ -129,7 +129,7 @@ RSpec.describe(HttpLoader, type: :integration) do
   end
 
   describe 'Mode 4: Resilience Slowloris Thread Simulator' do
-    it 'allocates and drops byte gap writes elegantly securely' do
+    it 'allocates and drops byte gap writes elegantly securely', :aggregate_failures do
       args = ['--connections_count=2', '--target_duration=3.0', '--slowloris_delay=0.1', '--verbose']
       _, _err, status = run_harness(args)
 
@@ -139,7 +139,7 @@ RSpec.describe(HttpLoader, type: :integration) do
   end
 
   describe 'Mode 5: External Target Mapping Logs' do
-    it 'targets an external URL and exports JSON telemetry (against a local stub, no network)' do
+    it 'targets an external URL and exports JSON telemetry (against a local stub, no network)', :aggregate_failures do
       with_local_server do |port|
         args = [
           '--connections_count=2',
@@ -163,19 +163,19 @@ RSpec.describe(HttpLoader, type: :integration) do
   end
 
   describe 'CLI validation (REQ-CLI-023)' do
-    it 'fast-fails with a Configuration Error on connections_count=0 instead of deadlocking' do
+    it 'fast-fails with a Configuration Error on connections_count=0 instead of deadlocking', :aggregate_failures do
       _out, err, status = run_client(['--connections_count=0'])
       expect(status.exitstatus).to(eq(1))
       expect(err.include?('Configuration Error')).to(be(true))
     end
 
-    it 'fast-fails on a non-numeric flag value' do
+    it 'fast-fails on a non-numeric flag value', :aggregate_failures do
       _out, err, status = run_client(['--connections_count=abc'])
       expect(status.exitstatus).to(eq(1))
       expect(err.include?('Configuration Error')).to(be(true))
     end
 
-    it 'fast-fails on a malformed target URL' do
+    it 'fast-fails on a malformed target URL', :aggregate_failures do
       _out, err, status = run_client(['--connections_count=1', '--url=http://bad host/'])
       expect(status.exitstatus).to(eq(1))
       expect(err.include?('Configuration Error')).to(be(true))

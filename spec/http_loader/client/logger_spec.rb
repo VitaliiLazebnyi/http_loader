@@ -30,7 +30,7 @@ RSpec.describe(HttpLoader::Client::Logger) do
   end
 
   describe 'CHANNELS' do
-    it 'maps each channel to its file and is frozen' do
+    it 'maps each channel to its file and is frozen', :aggregate_failures do
       expect(HttpLoader::Client::Logger::CHANNELS).to(eq(info: 'client.log', error: 'client.err'))
       expect(HttpLoader::Client::Logger::CHANNELS.frozen?).to(be(true))
     end
@@ -44,7 +44,7 @@ RSpec.describe(HttpLoader::Client::Logger) do
         .to(eq(File.expand_path('../../../logs', __dir__)))
     end
 
-    it 'stores the verbose flag as given' do
+    it 'stores the verbose flag as given', :aggregate_failures do
       expect(HttpLoader::Client::Logger.new(true).instance_variable_get(:@verbose)).to(be(true))
       expect(HttpLoader::Client::Logger.new(false).instance_variable_get(:@verbose)).to(be(false))
     end
@@ -55,13 +55,13 @@ RSpec.describe(HttpLoader::Client::Logger) do
   end
 
   describe '#setup_files!' do
-    it 'creates both log files' do
+    it 'creates both log files', :aggregate_failures do
       logger.setup_files!
       expect(File).to(exist(File.join(tmp_dir, 'client.log')))
       expect(File).to(exist(File.join(tmp_dir, 'client.err')))
     end
 
-    it 'truncates pre-existing content in both files (Logger is the sole writer)' do
+    it 'truncates pre-existing content in both files (Logger is the sole writer)', :aggregate_failures do
       File.write(File.join(tmp_dir, 'client.log'), 'stale log')
       File.write(File.join(tmp_dir, 'client.err'), 'stale err')
       logger.setup_files!
@@ -110,27 +110,27 @@ RSpec.describe(HttpLoader::Client::Logger) do
   describe '#write_msg' do
     before { logger.setup_files! }
 
-    it 'appends an info message to client.log only' do
-      logger.send(:write_msg, [:info, 'hello'])
+    it 'appends an info message to client.log only', :aggregate_failures do
+      logger.__send__(:write_msg, [:info, 'hello'])
       expect(read('client.log')).to(eq("hello\n"))
       expect(read('client.err')).to(eq(''))
     end
 
-    it 'appends an error message to client.err only' do
-      logger.send(:write_msg, [:error, 'boom'])
+    it 'appends an error message to client.err only', :aggregate_failures do
+      logger.__send__(:write_msg, [:error, 'boom'])
       expect(read('client.err')).to(eq("boom\n"))
       expect(read('client.log')).to(eq(''))
     end
 
-    it 'drops a message on an unknown channel' do
-      logger.send(:write_msg, [:unknown, 'diff'])
+    it 'drops a message on an unknown channel', :aggregate_failures do
+      logger.__send__(:write_msg, [:unknown, 'diff'])
       expect(read('client.log')).to(eq(''))
       expect(read('client.err')).to(eq(''))
     end
 
     it 'appends successive messages rather than truncating' do
-      logger.send(:write_msg, [:info, 'a'])
-      logger.send(:write_msg, [:info, 'b'])
+      logger.__send__(:write_msg, [:info, 'a'])
+      logger.__send__(:write_msg, [:info, 'b'])
       expect(read('client.log')).to(eq("a\nb\n"))
     end
   end
@@ -138,7 +138,7 @@ RSpec.describe(HttpLoader::Client::Logger) do
   describe '#flush_synchronously!' do
     before { logger.setup_files! }
 
-    it 'drains queued info and error messages to their files' do
+    it 'drains queued info and error messages to their files', :aggregate_failures do
       logger.info('test info')
       logger.error('test err')
       logger.flush_synchronously!
@@ -160,14 +160,16 @@ RSpec.describe(HttpLoader::Client::Logger) do
   end
 
   describe '#run_task / #poll_queue (within the reactor)' do
-    it 'drains enqueued messages to disk and unwinds cleanly when the task stops' do
+    it 'drains enqueued messages to disk and unwinds cleanly when the task stops', :aggregate_failures do
       logger.setup_files!
       Async do |task|
         logger_task = logger.run_task(task)
         logger.info('hello-async')
         logger.error('boom-async')
-        sleep(0.05) # reactor-aware: let the logger fiber process the queue
-        logger_task.stop # Async::Task#stop must interrupt the blocking dequeue
+        # reactor-aware: let the logger fiber process the queue
+        sleep(0.05)
+        # Async::Task#stop must interrupt the blocking dequeue
+        logger_task.stop
       end
       expect(read('client.log').include?('hello-async')).to(be(true))
       expect(read('client.err').include?('boom-async')).to(be(true))

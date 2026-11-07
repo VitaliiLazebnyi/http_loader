@@ -22,13 +22,13 @@ RSpec.describe(HttpLoader::Client) do
         .to(raise_error(ArgumentError, /connections_count/))
     end
 
-    it 'builds a logger carrying the verbose flag' do
+    it 'builds a logger carrying the verbose flag', :aggregate_failures do
       cli = HttpLoader::Client.new(HttpLoader::Client::Config.new(connections: 1, verbose: true))
       expect(cli.logger.is_a?(HttpLoader::Client::Logger)).to(be(true))
       expect(cli.logger.instance_variable_get(:@verbose)).to(be(true))
     end
 
-    it 'wires the target manager and both session engines with the config and logger' do
+    it 'wires the target manager and both session engines with the config and logger', :aggregate_failures do
       expect(client.instance_variable_get(:@config)).to(eq(config))
       expect(client.instance_variable_get(:@target_manager).is_a?(HttpLoader::Client::TargetManager)).to(be(true))
       [client.instance_variable_get(:@slow_sess), client.instance_variable_get(:@http_sess)].each do |engine|
@@ -54,7 +54,7 @@ RSpec.describe(HttpLoader::Client) do
       allow(client).to(receive(:exit))
     end
 
-    it 'logs, bumps the fd limit, sets up files, traps INT, runs the engine, and flushes on exit' do
+    it 'logs, bumps the fd limit, sets up files, traps INT, runs the engine, and flushes on exit', :aggregate_failures do
       client.start
       expect(client).to(have_received(:log_startup_message))
       expect(client).to(have_received(:trap).with('INT'))
@@ -64,14 +64,14 @@ RSpec.describe(HttpLoader::Client) do
       expect(client.logger).to(have_received(:flush_synchronously!))
     end
 
-    it 'still flushes the logger when the engine raises' do
+    it 'still flushes the logger when the engine raises', :aggregate_failures do
       allow(client).to(receive(:run_engine).and_raise(StandardError))
       expect { client.start }
         .to(raise_error(StandardError))
       expect(client.logger).to(have_received(:flush_synchronously!))
     end
 
-    it 'installs an INT handler that exits with an explicit status 0' do
+    it 'installs an INT handler that exits with an explicit status 0', :aggregate_failures do
       handler = nil
       allow(client).to(receive(:trap).with('INT') { |*, &block| handler = block })
       client.start
@@ -84,8 +84,8 @@ RSpec.describe(HttpLoader::Client) do
   describe '#log_startup_message' do
     before { allow(client.logger).to(receive(:info)) }
 
-    it 'logs and prints the connection count and protocol, plus the suppression note' do
-      client.send(:log_startup_message)
+    it 'logs and prints the connection count and protocol, plus the suppression note', :aggregate_failures do
+      client.__send__(:log_startup_message)
       expect(client.logger).to(have_received(:info).with('Starting 2 EXTERNAL HTTP connections'))
       expect(lines).to(
         eq(
@@ -100,7 +100,7 @@ RSpec.describe(HttpLoader::Client) do
     it 'omits the suppression note when verbose' do
       cli = HttpLoader::Client.new(config.with(verbose: true))
       allow(cli.logger).to(receive(:info))
-      cli.send(:log_startup_message)
+      cli.__send__(:log_startup_message)
       expect(lines).to(eq(['[Client] Starting 2 EXTERNAL HTTP connections to targeted urls...']))
     end
   end
@@ -108,7 +108,7 @@ RSpec.describe(HttpLoader::Client) do
   describe '#calc_ramp' do
     it 'apportions ramp_up across the connections' do
       cli = HttpLoader::Client.new(HttpLoader::Client::Config.new(connections: 2, ramp_up: 10.0))
-      expect(cli.send(:calc_ramp)).to(eq(5.0))
+      expect(cli.__send__(:calc_ramp)).to(eq(5.0))
     end
 
     it 'uses a sub-one ramp_up over connections (ramp_up takes precedence, boundary is > 0)' do
@@ -119,23 +119,23 @@ RSpec.describe(HttpLoader::Client) do
           connections_per_second: 10
         )
       )
-      expect(cli.send(:calc_ramp)).to(eq(0.25))
+      expect(cli.__send__(:calc_ramp)).to(eq(0.25))
     end
 
     it 'falls back to the connections-per-second interval' do
       cli = HttpLoader::Client.new(HttpLoader::Client::Config.new(connections: 2, connections_per_second: 10))
-      expect(cli.send(:calc_ramp)).to(eq(0.1))
+      expect(cli.__send__(:calc_ramp)).to(eq(0.1))
     end
 
     it 'is zero when no pacing is configured' do
-      expect(HttpLoader::Client.new(HttpLoader::Client::Config.new(connections: 2)).send(:calc_ramp)).to(eq(0.0))
+      expect(HttpLoader::Client.new(HttpLoader::Client::Config.new(connections: 2)).__send__(:calc_ramp)).to(eq(0.0))
     end
   end
 
   describe '#perform_sleep' do
     it 'delegates to the reactor-aware Kernel#sleep' do
       allow(client).to(receive(:sleep))
-      client.send(:perform_sleep, 0.1)
+      client.__send__(:perform_sleep, 0.1)
       expect(client).to(have_received(:sleep).with(0.1))
     end
   end
@@ -144,11 +144,11 @@ RSpec.describe(HttpLoader::Client) do
     it 'runs a single session when reopen is disabled' do
       cli = HttpLoader::Client.new(HttpLoader::Client::Config.new(connections: 2, reopen_closed_connections: false))
       allow(cli).to(receive(:run_session))
-      cli.send(:exec_conn, 0)
+      cli.__send__(:exec_conn, 0)
       expect(cli).to(have_received(:run_session).with(0, instance_of(Time)).once)
     end
 
-    it 'reopens with a jittered reopen-interval sleep until reopen is turned off' do
+    it 'reopens with a jittered reopen-interval sleep until reopen is turned off', :aggregate_failures do
       cli = HttpLoader::Client.new(
         HttpLoader::Client::Config.new(
           connections: 2,
@@ -163,9 +163,10 @@ RSpec.describe(HttpLoader::Client) do
         cli.instance_variable_get(:@config).instance_variable_set(:@reopen_closed_connections, false) if calls == 2
       end
       allow(cli).to(receive(:sleep))
-      cli.send(:exec_conn, 0)
+      cli.__send__(:exec_conn, 0)
       expect(cli).to(have_received(:run_session).twice)
-      expect(cli).to(have_received(:sleep).with(1.0)) # jittered_interval(reopen_interval 1.0, jitter 0)
+      # jittered_interval(reopen_interval 1.0, jitter 0)
+      expect(cli).to(have_received(:sleep).with(1.0))
     end
   end
 
@@ -182,9 +183,9 @@ RSpec.describe(HttpLoader::Client) do
       allow(client.logger).to(receive(:info))
     end
 
-    it 'opens the connection, disables retries, logs establish/close, and dispatches the session' do
+    it 'opens the connection, disables retries, logs establish/close, and dispatches the session', :aggregate_failures do
       start = Time.now
-      client.send(:run_session, 5, start)
+      client.__send__(:run_session, 5, start)
       expect(client).to(have_received(:fetch_opts).with(5, ctx))
       expect(client).to(have_received(:start_http).with(URI('http://test.local'), { opt: 1 }))
       expect(mock_http).to(have_received(:max_retries=).with(0))
@@ -195,7 +196,7 @@ RSpec.describe(HttpLoader::Client) do
 
     it 'skips max_retries= when the connection does not support it' do
       allow(mock_http).to(receive(:respond_to?).with(:max_retries=).and_return(false))
-      client.send(:run_session, 5, Time.now)
+      client.__send__(:run_session, 5, Time.now)
       expect(mock_http).not_to(have_received(:max_retries=))
     end
 
@@ -203,25 +204,25 @@ RSpec.describe(HttpLoader::Client) do
       boom = Errno::EMFILE.new
       allow(client).to(receive(:start_http).and_raise(boom))
       allow(client).to(receive(:handle_err))
-      client.send(:run_session, 5, Time.now)
+      client.__send__(:run_session, 5, Time.now)
       expect(client).to(have_received(:handle_err).with(5, boom))
     end
   end
 
   describe '#fetch_opts' do
-    it 'resolves http_opts_for with the index and the context http_args' do
+    it 'resolves http_opts_for with the index and the context http_args', :aggregate_failures do
       tm = client.instance_variable_get(:@target_manager)
       allow(tm).to(receive(:http_opts_for).and_return({ use_ssl: true }))
-      expect(client.send(:fetch_opts, 3, { http_args: { a: 2 } })).to(eq({ use_ssl: true }))
+      expect(client.__send__(:fetch_opts, 3, { http_args: { a: 2 } })).to(eq({ use_ssl: true }))
       expect(tm).to(have_received(:http_opts_for).with(3, { a: 2 }))
     end
   end
 
   describe '#start_http' do
-    it 'starts Net::HTTP with host, port and options, forwarding the block' do
+    it 'starts Net::HTTP with host, port and options, forwarding the block', :aggregate_failures do
       allow(Net::HTTP).to(receive(:start).and_yield(:the_http))
       yielded = nil
-      client.send(:start_http, URI('http://test.local'), { use_ssl: true }) { |h| yielded = h }
+      client.__send__(:start_http, URI('http://test.local'), { use_ssl: true }) { |h| yielded = h }
       expect(Net::HTTP).to(have_received(:start).with('test.local', 80, use_ssl: true))
       expect(yielded).to(eq(:the_http))
     end
@@ -232,24 +233,24 @@ RSpec.describe(HttpLoader::Client) do
     let(:uri)  { URI('http://localhost') }
     let(:time) { Time.now                }
 
-    it 'routes to the slowloris engine when slowloris_delay is positive' do
+    it 'routes to the slowloris engine when slowloris_delay is positive', :aggregate_failures do
       cli = HttpLoader::Client.new(HttpLoader::Client::Config.new(connections: 1, slowloris_delay: 0.1))
       slow = cli.instance_variable_get(:@slow_sess)
       http_sess = cli.instance_variable_get(:@http_sess)
       allow(slow).to(receive(:run))
       allow(http_sess).to(receive(:run))
-      cli.send(:dispatch_sess, 0, uri, mock_http, time)
+      cli.__send__(:dispatch_sess, 0, uri, mock_http, time)
       expect(slow).to(have_received(:run).with(0, uri, mock_http, time))
       expect(http_sess).not_to(have_received(:run))
     end
 
-    it 'routes to the HTTP session engine when slowloris_delay is zero' do
+    it 'routes to the HTTP session engine when slowloris_delay is zero', :aggregate_failures do
       cli = HttpLoader::Client.new(HttpLoader::Client::Config.new(connections: 1, slowloris_delay: 0.0))
       slow = cli.instance_variable_get(:@slow_sess)
       http_sess = cli.instance_variable_get(:@http_sess)
       allow(slow).to(receive(:run))
       allow(http_sess).to(receive(:run))
-      cli.send(:dispatch_sess, 0, uri, mock_http, time)
+      cli.__send__(:dispatch_sess, 0, uri, mock_http, time)
       expect(http_sess).to(have_received(:run).with(0, uri, mock_http, time))
       expect(slow).not_to(have_received(:run))
     end
@@ -268,24 +269,26 @@ RSpec.describe(HttpLoader::Client) do
       allow(client).to(receive(:exec_conn))
     end
 
-    it 'starts the logger task, builds the semaphore, spawns a worker per connection, waits, and stops' do
+    it 'starts the logger task, builds the semaphore, spawns a worker per connection, waits, and stops', :aggregate_failures do
       allow(client).to(receive(:calc_ramp).and_return(0.0))
       allow(client).to(receive(:perform_sleep))
-      client.send(:run_engine, task)
+      client.__send__(:run_engine, task)
       expect(client.logger).to(have_received(:run_task).with(task))
       expect(Async::Semaphore).to(have_received(:new).with(config.max_concurrent_connections, parent: task))
       expect(client).to(have_received(:exec_conn).with(0))
       expect(client).to(have_received(:exec_conn).with(1))
       expect(conn_task).to(have_received(:wait).twice)
       expect(logger_task).to(have_received(:stop))
-      expect(client).not_to(have_received(:perform_sleep)) # ramp is 0 => no pacing
+      # ramp is 0 => no pacing
+      expect(client).not_to(have_received(:perform_sleep))
     end
 
     it 'paces between connections (not before the first) when the ramp is positive' do
       allow(client).to(receive(:calc_ramp).and_return(1.0))
       allow(client).to(receive(:perform_sleep))
-      client.send(:run_engine, task)
-      expect(client).to(have_received(:perform_sleep).with(1.0).once) # only the 2nd of 2 connections
+      client.__send__(:run_engine, task)
+      # only the 2nd of 2 connections
+      expect(client).to(have_received(:perform_sleep).with(1.0).once)
     end
   end
 end

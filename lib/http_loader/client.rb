@@ -142,10 +142,10 @@ module HttpLoader
     # @return [void]
     sig { params(idx: Integer, start_t: Time).void }
     def run_session(idx, start_t)
-      ctx = @target_manager.context_for(idx)
-      uri = T.cast(ctx[:uri], URI::Generic)
+      target = @target_manager.context_for(idx)
+      uri = target.uri
 
-      start_http(uri, fetch_opts(idx, ctx)) do |http|
+      start_http(uri, fetch_opts(idx, target)) do |http|
         http.max_retries = 0 if http.respond_to?(:max_retries=)
         @logger.info("[Client #{idx}] Connection established to #{uri.host}.")
         dispatch_sess(idx, uri, http, start_t)
@@ -158,12 +158,11 @@ module HttpLoader
     # Fetches final connection contexts from TargetManager.
     #
     # @param idx [Integer] the connection identifier
-    # @param ctx [Hash] the partial context map
-    # @return [Hash] the fully resolved HTTP start arguments
-    sig { params(idx: Integer, ctx: T::Hash[Symbol, Object]).returns(T::Hash[Symbol, Object]) }
-    def fetch_opts(idx, ctx)
-      args = T.cast(ctx[:http_args], T::Hash[Symbol, Object])
-      @target_manager.http_opts_for(idx, args)
+    # @param target [TargetManager::Target] the endpoint the connection goes to
+    # @return [Hash{Symbol => Object}] the fully resolved HTTP start arguments
+    sig { params(idx: Integer, target: TargetManager::Target).returns(TargetManager::HttpArgs) }
+    def fetch_opts(idx, target)
+      @target_manager.http_opts_for(idx, target.http_args)
     end
 
     # Wraps the synchronous net-http start call with a block closure.
@@ -172,7 +171,7 @@ module HttpLoader
     # @param opts [Hash] injected configuration options for HTTP
     # @param block [Proc] yieldable closure receiving HTTP connection instantiated
     # @return [void]
-    sig { params(uri: URI::Generic, opts: T::Hash[Symbol, Object], block: T.proc.params(arg: Net::HTTP).void).void }
+    sig { params(uri: URI::Generic, opts: TargetManager::HttpArgs, block: T.proc.params(arg: Net::HTTP).void).void }
     def start_http(uri, opts, &block)
       Net::HTTP.start(T.must(uri.host), uri.port, **opts, &block)
     end

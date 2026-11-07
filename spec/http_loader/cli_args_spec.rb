@@ -52,7 +52,7 @@ RSpec.describe(HttpLoader::CliArgs) do
       ].each { |description| expect(help.include?(description)).to(be(true)) }
     end
 
-    it 'parses the core connectivity and URL flags' do
+    it 'parses the core connectivity and URL flags', :aggregate_failures do
       opts = parse(['--connections_count=42', '--https', '--url=http://a, http://b', '--verbose'])
       expect(opts[:connections]).to(eq(42))
       expect(opts[:use_https]).to(be(true))
@@ -60,14 +60,14 @@ RSpec.describe(HttpLoader::CliArgs) do
       expect(opts[:verbose]).to(be(true))
     end
 
-    it 'leaves core flags unset when they are not supplied' do
+    it 'leaves core flags unset when they are not supplied', :aggregate_failures do
       opts = parse([])
       expect(opts.key?(:connections)).to(be(false))
       expect(opts.key?(:use_https)).to(be(false))
       expect(opts.key?(:verbose)).to(be(false))
     end
 
-    it 'parses ping enablement and period' do
+    it 'parses ping enablement and period', :aggregate_failures do
       opts = parse(['--ping', '--ping_period=2.5'])
       expect(opts[:ping]).to(be(true))
       expect(opts[:ping_period]).to(eq(2.5))
@@ -77,41 +77,41 @@ RSpec.describe(HttpLoader::CliArgs) do
       expect(parse(['--no-ping'])[:ping]).to(be(false))
     end
 
-    it 'parses the timeout, rate, and concurrency thresholds' do
+    it 'parses the timeout, rate, and concurrency thresholds', :aggregate_failures do
       opts = parse(['--http_loader_timeout=1.5', '--connections_per_second=10', '--max_concurrent_connections=5'])
       expect(opts[:http_loader_timeout]).to(eq(1.5))
       expect(opts[:connections_per_second]).to(eq(10))
       expect(opts[:max_concurrent_connections]).to(eq(5))
     end
 
-    it 'parses the advanced connection-lifecycle flags' do
+    it 'parses the advanced connection-lifecycle flags', :aggregate_failures do
       opts = parse(['--reopen_closed_connections', '--reopen_interval=3.0', '--read_timeout=4.0'])
       expect(opts[:reopen_closed_connections]).to(be(true))
       expect(opts[:reopen_interval]).to(eq(3.0))
       expect(opts[:read_timeout]).to(eq(4.0))
     end
 
-    it 'parses the tracking and obfuscation flags' do
+    it 'parses the tracking and obfuscation flags', :aggregate_failures do
       opts = parse(['--user_agent=Foo/1', '--jitter=0.5', '--track_status_codes'])
       expect(opts[:user_agent]).to(eq('Foo/1'))
       expect(opts[:jitter]).to(eq(0.5))
       expect(opts[:track_status_codes]).to(be(true))
     end
 
-    it 'parses the IP-binding, proxy, and ramp-up flags' do
+    it 'parses the IP-binding, proxy, and ramp-up flags', :aggregate_failures do
       opts = parse(['--ramp_up=2.0', '--bind_ips=1.1.1.1, 2.2.2.2', '--proxy_pool=http://p1, http://p2'])
       expect(opts[:ramp_up]).to(eq(2.0))
       expect(opts[:bind_ips]).to(eq(['1.1.1.1', '2.2.2.2']))
       expect(opts[:proxy_pool]).to(eq(['http://p1', 'http://p2']))
     end
 
-    it 'parses the slowloris flags' do
+    it 'parses the slowloris flags', :aggregate_failures do
       opts = parse(['--qps_per_connection=7', '--slowloris_delay=0.2'])
       expect(opts[:qps_per_connection]).to(eq(7))
       expect(opts[:slowloris_delay]).to(eq(0.2))
     end
 
-    it 'accepts but discards --export_json and --target_duration (the client ignores them)' do
+    it 'accepts but discards --export_json and --target_duration (the client ignores them)', :aggregate_failures do
       opts = parse(['--export_json=out.json', '--target_duration=5.0'])
       expect(opts.key?(:export_json)).to(be(false))
       expect(opts.key?(:target_duration)).to(be(false))
@@ -153,21 +153,21 @@ RSpec.describe(HttpLoader::CliArgs) do
         expect(options[:headers]).to(eq('A' => '1', 'B' => '2'))
       end
 
-      it 'warns (quoting the raw entry) and skips an entry with no colon, leaving headers untouched' do
+      it 'warns (quoting the raw entry) and skips an entry with no colon, leaving headers untouched', :aggregate_failures do
         options = { headers: {} }
         expect { HttpLoader::CliArgs::ClientParser.parse_headers('nocolon', options) }
           .to(output("[Client] Ignoring malformed --headers entry (expected 'Key: Value'): \"nocolon\"\n").to_stderr)
         expect(options[:headers].empty?).to(be(true))
       end
 
-      it 'warns (quoting the raw entry) and skips an entry with an empty key' do
+      it 'warns (quoting the raw entry) and skips an entry with an empty key', :aggregate_failures do
         options = { headers: {} }
         expect { HttpLoader::CliArgs::ClientParser.parse_headers(': value', options) }
           .to(output("[Client] Ignoring --headers entry with empty key: \": value\"\n").to_stderr)
         expect(options[:headers].empty?).to(be(true))
       end
 
-      it 'warns (quoting the raw entry) and skips a CR/LF in the value (header-injection guard)' do
+      it 'warns (quoting the raw entry) and skips a CR/LF in the value (header-injection guard)', :aggregate_failures do
         options = { headers: {} }
         val = "X-Evil: a\r\nInjected: 1"
         expect { HttpLoader::CliArgs::ClientParser.parse_headers(val, options) }
@@ -175,14 +175,14 @@ RSpec.describe(HttpLoader::CliArgs) do
         expect(options[:headers].empty?).to(be(true))
       end
 
-      it 'rejects a CR/LF embedded in the key as well as in the value' do
+      it 'rejects a CR/LF embedded in the key as well as in the value', :aggregate_failures do
         options = { headers: {} }
         expect { HttpLoader::CliArgs::ClientParser.parse_headers("X\r\nY: ok", options) }
           .to(output(%r{CR/LF}).to_stderr)
         expect(options[:headers].empty?).to(be(true))
       end
 
-      it 'rejects a lone LF and a lone CR, not only the CRLF pair' do
+      it 'rejects a lone LF and a lone CR, not only the CRLF pair', :aggregate_failures do
         lf = { headers: {} }
         cr = { headers: {} }
         expect { HttpLoader::CliArgs::ClientParser.parse_headers("X: a\nb", lf) }
@@ -222,20 +222,20 @@ RSpec.describe(HttpLoader::CliArgs) do
       ].each { |description| expect(help.include?(description)).to(be(true)) }
     end
 
-    it 'parses the harness structural flags' do
+    it 'parses the harness structural flags', :aggregate_failures do
       opts = parse(['--connections_count=100', '--https', '--url=http://a, http://b'])
       expect(opts[:connections]).to(eq(100))
       expect(opts[:use_https]).to(be(true))
       expect(opts[:target_urls]).to(eq(['http://a', 'http://b']))
     end
 
-    it 'parses the harness-only extras' do
+    it 'parses the harness-only extras', :aggregate_failures do
       opts = parse(['--export_json=out.json', '--target_duration=30.0'])
       expect(opts[:export_json]).to(eq('out.json'))
       expect(opts[:target_duration]).to(eq(30.0))
     end
 
-    it 'tolerates every client-only flag without recording or rejecting it' do
+    it 'tolerates every client-only flag without recording or rejecting it', :aggregate_failures do
       argv = %w[
         --verbose
         --ping
