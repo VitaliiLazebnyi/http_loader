@@ -41,9 +41,9 @@ RSpec.describe(HttpLoader::Client::Logger) do
     end
   end
 
-  describe '#setup_files!' do
+  describe '#prepare_files' do
     it 'creates both log files', :aggregate_failures do
-      logger.setup_files!
+      logger.prepare_files
       expect(File).to(exist(log_path))
       expect(File).to(exist(err_path))
     end
@@ -51,14 +51,14 @@ RSpec.describe(HttpLoader::Client::Logger) do
     it 'truncates pre-existing content in both files (Logger is the sole writer)', :aggregate_failures do
       File.write(log_path, 'stale log')
       File.write(err_path, 'stale err')
-      logger.setup_files!
+      logger.prepare_files
       expect(File.read(log_path)).to(eq(''))
       expect(File.read(err_path)).to(eq(''))
     end
 
     it 'creates the log directory when it does not exist yet' do
       logger.instance_variable_set(:@log_dir, File.join(tmp_dir, 'nested', 'logs'))
-      logger.setup_files!
+      logger.prepare_files
       expect(File).to(exist(File.join(tmp_dir, 'nested', 'logs', 'client.log')))
     end
   end
@@ -94,7 +94,7 @@ RSpec.describe(HttpLoader::Client::Logger) do
   end
 
   describe '#write_msg' do
-    before { logger.setup_files! }
+    before { logger.prepare_files }
 
     it 'appends an info message to client.log only', :aggregate_failures do
       logger.__send__(:write_msg, [:info, 'hello'])
@@ -121,33 +121,33 @@ RSpec.describe(HttpLoader::Client::Logger) do
     end
   end
 
-  describe '#flush_synchronously!' do
-    before { logger.setup_files! }
+  describe '#flush' do
+    before { logger.prepare_files }
 
     it 'drains queued info and error messages to their files', :aggregate_failures do
       logger.info('test info')
       logger.error('test err')
-      logger.flush_synchronously!
+      logger.flush
       expect(File.read(log_path).include?('test info')).to(be(true))
       expect(File.read(err_path).include?('test err')).to(be(true))
     end
 
     it 'leaves the files untouched when the queue is empty' do
-      logger.flush_synchronously!
+      logger.flush
       expect(File.read(log_path)).to(eq(''))
     end
 
     it 'rescues a write error during flush' do
       logger.info('x')
       allow(File).to(receive(:write).and_raise(StandardError))
-      expect { logger.flush_synchronously! }
+      expect { logger.flush }
         .not_to(raise_error)
     end
   end
 
   describe '#run_task / #poll_queue (within the reactor)' do
     before do
-      logger.setup_files!
+      logger.prepare_files
       Async do |task|
         logger_task = logger.run_task(task)
         logger.info('hello-async')

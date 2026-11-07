@@ -26,7 +26,7 @@ module HttpLoader
       # @raise [ArgumentError] if connections or target_duration are out of bounds
       # @return [void]
       sig { void }
-      def validate!
+      def validate
         unless connections.positive?
           raise(ArgumentError, "--connections_count must be greater than 0 (got #{connections})")
         end

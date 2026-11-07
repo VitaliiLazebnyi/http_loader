@@ -4,6 +4,8 @@
 # Copyright (c) 2026 Vitalii Lazebnyi
 
 require 'sorbet-runtime'
+require_relative 'connection_counter'
+require_relative 'process_stats'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -23,21 +25,37 @@ module HttpLoader
       ROW_FORMAT = '%<t>-10s | %<ac>-11s | %<sc>-16s | %<sm>-14s | %<sk>-14s | %<cc>-16s | %<cm>-14s | %<ck>-14s'
       private_constant :ROW_FORMAT
 
+      # The columns of ROW_FORMAT, in order.
+      COLUMNS = %i[t ac sc sm sk cc cm ck].freeze
+      private_constant :COLUMNS
+
       # The column headings of the metrics table.
-      HEADINGS = T.let(
-        {
-          t: 'Time (UTC)',
-          ac: 'Real Conns',
-          sc: 'Srv CPU/Thrds',
-          sm: 'Srv Mem',
-          sk: 'Srv Mem/Conn',
-          cc: 'Cli CPU/Thrds',
-          cm: 'Cli Mem',
-          ck: 'Cli Mem/Conn'
-        }.freeze,
-        T::Hash[Symbol, String]
-      )
+      HEADINGS = [
+        'Time (UTC)',
+        'Real Conns',
+        'Srv CPU/Thrds',
+        'Srv Mem',
+        'Srv Mem/Conn',
+        'Cli CPU/Thrds',
+        'Cli Mem',
+        'Cli Mem/Conn'
+      ].freeze
       private_constant :HEADINGS
+
+      # One row of the metrics table.
+      #
+      # @param cells [Array<Object>] the value of every column, in order
+      # @return [String] the row
+      sig { params(cells: T::Array[Object]).returns(String) }
+      def self.row(cells)
+        format(ROW_FORMAT, COLUMNS.zip(cells).to_h)
+      end
+
+      # @return [String] the time column of a row: the current UTC time
+      sig { returns(String) }
+      def self.clock
+        Time.now.utc.strftime('%H:%M:%S')
+      end
 
       # Prints an initial banner announcing URL and mode configurations.
       #
@@ -52,10 +70,9 @@ module HttpLoader
       # @return [String] formatted descriptor based on URLs count
       sig { returns(String) }
       def startup_target_msg
-        urls = config.target_urls
-        count = urls.size
-        return "**MULTIPLE TARGETS** (#{count} URLs)." if count > 1
-        return "**EXTERNAL URL** #{urls.first}." if count == 1
+        first, *others = config.target_urls
+        return "**MULTIPLE TARGETS** (#{others.size + 1} URLs)." if others.any?
+        return "**EXTERNAL URL** #{first}." if first
 
         config.use_https ? '**HTTPS**.' : '**HTTP**.'
       end
@@ -66,79 +83,45 @@ module HttpLoader
       sig { void }
       def print_table_header
         rule = '-' * 125
-        puts('[Harness] Monitoring resources (Press Ctrl+C to stop)...')
-        puts(rule)
-        puts(format(ROW_FORMAT, HEADINGS))
-        puts(rule)
+        puts('[Harness] Monitoring resources (Press Ctrl+C to stop)...', rule, Formatter.row(HEADINGS), rule)
       end
 
-      # Safely renders formatting table rows via string padding strategies.
+      # Prints one row of the metrics table.
       #
-      # @param params [Hash] keyword arguments containing metric fields
+      # @param cells [Array<Object>] the value of every column, in order
       # @return [void]
-      sig { params(params: T::Hash[Symbol, Object]).void }
-      def log_table_row(params)
-        puts(format(ROW_FORMAT, params))
+      sig { params(cells: T::Array[Object]).void }
+      def log_table_row(cells)
+        puts(Formatter.row(cells))
       end
 
-      # Computes KB overhead proportionally to established sockets natively.
+      # Prints the row of the server and the client.
       #
-      # @param kilo [Float] total kilobyte footprint
-      # @param connections [Integer] observed connections count natively reported
-      # @param pid [Integer, nil] identifier validating process presence locally
-      # @return [String] formatted descriptor of bytes/connection logic
-      sig { params(kilo: Float, connections: Integer, pid: T.nilable(Integer)).returns(String) }
-      def format_kb_conn(kilo, connections, pid)
-        return 'EXTERNAL' if pid.nil?
-        return 'N/A' if connections.zero? || connections.negative?
-
-        "#{(kilo / connections).round(2)} KB"
-      end
-
-      # Prints single row multiplexing both internal and external telemetry simultaneously.
-      #
-      # @param active [Integer] connections sum actively executing logic
-      # @param c_cpu [String] client CPU utilization value
-      # @param c_th [Integer] aggregated client thread count
-      # @param c_m [String] client heap usage marker
+      # @param active [Integer] the established connections of the client
+      # @param client [ProcessStats] the stats of the client
       # @return [void]
-      sig { params(active: Integer, c_cpu: String, c_th: Integer, c_m: String).void }
-      def print_combined_stats(active, c_cpu, c_th, c_m)
-        s_cpu, s_mem, s_th, s_conn = extract_server_stats
-        _cc, _cm, c_kb, _ct = monitor.process_stats(pm.client_pid)
-        c_conn = format_kb_conn(c_kb, active, pm.client_pid)
-
-        log_table_row(
-          t: Time.now.utc.strftime('%H:%M:%S'),
-          ac: active,
-          sc: "#{s_cpu}% / #{s_th}",
-          sm: s_mem,
-          sk: s_conn,
-          cc: "#{c_cpu}% / #{c_th}",
-          cm: c_m,
-          ck: c_conn
-        )
+      sig { params(active: Integer, client: ProcessStats).void }
+      def print_combined_stats(active, client)
+        log_table_row([Formatter.clock, active, *server_columns, *client.columns(active)])
       end
 
-      # Polls target server analytics resolving metric aggregations consistently.
+      # The server's columns of a row: its load, memory and memory per connection.
       #
-      # @return [Array<String, String, Integer, String>] data frame array for the internal server metrics
-      sig { returns([String, String, Integer, String]) }
-      def extract_server_stats
-        s_cpu, s_mem, s_kb, s_th = monitor.process_stats(pm.server_pid)
-        active_s = monitor.count_established_connections(pm.server_pid)
-        s_conn = format_kb_conn(s_kb, active_s, pm.server_pid)
-        [s_cpu, s_mem, s_th, s_conn]
+      # @return [Array<String>] the columns
+      sig { returns(T::Array[String]) }
+      def server_columns
+        pid = pm.server_pid
+        monitor.process_stats(pid).columns(ConnectionCounter.count(pid))
       end
 
-      # Polls target client processes tracking load execution limits systematically.
+      # Samples the client.
       #
-      # @return [Array<Integer, String, Integer, String>] extracted client variables dataset
-      sig { returns([Integer, String, Integer, String]) }
+      # @return [Array(Integer, ProcessStats)] its established connections and its stats
+      sig { returns([Integer, ProcessStats]) }
       def extract_client_stats
-        c_cpu, c_mem, _c_kb, c_th = monitor.process_stats(pm.client_pid)
-        active_c = monitor.count_established_connections(pm.client_pid)
-        [active_c, c_cpu, c_th, c_mem]
+        pid = pm.client_pid
+        stats = monitor.process_stats(pid)
+        [ConnectionCounter.count(pid), stats]
       end
     end
   end

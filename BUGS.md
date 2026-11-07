@@ -9,7 +9,7 @@ alphanumeric BUG ID logically linked to its original Architectural Requirement (
   reported type errors. All lint offenses fixed and Sorbet made green (including a prism RBI shim); the CI gates now
   pass.
 - **BUG-CLI-001 (REQ-CLI-023)** — No numeric validation existed; plausible inputs (`--max_concurrent_connections=0`,
-  negative timings/jitter, malformed `--url`, non-numeric values) hung or crashed. `Config#validate!` now fast-fails
+  negative timings/jitter, malformed `--url`, non-numeric values) hung or crashed. `Config#validate` now fast-fails
   with a clean `Configuration Error`.
 - **BUG-CLI-002 (REQ-CLI-017)** — Credentialed proxy URLs raised `URI::InvalidURIError`. Proxy entries are now parsed
   tolerantly.

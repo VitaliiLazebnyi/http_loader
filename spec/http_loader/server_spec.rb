@@ -7,7 +7,7 @@ require 'ipaddr'
 require 'spec_helper'
 
 RSpec.describe(HttpLoader::Server) do
-  let(:server) { HttpLoader::Server.new }
+  let(:server) { HttpLoader::Server.new(https: false) }
   # The IPv4 wildcard address (INADDR_ANY), which binds every interface.
   let(:wildcard) { satisfy('the IPv4 wildcard address') { |host| IPAddr.new(host) == IPAddr.new(0, Socket::AF_INET) } }
 
@@ -26,26 +26,25 @@ RSpec.describe(HttpLoader::Server) do
   end
 
   describe '#start' do
-    it 'routes to the plaintext path on the given port when HTTPS is disabled', :aggregate_failures do
+    before do
       allow(server).to(receive(:start_plaintext))
       allow(server).to(receive(:start_secure))
-      server.start(use_https: false, port: 8080)
+    end
+
+    it 'serves plain HTTP on 8080 without HTTPS', :aggregate_failures do
+      server.start
       expect(server).to(have_received(:start_plaintext).with(8080))
       expect(server).not_to(have_received(:start_secure))
     end
 
-    it 'routes to the secure path on the given port when HTTPS is enabled', :aggregate_failures do
-      allow(server).to(receive(:start_plaintext))
-      allow(server).to(receive(:start_secure))
-      server.start(use_https: true, port: 8443)
-      expect(server).to(have_received(:start_secure).with(8443))
-      expect(server).not_to(have_received(:start_plaintext))
-    end
+    context 'with HTTPS' do
+      let(:server) { HttpLoader::Server.new(https: true) }
 
-    it 'defaults to plaintext on port 8080' do
-      allow(server).to(receive(:start_plaintext))
-      server.start
-      expect(server).to(have_received(:start_plaintext).with(8080))
+      it 'serves HTTPS on 8443', :aggregate_failures do
+        server.start
+        expect(server).to(have_received(:start_secure).with(8443))
+        expect(server).not_to(have_received(:start_plaintext))
+      end
     end
   end
 
@@ -84,7 +83,8 @@ RSpec.describe(HttpLoader::Server) do
     let(:ssl_context) { instance_double(OpenSSL::SSL::SSLContext) }
 
     before do
-      allow(server).to(receive_messages(generate_ssl_context: ssl_context, run_falcon: nil))
+      allow(server).to(receive(:run_falcon))
+      allow(HttpLoader::Server).to(receive(:ssl_context).and_return(ssl_context))
       allow(server).to(receive(:Sync).and_yield(instance_double(Async::Task)))
     end
 
@@ -186,16 +186,19 @@ RSpec.describe(HttpLoader::Server) do
     end
   end
 
-  describe '#parse_cert_info' do
-    subject(:cert) do
-      c = OpenSSL::X509::Certificate.new
-      server.__send__(:parse_cert_info, c)
-      c
-    end
+  describe '.certificate (private)' do
+    subject(:cert) { HttpLoader::Server.__send__(:certificate, rsa) }
 
-    it 'sets a localhost subject and issuer', :aggregate_failures do
+    let(:rsa) { OpenSSL::PKey::RSA.new(2048) }
+
+    it 'mints a v3 localhost certificate (serial 1) carrying the key, signed so it self-verifies',
+      :aggregate_failures do
       expect(cert.subject.to_s).to(eq('/CN=localhost'))
       expect(cert.issuer.to_s).to(eq('/CN=localhost'))
+      expect(cert.serial).to(eq(1))
+      expect(cert.version).to(eq(2))
+      expect(cert.public_key.to_pem).to(eq(rsa.public_key.to_pem))
+      expect(cert.verify(rsa)).to(be(true))
     end
 
     it 'opens the validity window now and closes it exactly one year (365 days) later', :aggregate_failures do
@@ -204,24 +207,8 @@ RSpec.describe(HttpLoader::Server) do
     end
   end
 
-  describe '#build_cert' do
-    subject(:cert) { server.__send__(:build_cert, rsa) }
-
-    let(:rsa) { OpenSSL::PKey::RSA.new(2048) }
-
-    it 'mints a v3 localhost certificate (serial 1) carrying the key, signed so it self-verifies',
-      :aggregate_failures do
-      # parse_cert_info was applied
-      expect(cert.subject.to_s).to(eq('/CN=localhost'))
-      expect(cert.serial).to(eq(1))
-      expect(cert.version).to(eq(2))
-      expect(cert.public_key.to_pem).to(eq(rsa.public_key.to_pem))
-      expect(cert.verify(rsa)).to(be(true))
-    end
-  end
-
-  describe '#generate_ssl_context' do
-    subject(:context) { server.__send__(:generate_ssl_context) }
+  describe '.ssl_context' do
+    subject(:context) { HttpLoader::Server.ssl_context }
 
     it 'returns a context pairing a 2048-bit RSA key with a certificate that verifies against it',
       :aggregate_failures do

@@ -80,14 +80,15 @@ RSpec.describe(HttpLoader::CLI) do
   end
 
   describe '.run server' do
-    it 'serves plain HTTP on 8080 by default and exits 0', :aggregate_failures do
+    it 'serves plain HTTP by default and exits 0', :aggregate_failures do
       expect(HttpLoader::CLI.run(['server'])).to(eq(0))
-      expect(server).to(have_received(:start).with(use_https: false, port: 8080))
+      expect(HttpLoader::Server).to(have_received(:new).with(https: false))
+      expect(server).to(have_received(:start))
     end
 
-    it 'serves HTTPS on 8443 with --https' do
+    it 'serves HTTPS with --https' do
       HttpLoader::CLI.run(['server', '--https'])
-      expect(server).to(have_received(:start).with(use_https: true, port: 8443))
+      expect(HttpLoader::Server).to(have_received(:new).with(https: true))
     end
 
     it 'names the subcommand in its usage banner and describes --https', :aggregate_failures do

@@ -78,12 +78,13 @@ RSpec.describe(HttpLoader::Client::TargetManager) do
       expect(first_args.fetch(:ipaddr)).to(eq(TestAddresses.ip(4)))
     end
 
-    it 'prefers the IPv4 entry over an earlier IPv6 one' do
+    it 'prefers the first IPv4 entry over an earlier IPv6 one' do
       allow(Addrinfo).to(
         receive(:getaddrinfo).and_return(
           [
             Addrinfo.tcp(TestAddresses.ipv6(1), 80),
-            Addrinfo.tcp(TestAddresses.ip(9), 80)
+            Addrinfo.tcp(TestAddresses.ip(9), 80),
+            Addrinfo.tcp(TestAddresses.ip(10), 80)
           ]
         )
       )
@@ -91,7 +92,14 @@ RSpec.describe(HttpLoader::Client::TargetManager) do
     end
 
     it 'falls back to the first entry when none is IPv4' do
-      allow(Addrinfo).to(receive(:getaddrinfo).and_return([Addrinfo.tcp(TestAddresses.ipv6(1), 80)]))
+      allow(Addrinfo).to(
+        receive(:getaddrinfo).and_return(
+          [
+            Addrinfo.tcp(TestAddresses.ipv6(1), 80),
+            Addrinfo.tcp(TestAddresses.ipv6(2), 80)
+]
+        )
+      )
       expect(first_args.fetch(:ipaddr)).to(eq(TestAddresses.ipv6(1)))
     end
 
@@ -102,6 +110,10 @@ RSpec.describe(HttpLoader::Client::TargetManager) do
 
     it 'passes a positive read_timeout through to the HTTP args' do
       expect(first_args.fetch(:read_timeout)).to(eq(5.0))
+    end
+
+    it 'disables the retries of Net::HTTP, so that every request is sent once' do
+      expect(first_args.fetch(:max_retries)).to(eq(0))
     end
 
     it 'leaves a plain HTTP context without SSL options', :aggregate_failures do
