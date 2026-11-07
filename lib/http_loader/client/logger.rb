@@ -1,11 +1,13 @@
 # typed: strong
 # frozen_string_literal: true
 
-require 'sorbet-runtime'
-require 'fileutils'
-require 'time'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'async'
 require 'async/queue'
+require 'fileutils'
+require 'sorbet-runtime'
+require 'time'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -16,8 +18,10 @@ module HttpLoader
 
       # The queued-message channel => the basename it is appended to. A static type (`srb tc`).
       Channels = T.type_alias { T::Hash[Symbol, String] }
+      private_constant :Channels
       # Maps a log channel to its on-disk file; an unknown channel maps to nothing and is dropped.
       CHANNELS = T.let({ info: 'client.log', error: 'client.err' }.freeze, Channels)
+      public_constant :CHANNELS
 
       # Initializes a new Logger instance, creating internal queues for asynchronous work.
       #
@@ -117,12 +121,14 @@ module HttpLoader
       # @return [void]
       sig { void }
       def drain_queue
-        write_msg(T.cast(@log_queue.dequeue, T::Array[T.any(Symbol, String)])) until T.cast(@log_queue.empty?, T::Boolean)
+        until T.cast(@log_queue.empty?, T::Boolean)
+          write_msg(T.cast(@log_queue.dequeue, T::Array[T.any(Symbol, String)]))
+        end
       end
 
       # Appends one queued message to the file for its channel; an unknown channel is dropped.
       #
-      # @param msg [Array<T.any(Symbol, String)>] the log level tuple targeting IO
+      # @param msg [Array<Symbol, String>] the channel and the message
       # @return [void]
       sig { params(msg: T::Array[T.any(Symbol, String)]).void }
       def write_msg(msg)

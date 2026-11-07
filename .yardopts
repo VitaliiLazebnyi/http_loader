@@ -1,6 +1,8 @@
 --markup markdown
+--charset utf-8
 --title "http_loader Load Testing Framework"
 --readme README.md
+--private
+--protected
 --plugin sorbet
--q
-lib/**/*.rb ext/**/*.rb bin/**/*
+lib/**/*.rb

@@ -1,0 +1,4 @@
+---
+# hadolint fails on every finding, down to the lowest severity (style), and no rule is ignored, inline or here.
+failure-threshold: style
+...

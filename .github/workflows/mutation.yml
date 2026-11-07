@@ -1,67 +1,96 @@
-name: Mutation testing
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
-
-permissions: {}
-
+---
+# Keys are sorted alphabetically in every mapping (yamllint key-ordering), so `name` and `on` follow `jobs`.
+# Every step that runs Ruby code sets RUBYOPT: all warnings (`-w`, plus the deprecation and performance
+# categories), with script/upstream_warnings.rb dropping the few listed warnings that the newest releases of the
+# development tools emit about their own code. It is not set while setup-ruby installs the gems, where only
+# RubyGems' own installer runs.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  LANG: C.UTF-8
-  LC_ALL: C.UTF-8
+  group: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
+  # Mutant parses the code with the `parser` gem (it requires `parser/current`), whose newest release
+  # (3.3.13.0) has no grammar for Ruby 3.4 or 4.0 and warns on any Ruby other than 3.3.13. Mutation
+  # testing therefore runs on Ruby 3.3.13, the oldest supported Ruby, which every other job also tests.
+  # The code base is small, so every run mutates every subject. Any alive mutation fails the build.
   mutant:
     name: Mutant
-    runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      contents: read  # checks out the repository
+    runs-on: ubuntu-26.04
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-
-    # Mutant parses the code with the `parser` gem (`parser/current`), whose newest release has no
-    # grammar for Ruby 3.4 or 4.0 and warns on any other Ruby. Mutation testing therefore runs on
-    # Ruby 3.3.13, the oldest supported Ruby; the AST (and thus the mutations) is identical on 4.0.
-    - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
-      with:
-        ruby-version: "3.3.13"
-        bundler-cache: true
-    - name: Check the Ruby version
-      run: script/check_ruby.sh 3.3.13
-    # Pull requests only mutate subjects touched since the base branch (fast feedback);
-    # pushes to main run the complete set. Any alive mutation fails the build.
-    - name: Mutant (changed subjects)
-      if: github.event_name == 'pull_request'
-      run: bundle exec mutant run --since origin/main
-    - name: Mutant (full run)
-      if: github.event_name != 'pull_request'
-      run: bundle exec mutant run
+      - name: Harden the runner (egress limited to the endpoints below)
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          allowed-endpoints: >-
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            github.com:443
+            index.rubygems.org:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            rubygems.org:443
+          disable-sudo: true
+          disable-telemetry: true
+          egress-policy: block
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199  # v1.338.0
+        with:
+          bundler-cache: true
+          ruby-version: 3.3.13
+          rubygems: latest
+      - name: Check the Ruby version
+        run: script/check_ruby.sh 3.3.13
+      - env:
+          LANG: C.UTF-8
+          LC_ALL: C.UTF-8
+          RUBYOPT: -w -W:deprecated -W:performance -r${{ github.workspace }}/script/upstream_warnings.rb
+        name: Mutant (every subject)
+        run: bundle exec rake mutant
+    timeout-minutes: 30
 
   warning-gate:
-    name: Warning gate
     if: ${{ !cancelled() }}
-    needs: [mutant]
-    runs-on: ubuntu-24.04
+    name: Warning gate (Mutation testing)
+    needs:
+      - mutant
     permissions:
-      actions: read # reads the logs of the other jobs of this run
-      contents: read
+      actions: read  # reads the logs of the other jobs of this run
+      contents: read  # checks out the gate script
+    runs-on: ubuntu-26.04
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        persist-credentials: false
+      - name: Harden the runner (egress limited to the endpoints below)
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          allowed-endpoints: >-
+            *.blob.core.windows.net:443
+            api.github.com:443
+          disable-sudo: true
+          disable-telemetry: true
+          egress-policy: block
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - env:
+          GATE_JOB_NAME: Warning gate (Mutation testing)
+          GH_TOKEN: ${{ github.token }}
+        name: Fail on any warning or deprecation in the logs of this run
+        run: script/warning_gate.sh
+    timeout-minutes: 10
 
-    - name: Fail on any warning or deprecation in the logs of this run
-      env:
-        GH_TOKEN: ${{ github.token }}
-        GATE_JOB_NAME: Warning gate
-      run: script/warning_gate.sh
+name: Mutation testing
+
+'on':
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+# Nothing is writable by default; every job re-declares the permissions it needs.
+permissions: {}
+...

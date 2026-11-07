@@ -1,0 +1,10 @@
+{
+  "name": "http_loader-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Markdown linter of script/lint.sh, installed by script/install_tools.sh with npm ci.",
+  "license": "MIT",
+  "devDependencies": {
+    "markdownlint-cli2": "0.24.0"
+  }
+}

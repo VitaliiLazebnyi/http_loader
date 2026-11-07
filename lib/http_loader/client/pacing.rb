@@ -1,6 +1,8 @@
 # typed: strong
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'sorbet-runtime'
 require 'time'
 
@@ -41,9 +43,18 @@ module HttpLoader
       # @return [Float, nil] remaining seconds, or nil if unbounded
       sig { params(timeout: Float, start_time: Time).returns(T.nilable(Float)) }
       def budget_remaining(timeout, start_time)
-        return nil unless timeout > 0.0
+        return if timeout <= 0.0
 
-        timeout - (Time.now.to_f - start_time.to_f)
+        timeout - (Time.now - start_time)
+      end
+
+      # Whether a keep-alive budget is used up. An unbounded lifetime (nil) never is.
+      #
+      # @param remaining [Float, nil] remaining budget, or nil if unbounded
+      # @return [Boolean] true once no time is left
+      sig { params(remaining: T.nilable(Float)).returns(T::Boolean) }
+      def budget_spent?(remaining)
+        !remaining.nil? && remaining <= 0.0
       end
 
       # Caps a computed sleep so it never sleeps past the remaining keep-alive budget.

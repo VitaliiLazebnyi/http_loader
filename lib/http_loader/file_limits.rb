@@ -1,6 +1,8 @@
 # typed: strong
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'sorbet-runtime'
 
 # Primary namespace for the load testing framework.
@@ -27,7 +29,7 @@ module HttpLoader
     rescue StandardError
       # Covers EPERM/EINVAL (unprivileged or above kern.maxfilesperproc) and any
       # platform where RLIMIT_NOFILE is unavailable; the bump is strictly best-effort.
-      warn "#{label} Warning: Could not set RLIMIT_NOFILE automatically."
+      warn("#{label} Warning: Could not set RLIMIT_NOFILE automatically.")
     end
   end
 end

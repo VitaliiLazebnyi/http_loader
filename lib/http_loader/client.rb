@@ -1,20 +1,22 @@
 # typed: strong
 # frozen_string_literal: true
 
-require 'sorbet-runtime'
-require 'net/http'
-require 'uri'
-require 'openssl'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'async'
 require 'async/semaphore'
+require 'net/http'
+require 'openssl'
+require 'sorbet-runtime'
 require 'time'
+require 'uri'
 require_relative 'client/config'
-require_relative 'client/pacing'
-require_relative 'client/logger'
-require_relative 'client/target_manager'
-require_relative 'client/slowloris'
-require_relative 'client/http_session'
 require_relative 'client/error_handler'
+require_relative 'client/http_session'
+require_relative 'client/logger'
+require_relative 'client/pacing'
+require_relative 'client/slowloris'
+require_relative 'client/target_manager'
 require_relative 'file_limits'
 
 # Primary namespace for the load testing framework.
@@ -27,6 +29,7 @@ module HttpLoader
 
     # The spawned per-connection worker tasks. A static type, checked by `srb tc`.
     ConnTasks = T.type_alias { T::Array[Async::Task] }
+    private_constant :ConnTasks
 
     sig { returns(HttpLoader::Client::Logger) }
     attr_reader :logger
@@ -72,10 +75,10 @@ module HttpLoader
       sem = Async::Semaphore.new(@config.max_concurrent_connections, parent: task)
 
       conn_tasks = T.let([], ConnTasks)
-      @config.connections.times do |i|
+      @config.connections.times do |index|
         ramp = calc_ramp
-        perform_sleep(ramp) if i.positive? && ramp > 0.0
-        conn_tasks << sem.async { exec_conn(i) }
+        perform_sleep(ramp) if index.positive? && ramp > 0.0
+        conn_tasks << sem.async { exec_conn(index) }
       end
 
       conn_tasks.each(&:wait)
@@ -88,8 +91,8 @@ module HttpLoader
     sig { void }
     def log_startup_message
       @logger.info("Starting #{@config.connections} #{@target_manager.protocol_label} connections")
-      puts "[Client] Starting #{@config.connections} #{@target_manager.protocol_label} connections to targeted urls..."
-      puts '[Client] Note: Output of individual pings is suppressed.' unless @config.verbose
+      puts("[Client] Starting #{@config.connections} #{@target_manager.protocol_label} connections to targeted urls...")
+      puts('[Client] Note: Output of individual pings is suppressed.') unless @config.verbose
     end
 
     # Calculates the sleep duration required for ramp-up. When both `--ramp_up` and
@@ -139,28 +142,27 @@ module HttpLoader
     # @return [void]
     sig { params(idx: Integer, start_t: Time).void }
     def run_session(idx, start_t)
-      ctx = @target_manager.context_for(idx)
-      uri = T.cast(ctx[:uri], URI::Generic)
+      target = @target_manager.context_for(idx)
+      uri = target.uri
 
-      start_http(uri, fetch_opts(idx, ctx)) do |http|
+      start_http(uri, fetch_opts(idx, target)) do |http|
         http.max_retries = 0 if http.respond_to?(:max_retries=)
         @logger.info("[Client #{idx}] Connection established to #{uri.host}.")
         dispatch_sess(idx, uri, http, start_t)
       end
       @logger.info("[Client #{idx}] Connection gracefully closed.")
-    rescue StandardError => e
-      handle_err(idx, e)
+    rescue StandardError => error
+      handle_err(idx, error)
     end
 
     # Fetches final connection contexts from TargetManager.
     #
     # @param idx [Integer] the connection identifier
-    # @param ctx [Hash] the partial context map
-    # @return [Hash] the fully resolved HTTP start arguments
-    sig { params(idx: Integer, ctx: T::Hash[Symbol, T.untyped]).returns(T::Hash[Symbol, T.untyped]) }
-    def fetch_opts(idx, ctx)
-      args = T.cast(ctx[:http_args], T::Hash[Symbol, T.untyped])
-      @target_manager.http_opts_for(idx, args)
+    # @param target [TargetManager::Target] the endpoint the connection goes to
+    # @return [Hash{Symbol => Object}] the fully resolved HTTP start arguments
+    sig { params(idx: Integer, target: TargetManager::Target).returns(TargetManager::HttpArgs) }
+    def fetch_opts(idx, target)
+      @target_manager.http_opts_for(idx, target.http_args)
     end
 
     # Wraps the synchronous net-http start call with a block closure.
@@ -169,7 +171,7 @@ module HttpLoader
     # @param opts [Hash] injected configuration options for HTTP
     # @param block [Proc] yieldable closure receiving HTTP connection instantiated
     # @return [void]
-    sig { params(uri: URI::Generic, opts: T::Hash[Symbol, T.untyped], block: T.proc.params(arg: Net::HTTP).void).void }
+    sig { params(uri: URI::Generic, opts: TargetManager::HttpArgs, block: T.proc.params(arg: Net::HTTP).void).void }
     def start_http(uri, opts, &block)
       Net::HTTP.start(T.must(uri.host), uri.port, **opts, &block)
     end

@@ -1,170 +1,113 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
 
-require 'spec_helper'
-require 'open3'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'fileutils'
 require 'json'
-require 'socket'
-RSpec.describe HttpLoader, type: :integration do
-  let(:bin_path) { File.expand_path('../../bin/http_loader', __dir__) }
-  let(:log_dir) { File.expand_path('../../logs', __dir__) }
-  let(:client_log) { File.join(log_dir, 'client.log') }
-  let(:server_log) { File.join(log_dir, 'server.log') }
+require 'spec_helper'
+
+RSpec.describe(HttpLoader, type: :integration) do
+  let(:telemetry_file) { File.join(IntegrationRun::LOG_DIR, 'telemetry.json') }
 
   before do
-    FileUtils.rm_f(client_log)
-    FileUtils.rm_f(server_log)
-    FileUtils.rm_f(File.join(log_dir, 'telemetry.json'))
-    FileUtils.mkdir_p(log_dir)
+    FileUtils.mkdir_p(IntegrationRun::LOG_DIR)
+    FileUtils.rm_f(%w[client.log server.log telemetry.json].map { |name| File.join(IntegrationRun::LOG_DIR, name) })
   end
 
   after do
-    system('pkill -9 -f "http_loader server"')
-    system('pkill -9 -f "http_loader client"')
-    sleep 0.5
-  rescue StandardError
-    # swallow any native cleanup discrepancies safely
-  end
-
-  def run_harness(args)
-    # Using 'ruby' since that inherently picks up the context of our RSpec run.
-    cmd = ['ruby', bin_path, 'harness'] + args
-    stdout_str, stderr_str, status = Open3.capture3(*cmd)
-
-    # Let the file system flush any trailing logs organically
-    sleep 0.5
-
-    [stdout_str, stderr_str, status]
-  end
-
-  def run_client(args)
-    Open3.capture3('ruby', bin_path, 'client', *args)
-  end
-
-  # Reads the client log, polling up to `timeout` for `await` to appear. The client flushes its
-  # log asynchronously as the harness tears it down, so a fixed sleep races the flush onto disk
-  # under load; waiting for the expected line makes the assertion deterministic.
-  def read_client_log(await: nil, timeout: 15.0)
-    deadline = Time.now + timeout
-    loop do
-      content = File.exist?(client_log) ? File.read(client_log) : ''
-      return content if await.nil? || content.include?(await) || Time.now >= deadline
-
-      sleep 0.1
-    end
-  end
-
-  # Boots a throwaway local HTTP/1.1 server that keeps connections alive and answers
-  # every request with 200 OK, so external-target coverage never touches the network.
-  def with_local_server
-    server = TCPServer.new('127.0.0.1', 0)
-    port = server.addr[1]
-    thread = Thread.new do
-      loop do
-        Thread.new(server.accept) do |conn|
-          loop do
-            line = conn.gets
-            break if line.nil?
-
-            conn.readpartial(4096) while select([conn], nil, nil, 0.05)
-            conn.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
-          end
-        rescue StandardError
-          nil
-        ensure
-          conn.close
-        end
-      end
-    rescue StandardError
-      nil
-    end
-    yield port
-  ensure
-    thread&.kill
-    server&.close
+    system('pkill', '-9', '-f', 'http_loader server')
+    system('pkill', '-9', '-f', 'http_loader client')
   end
 
   describe 'Mode 1: Fundamental HTTP Plaintext Mode' do
-    it 'spawns HTTP Server and Client natively mapping successfully' do
-      args = ['--connections_count=2', '--target_duration=3.0', '--verbose']
-      out, _, status = run_harness(args)
-
-      expect(status.exitstatus).to eq(0)
-      expect(out).to include('Starting test with 2 connections to **HTTP**')
-      expect(read_client_log(await: 'Starting 2 HTTP connections')).to include('Starting 2 HTTP connections')
+    it 'spawns HTTP Server and Client natively mapping successfully', :aggregate_failures do
+      out, _err, status = IntegrationRun.run(%w[harness --connections_count=2 --target_duration=3.0 --verbose])
+      expect(status.exitstatus).to(eq(0))
+      expect(out.include?('Starting test with 2 connections to **HTTP**')).to(be(true))
+      expect(IntegrationRun.client_log(await: 'Starting 2 HTTP connections').include?('Starting 2 HTTP')).to(be(true))
     end
   end
 
   describe 'Mode 2: Encrypted HTTPS TLS Architecture' do
-    it 'bootstraps secure contexts actively avoiding TLS handshaking drops seamlessly' do
-      args = ['--connections_count=2', '--target_duration=6.0', '--reopen_closed_connections',
-              '--reopen_interval=0.5', '--https', '--verbose']
-      out, _, status = run_harness(args)
-
-      expect(status.exitstatus).to eq(0)
-      expect(out).to include('Starting test with 2 connections to **HTTPS**')
-      expect(read_client_log(await: 'Starting 2 HTTPS connections')).to include('Starting 2 HTTPS connections')
-      expect(out).to include('Target duration mathematically reached')
+    it 'bootstraps secure contexts actively avoiding TLS handshaking drops seamlessly', :aggregate_failures do
+      out, _err, status = IntegrationRun.run(
+        %w[
+          harness
+          --connections_count=2
+          --target_duration=6.0
+          --reopen_closed_connections
+          --reopen_interval=0.5
+          --https
+          --verbose
+        ]
+      )
+      expect(status.exitstatus).to(eq(0))
+      expect(out).to(match(/to \*\*HTTPS\*\*.*Target duration mathematically reached/m))
+      expect(IntegrationRun.client_log(await: 'Starting 2 HTTPS connections').include?('Starting 2 HTTPS')).to(be(true))
     end
   end
 
   describe 'Mode 3: QPS Payload Active Simulation' do
-    it 'maps rhythmic GET payloads cleanly across active tunnels' do
-      args = ['--connections_count=2', '--target_duration=3.0', '--qps_per_connection=5', '--no-ping', '--verbose']
-      _, _err, status = run_harness(args)
-
-      expect(status.exitstatus).to eq(0)
-      expect(read_client_log(await: 'Starting 2 HTTP connections')).to include('Starting 2 HTTP connections')
+    it 'maps rhythmic GET payloads cleanly across active tunnels', :aggregate_failures do
+      args = %w[harness --connections_count=2 --target_duration=3.0 --qps_per_connection=5 --no-ping --verbose]
+      _out, _err, status = IntegrationRun.run(args)
+      expect(status.exitstatus).to(eq(0))
+      expect(IntegrationRun.client_log(await: 'Starting 2 HTTP connections').include?('Starting 2 HTTP')).to(be(true))
     end
   end
 
   describe 'Mode 4: Resilience Slowloris Thread Simulator' do
-    it 'allocates and drops byte gap writes elegantly securely' do
-      args = ['--connections_count=2', '--target_duration=3.0', '--slowloris_delay=0.1', '--verbose']
-      _, _err, status = run_harness(args)
-
-      expect(status.exitstatus).to eq(0)
-      expect(read_client_log(await: 'Starting 2 HTTP connections')).to include('Starting 2 HTTP connections')
+    it 'allocates and drops byte gap writes elegantly securely', :aggregate_failures do
+      args = %w[harness --connections_count=2 --target_duration=3.0 --slowloris_delay=0.1 --verbose]
+      _out, _err, status = IntegrationRun.run(args)
+      expect(status.exitstatus).to(eq(0))
+      expect(IntegrationRun.client_log(await: 'Starting 2 HTTP connections').include?('Starting 2 HTTP')).to(be(true))
     end
   end
 
   describe 'Mode 5: External Target Mapping Logs' do
-    it 'targets an external URL and exports JSON telemetry (against a local stub, no network)' do
-      with_local_server do |port|
-        args = ['--connections_count=2', '--target_duration=2.0', "--url=http://127.0.0.1:#{port}",
-                '--export_json=logs/telemetry.json', '--verbose']
-        out, _err, status = run_harness(args)
+    before { IntegrationRun.start_server }
 
-        expect(status.exitstatus).to eq(0)
-        expect(out).to include('**EXTERNAL URL**')
-
-        telemetry_file = File.join(log_dir, 'telemetry.json')
-        expect(File.exist?(telemetry_file)).to be true
-        json = JSON.parse(File.read(telemetry_file))
-        expect(json).to have_key('peak_connections')
-        expect(json).to have_key('errors')
-      end
+    it 'targets an external URL and exports JSON telemetry (against a local server, no network)', :aggregate_failures do
+      out, _err, status = IntegrationRun.run(
+        %w[
+          harness
+          --connections_count=2
+          --target_duration=2.0
+          --url=http://localhost:8080
+          --export_json=logs/telemetry.json
+          --verbose
+        ]
+      )
+      expect([status.exitstatus, out.include?('**EXTERNAL URL**')]).to(eq([0, true]))
+      expect(JSON.parse(File.read(telemetry_file)).keys).to(
+        contain_exactly(
+          'peak_connections',
+          'test_duration_seconds',
+          'errors'
+        )
+      )
     end
   end
 
   describe 'CLI validation (REQ-CLI-023)' do
-    it 'fast-fails with a Configuration Error on connections_count=0 instead of deadlocking' do
-      _out, err, status = run_client(['--connections_count=0'])
-      expect(status.exitstatus).to eq(1)
-      expect(err).to include('Configuration Error')
+    it 'fast-fails with a Configuration Error on connections_count=0 instead of deadlocking', :aggregate_failures do
+      _out, err, status = IntegrationRun.run(%w[client --connections_count=0])
+      expect(status.exitstatus).to(eq(1))
+      expect(err.include?('Configuration Error')).to(be(true))
     end
 
-    it 'fast-fails on a non-numeric flag value' do
-      _out, err, status = run_client(['--connections_count=abc'])
-      expect(status.exitstatus).to eq(1)
-      expect(err).to include('Configuration Error')
+    it 'fast-fails on a non-numeric flag value', :aggregate_failures do
+      _out, err, status = IntegrationRun.run(%w[client --connections_count=abc])
+      expect(status.exitstatus).to(eq(1))
+      expect(err.include?('Configuration Error')).to(be(true))
     end
 
-    it 'fast-fails on a malformed target URL' do
-      _out, err, status = run_client(['--connections_count=1', '--url=http://bad host/'])
-      expect(status.exitstatus).to eq(1)
-      expect(err).to include('Configuration Error')
+    it 'fast-fails on a malformed target URL', :aggregate_failures do
+      _out, err, status = IntegrationRun.run(['client', '--connections_count=1', '--url=http://bad host/'])
+      expect(status.exitstatus).to(eq(1))
+      expect(err.include?('Configuration Error')).to(be(true))
     end
   end
 end

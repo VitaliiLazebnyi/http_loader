@@ -1,6 +1,8 @@
 # typed: true
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 # Shim for a dangling reference in the gem-shipped `prism-1.9.0/rbi/prism.rbi`,
 # which annotates `Prism.lex_compat` as returning `Prism::LexCompat::Result` but
 # never ships a definition for `Prism::LexCompat`. Sorbet auto-loads that RBI via

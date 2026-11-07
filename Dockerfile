@@ -12,13 +12,21 @@ ENV LANG=C.UTF-8 \
 
 WORKDIR /app
 
+# The base image ships zlib 1:1.3.dfsg+really1.3.1-1+b1. Debian's security update fixes CVE-2026-76844,
+# CVE-2026-85091 and CVE-2026-27171, which the Trivy scan rejects; this layer can go once the official image is
+# rebuilt on it (the Docker workflow and Dependabot's base-image updates show when).
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends --only-upgrade \
+    zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 zlib1g-dev=1:1.3.dfsg+really1.3.1-1+deb13u1 \
+  && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies in a cacheable layer keyed only on the gem manifests, so editing
 # lib/spec files does not trigger a full re-bundle on every rebuild. The bundler version
 # matches the Gemfile.lock "BUNDLED WITH" pin.
 COPY Gemfile Gemfile.lock http_loader.gemspec ./
 COPY lib/http_loader/version.rb lib/http_loader/version.rb
 RUN gem install bundler:4.0.24 --no-document \
- && bundle install
+  && bundle install
 
 # The ruby:4.0.9 base image ships json 2.18.0 as a default gem (CVE-2026-33210). The bundle
 # resolves a patched json (3.1.0) that `bundle exec` loads instead, so the unused vulnerable

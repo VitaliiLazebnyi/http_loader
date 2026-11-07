@@ -1,0 +1,84 @@
+---
+# Keys are sorted alphabetically in every mapping (yamllint key-ordering), so `name` and `on` follow `jobs`.
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  # Every file type that is not Ruby, each linter at its strictest setting (script/lint.sh).
+  linters:
+    name: Linters
+    permissions:
+      contents: read  # checks out the repository
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Harden the runner (egress limited to the endpoints below)
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          allowed-endpoints: >-
+            api.github.com:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+          disable-sudo: true
+          disable-telemetry: true
+          egress-policy: block
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned linters and scanners
+        run: script/install_tools.sh
+      - env:
+          GH_TOKEN: ${{ github.token }}  # zizmor's online audits (known-vulnerable actions, impostor commits)
+        name: Run the linters
+        run: >-
+          script/lint.sh suppressions actionlint zizmor shellcheck shfmt yamllint markdownlint typos taplo hadolint
+          editorconfig
+    timeout-minutes: 15
+
+  warning-gate:
+    if: ${{ !cancelled() }}
+    name: Warning gate (Lint)
+    needs:
+      - linters
+    permissions:
+      actions: read  # reads the logs of the other jobs of this run
+      contents: read  # checks out the gate script
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Harden the runner (egress limited to the endpoints below)
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          allowed-endpoints: >-
+            *.blob.core.windows.net:443
+            api.github.com:443
+          disable-sudo: true
+          disable-telemetry: true
+          egress-policy: block
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - env:
+          GATE_JOB_NAME: Warning gate (Lint)
+          GH_TOKEN: ${{ github.token }}
+        name: Fail on any warning or deprecation in the logs of this run
+        run: script/warning_gate.sh
+    timeout-minutes: 10
+
+name: Lint
+
+'on':
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+# Nothing is writable by default; every job re-declares the permissions it needs.
+permissions: {}
+...

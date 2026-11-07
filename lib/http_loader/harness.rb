@@ -1,15 +1,17 @@
 # typed: strong
 # frozen_string_literal: true
 
-require 'sorbet-runtime'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'fileutils'
+require 'sorbet-runtime'
 require 'stringio'
 require_relative 'file_limits'
 require_relative 'harness/config'
+require_relative 'harness/formatter'
+require_relative 'harness/process_manager'
 require_relative 'harness/resource_monitor'
 require_relative 'harness/telemetry'
-require_relative 'harness/process_manager'
-require_relative 'harness/formatter'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -67,7 +69,7 @@ module HttpLoader
       # Install the trap before spawning so an early Ctrl+C still runs cleanup;
       # cleanup is a guarded no-op while the child PIDs are still unset.
       trap('INT') do
-        puts "\n[Harness] Caught interrupt, cleaning up processes..."
+        puts("\n[Harness] Caught interrupt, cleaning up processes...")
         @pm.cleanup
         exit(0)
       end
@@ -103,10 +105,11 @@ module HttpLoader
     sig { returns(T::Boolean) }
     def duration_exceeded?
       target = @config.target_duration
-      elapsed = Time.now - @start_time # Time#- already yields Float seconds (instant-based)
-      return false unless target > 0.0 && elapsed >= target
+      # Time#- already yields Float seconds (instant-based).
+      elapsed = Time.now - @start_time
+      return false if target <= 0.0 || elapsed < target
 
-      puts "[Harness] Target duration mathematically reached (#{target}s). auto-shutdown."
+      puts("[Harness] Target duration mathematically reached (#{target}s). auto-shutdown.")
       true
     end
 
@@ -142,13 +145,19 @@ module HttpLoader
     # @return [Boolean] flags if logical expectations are broken natively
     sig { params(active: Integer, c_cpu: String, c_th: Integer, c_m: String).returns(T::Boolean) }
     def missing_socket?(active, c_cpu, c_th, c_m)
-      return false unless @config.target_urls.any? && @peak_connections > 0.0 && active.zero?
+      return false if @config.target_urls.none? || @peak_connections.zero? || active.nonzero?
 
       log_table_row(
-        t: Time.now.utc.strftime('%H:%M:%S'), ac: active, sc: 'EXTERNAL', sm: 'N/A',
-        sk: 'N/A', cc: "#{c_cpu}% / #{c_th}T", cm: c_m, ck: 'N/A'
+        t: Time.now.utc.strftime('%H:%M:%S'),
+        ac: active,
+        sc: 'EXTERNAL',
+        sm: 'N/A',
+        sk: 'N/A',
+        cc: "#{c_cpu}% / #{c_th}T",
+        cm: c_m,
+        ck: 'N/A'
       )
-      puts "\n[Harness] \u26A0\uFE0F EXTERNAL SERVER DISCONNECTED!"
+      puts("\n[Harness] \u26A0\uFE0F EXTERNAL SERVER DISCONNECTED!")
       true
     end
   end

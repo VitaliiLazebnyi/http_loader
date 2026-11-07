@@ -1,7 +1,10 @@
 # typed: strong
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'sorbet-runtime'
+require_relative 'pacing'
 require 'net/http'
 
 # Primary namespace for the load testing framework.
@@ -48,7 +51,7 @@ module HttpLoader
         request = Net::HTTP::Get.new(uri)
         request['Connection'] = 'keep-alive'
         request['User-Agent'] = @config.user_agent
-        @config.headers.each { |k, v| request[k] = v }
+        @config.headers.each { |name, value| request[name] = value }
 
         # No block: Net::HTTP reads (and so drains) the whole body, keeping the keep-alive
         # connection reusable, matching the block-less request in perform_ping?.
@@ -64,15 +67,13 @@ module HttpLoader
       # @return [void]
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, start_time: Time).void }
       def maintain_keepalive(client_index, uri, http, start_time)
-        loop do
-          remaining = budget_remaining(@config.http_loader_timeout, start_time)
-          if remaining && remaining <= 0.0
-            @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing.")
-            break
-          end
-
+        remaining = budget_remaining(@config.http_loader_timeout, start_time)
+        until budget_spent?(remaining)
           break unless process_heartbeat?(client_index, uri, http, remaining)
+
+          remaining = budget_remaining(@config.http_loader_timeout, start_time)
         end
+        @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing.") if budget_spent?(remaining)
       end
 
       # Analyzes global configurations selecting appropriate recurrent payloads or static hibernation.
@@ -82,7 +83,10 @@ module HttpLoader
       # @param http [Net::HTTP] active outbound resource allocation
       # @param remaining [Float, nil] remaining keep-alive budget in seconds, or nil if unbounded
       # @return [Boolean] returns true to perpetuate cycle, false to break and exit
-      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
+      sig do
+        params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float))
+          .returns(T::Boolean)
+      end
       def process_heartbeat?(client_index, uri, http, remaining)
         if @config.qps_per_connection.positive?
           perform_qps?(client_index, uri, http, remaining)
@@ -101,7 +105,10 @@ module HttpLoader
       # @param http [Net::HTTP] live outgoing data streams
       # @param remaining [Float, nil] remaining keep-alive budget in seconds, or nil if unbounded
       # @return [Boolean] success logic representing connection continuation validation
-      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
+      sig do
+        params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float))
+          .returns(T::Boolean)
+      end
       def perform_qps?(client_index, uri, http, remaining)
         sleep(cap_to_budget(jittered_interval(1.0 / @config.qps_per_connection, @config.jitter), remaining))
         req = build_request(Net::HTTP::Get.new(uri))
@@ -118,7 +125,10 @@ module HttpLoader
       # @param http [Net::HTTP] executing communication object
       # @param remaining [Float, nil] remaining keep-alive budget in seconds, or nil if unbounded
       # @return [Boolean] true predicting session extension
-      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
+      sig do
+        params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float))
+          .returns(T::Boolean)
+      end
       def perform_ping?(client_index, uri, http, remaining)
         sleep(cap_to_budget(jittered_interval(@config.ping_period, @config.jitter), remaining))
         req = build_request(Net::HTTP::Head.new(uri))
@@ -136,7 +146,7 @@ module HttpLoader
       def build_request(req)
         req['Connection'] = 'keep-alive'
         req['User-Agent'] = @config.user_agent
-        @config.headers.each { |k, v| req[k] = v }
+        @config.headers.each { |name, value| req[name] = value }
         req
       end
 

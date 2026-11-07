@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require_relative 'lib/http_loader/version'
 
 Gem::Specification.new do |spec|
@@ -10,11 +12,11 @@ Gem::Specification.new do |spec|
 
   spec.summary       = 'High-concurrency asynchronous load testing console tool for HTTP/HTTPS.'
   spec.description   = 'HttpLoader is a powerful, high-concurrency performance and load testing ' \
-                       'console tool. Built on asynchronous Ruby, it evaluates server limits by ' \
-                       'opening massive numbers of persistent connections and holding them open. ' \
-                       'It utilizes event-driven I/O with optional periodic ping requests to keep ' \
-                       'connections active, allowing you to rigorously benchmark maximum concurrent ' \
-                       'socket capacity with precision and minimal client-side overhead.'
+    'console tool. Built on asynchronous Ruby, it evaluates server limits by ' \
+    'opening massive numbers of persistent connections and holding them open. ' \
+    'It utilizes event-driven I/O with optional periodic ping requests to keep ' \
+    'connections active, allowing you to rigorously benchmark maximum concurrent ' \
+    'socket capacity with precision and minimal client-side overhead.'
   spec.homepage      = 'https://github.com/VitaliiLazebnyi/http_loader'
   spec.license       = 'MIT'
   spec.required_ruby_version = '>= 3.3'
@@ -27,12 +29,14 @@ Gem::Specification.new do |spec|
   # Signing is opt-in via GEM_SIGN=1 (set by the release workflow) so that ordinary
   # `gem build` on a maintainer machine or in CI never fails on a mismatched/absent key
   # and never silently ships an unsigned gem it believed to be signed. Both the cert
-  # chain and the signing key are gated together — declaring cert_chain without a
+  # chain and the signing key are gated together -- declaring cert_chain without a
   # matching key is what breaks `gem build`.
   gem_key = File.expand_path('~/.gem/gem-private_key.pem')
   if ENV['GEM_SIGN'] == '1' && File.exist?(gem_key)
     spec.cert_chain  = ['certs/http_loader-public_cert.pem']
     spec.signing_key = gem_key
+  else
+    nil
   end
 
   spec.files = %w[
@@ -51,32 +55,36 @@ Gem::Specification.new do |spec|
   spec.executables   = ['http_loader']
   spec.require_paths = ['lib']
 
-  spec.add_dependency 'async', '~> 2.39'
-  spec.add_dependency 'async-http', '~> 0.95'
-  spec.add_dependency 'falcon', '~> 0.55'
-  spec.add_dependency 'rack', '~> 3.2'
-  spec.add_dependency 'rackup', '~> 2.3'
-  spec.add_dependency 'sorbet-runtime', '~> 0.6'
+  spec.add_dependency('async', '~> 2.39')
+  spec.add_dependency('async-http', '~> 0.95')
+  spec.add_dependency('falcon', '~> 0.55')
+  spec.add_dependency('rack', '~> 3.2')
+  spec.add_dependency('rackup', '~> 2.3')
+  spec.add_dependency('sorbet-runtime', '~> 0.6')
 
-  spec.add_development_dependency 'bundler-audit', '~> 0.9'
-  spec.add_development_dependency 'flay', '~> 2.14'
-  spec.add_development_dependency 'memory_profiler', '~> 1.1'
-  spec.add_development_dependency 'mutant', '~> 0.17'
-  spec.add_development_dependency 'mutant-rspec', '~> 0.17'
-  spec.add_development_dependency 'rake', '~> 13.3'
-  spec.add_development_dependency 'reek', '~> 6.6'
-  spec.add_development_dependency 'rspec', '~> 3.13'
-  spec.add_development_dependency 'rubocop', '~> 1.86'
-  spec.add_development_dependency 'rubocop-ai', '~> 0.1'
-  spec.add_development_dependency 'rubocop-md', '~> 3.0'
-  spec.add_development_dependency 'rubocop-performance', '~> 1.26'
-  spec.add_development_dependency 'rubocop-rake', '~> 0.7'
-  spec.add_development_dependency 'rubocop-rspec', '~> 3.9'
-  spec.add_development_dependency 'rubocop-sorbet', '~> 0.17'
-  spec.add_development_dependency 'rubocop-thread_safety', '~> 0.7'
-  spec.add_development_dependency 'ruby-prof', '~> 2.0'
-  spec.add_development_dependency 'simplecov', '~> 1.3'
-  spec.add_development_dependency 'sorbet', '~> 0.6'
-  spec.add_development_dependency 'yard', '~> 0.9'
-  spec.add_development_dependency 'yard-sorbet', '~> 0.9'
+  spec.add_development_dependency('bundler-audit', '~> 0.9')
+  spec.add_development_dependency('debride', '~> 1.15')
+  spec.add_development_dependency('flay', '~> 2.14')
+  spec.add_development_dependency('flog', '~> 4.9')
+  spec.add_development_dependency('memory_profiler', '~> 1.1')
+  spec.add_development_dependency('mutant', '~> 0.17')
+  spec.add_development_dependency('mutant-rspec', '~> 0.17')
+  spec.add_development_dependency('rake', '~> 13.3')
+  spec.add_development_dependency('reek', '~> 6.6')
+  spec.add_development_dependency('rspec', '~> 3.13')
+  spec.add_development_dependency('rubocop', '~> 1.86')
+  spec.add_development_dependency('rubocop-ai', '~> 0.1')
+  spec.add_development_dependency('rubocop-md', '~> 3.0')
+  spec.add_development_dependency('rubocop-packaging', '~> 0.6')
+  spec.add_development_dependency('rubocop-performance', '~> 1.26')
+  spec.add_development_dependency('rubocop-rake', '~> 0.7')
+  spec.add_development_dependency('rubocop-rspec', '~> 3.9')
+  spec.add_development_dependency('rubocop-sorbet', '~> 0.17')
+  spec.add_development_dependency('rubocop-thread_safety', '~> 0.8')
+  spec.add_development_dependency('rubocop-yard', '~> 1.3')
+  spec.add_development_dependency('ruby-prof', '~> 2.0')
+  spec.add_development_dependency('simplecov', '~> 1.3')
+  spec.add_development_dependency('sorbet', '~> 0.6')
+  spec.add_development_dependency('yard', '~> 0.9')
+  spec.add_development_dependency('yard-sorbet', '~> 0.9')
 end

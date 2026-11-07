@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
-# typed: false
+# typed: strict
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 # Fails when `bundle outdated` reports a gem that is not on the documented hold list
 # (script/outdated_holds.yml), or when a listed hold is no longer outdated.

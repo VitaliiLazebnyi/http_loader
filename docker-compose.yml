@@ -1,3 +1,4 @@
+---
 # Docker-based test harness for http_loader.
 #
 #   docker compose run --build --rm ci          # full gate: specs+coverage, rubocop, sorbet, yard, reek, flay, audit
@@ -8,14 +9,11 @@
 #   docker compose run --build --rm mutant      # mutation testing
 #
 # NOTE: pass --build so edits are picked up; `docker compose run` reuses a cached image otherwise.
+
 services:
   ci:
     build: .
     command: bundle exec rake
-
-  test:
-    build: .
-    command: bundle exec rspec
 
   integration:
     build: .
@@ -25,10 +23,15 @@ services:
     build: .
     command: bundle exec rake rubocop suppressions
 
-  types:
-    build: .
-    command: bundle exec rake typecheck
-
   mutant:
     build: .
     command: bundle exec mutant run
+
+  test:
+    build: .
+    command: bundle exec rspec
+
+  types:
+    build: .
+    command: bundle exec rake typecheck
+...

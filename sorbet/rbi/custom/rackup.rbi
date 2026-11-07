@@ -1,4 +1,6 @@
 # typed: strict
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 module Rackup
   module Handler
     class Falcon

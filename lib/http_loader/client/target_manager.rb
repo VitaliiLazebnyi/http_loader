@@ -1,9 +1,11 @@
 # typed: strong
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
+require 'socket'
 require 'sorbet-runtime'
 require 'uri'
-require 'socket'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -21,14 +23,24 @@ module HttpLoader
         const :pass, T.nilable(String)
       end
 
-      # A resolved endpoint context: its parsed URI plus the Net::HTTP start options.
-      Context = T.type_alias { T::Hash[Symbol, T.untyped] }
-      # The full list of resolved contexts (one per target URL).
-      ContextList = T.type_alias { T::Array[Context] }
+      # The keyword options passed to Net::HTTP.start (timeouts, resolved address, TLS, proxy, bind address).
+      HttpArgs = T.type_alias { T::Hash[Symbol, Object] }
+      public_constant :HttpArgs
+
+      # A resolved endpoint: its parsed URI plus the Net::HTTP start options for it.
+      class Target < T::Struct
+        const :uri, URI::Generic
+        const :http_args, HttpArgs
+      end
+
+      # The resolved endpoints, one per target URL. A static type, checked by `srb tc`.
+      TargetList = T.type_alias { T::Array[Target] }
+      private_constant :TargetList
 
       # Matches `[scheme://][user[:pass]@]host[:port]` tolerantly, including credentialed
       # proxies that `URI.parse` rejects under the bundled `uri` gem.
       PROXY_RE = %r{\A(?:\w+://)?(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>[^:/@]+)(?::(?<port>\d+))?}
+      private_constant :PROXY_RE
 
       # Initializes the TargetManager tracking connection URI configurations.
       #
@@ -37,7 +49,7 @@ module HttpLoader
       sig { params(config: Config).void }
       def initialize(config)
         @config = config
-        @target_contexts = T.let(build_target_contexts, ContextList)
+        @target_contexts = T.let(build_target_contexts, TargetList)
       end
 
       # Yields a formatted terminal label classifying protocol usage logic.
@@ -48,7 +60,7 @@ module HttpLoader
         if @config.target_urls.size > 1
           "MULTIPLE TARGETS (#{@config.target_urls.size})"
         elsif @config.target_urls.size == 1
-          "EXTERNAL #{T.cast(T.must(@target_contexts.first)[:uri], URI::Generic).scheme&.upcase}"
+          "EXTERNAL #{T.must(@target_contexts.first).uri.scheme&.upcase}"
         elsif @config.use_https
           'HTTPS'
         else
@@ -56,19 +68,11 @@ module HttpLoader
         end
       end
 
-      # Provides access to all active configured endpoint structs array.
-      #
-      # @return [Array<Hash>] map comprising raw URIs and configurations
-      sig { returns(ContextList) }
-      def contexts
-        @target_contexts
-      end
-
       # Retrieves specific connection settings distributing nodes evenly using deterministic boundaries.
       #
       # @param client_index [Integer] integer value unique per generated fiber worker
-      # @return [Hash] targeted setup config subset
-      sig { params(client_index: Integer).returns(Context) }
+      # @return [Target] the endpoint this worker connects to
+      sig { params(client_index: Integer).returns(Target) }
       def context_for(client_index)
         @target_contexts.fetch(client_index % @target_contexts.size)
       end
@@ -78,7 +82,7 @@ module HttpLoader
       # @param client_index [Integer] fiber worker ID enabling round-robin balancing
       # @param args [Hash] raw initialization opts generated statically
       # @return [Hash] dynamically mapped object with appended localized directives
-      sig { params(client_index: Integer, args: Context).returns(Context) }
+      sig { params(client_index: Integer, args: HttpArgs).returns(HttpArgs) }
       def http_opts_for(client_index, args)
         http_opts = args.dup
         bind_ips = @config.bind_ips
@@ -93,7 +97,7 @@ module HttpLoader
       # @param opts [Hash] configuration map destination
       # @param client_index [Integer] index driving balanced proxy allocation logic
       # @return [void]
-      sig { params(opts: Context, client_index: Integer).void }
+      sig { params(opts: HttpArgs, client_index: Integer).void }
       def apply_proxy!(opts, client_index)
         pool = @config.proxy_pool
         set_proxy_opts(opts, parse_proxy(pool.fetch(client_index % pool.size)))
@@ -111,7 +115,7 @@ module HttpLoader
         # PROXY_RE's `host` group is not optional, so a successful match always captures a host;
         # testing `match` alone is equivalent to also testing `match[:host]`.
         match = PROXY_RE.match(entry)
-        raise ArgumentError, "Invalid --proxy_pool entry: #{entry.inspect}" unless match
+        raise(ArgumentError, "Invalid --proxy_pool entry: #{entry.inspect}") unless match
 
         ProxyEndpoint.new(
           host: T.must(match[:host]), port: Integer(match[:port] || '80'), user: match[:user], pass: match[:pass]
@@ -123,7 +127,7 @@ module HttpLoader
       # @param opts [Hash] configuration map destination
       # @param proxy [ProxyEndpoint] parsed proxy components
       # @return [void]
-      sig { params(opts: Context, proxy: ProxyEndpoint).void }
+      sig { params(opts: HttpArgs, proxy: ProxyEndpoint).void }
       def set_proxy_opts(opts, proxy)
         opts[:proxy_address] = proxy.host
         opts[:proxy_port] = proxy.port
@@ -135,16 +139,16 @@ module HttpLoader
 
       # Creates localized cache defining DNS mapped structures minimizing resolution cost later statically.
       #
-      # @return [Array<Hash>] cached Array mapping URLs
-      sig { returns(ContextList) }
+      # @return [Array<Target>] one resolved endpoint per target URL
+      sig { returns(T::Array[Target]) }
       def build_target_contexts
         urls = @config.target_urls.any? ? @config.target_urls : [nil]
         urls.map do |url|
           uri = parse_uri(url)
           timeout = @config.read_timeout
-          args = { read_timeout: (timeout if timeout > 0.0) }
+          args = T.let({ read_timeout: (timeout if timeout > 0.0) }, HttpArgs)
           args[:ipaddr] = resolve_ip(uri)
-          { uri: uri, http_args: secure_opts(uri, args) }
+          Target.new(uri: uri, http_args: secure_opts(uri, args))
         end
       end
 
@@ -154,12 +158,13 @@ module HttpLoader
       # @return [URI::Generic] instantiated parsed reference object
       sig { params(url: T.nilable(String)).returns(URI::Generic) }
       def parse_uri(url)
-        uri = if url
-                URI(url)
-              else
-                @config.use_https ? URI('https://localhost:8443') : URI('http://localhost:8080')
-              end
-        raise ArgumentError, "Invalid --url (missing host): #{url.inspect}" if uri.host.to_s.empty?
+        uri =
+          if url
+            URI(url)
+          else
+            @config.use_https ? URI('https://localhost:8443') : URI('http://localhost:8080')
+          end
+        raise(ArgumentError, "Invalid --url (missing host): #{url.inspect}") if uri.host.to_s.empty?
 
         uri
       end
@@ -181,7 +186,7 @@ module HttpLoader
       # @param uri [URI::Generic] parsed URI configuration
       # @param args [Hash] basic configuration mapped state
       # @return [Hash] augmented settings resolving security layers with SSL
-      sig { params(uri: URI::Generic, args: Context).returns(Context) }
+      sig { params(uri: URI::Generic, args: HttpArgs).returns(HttpArgs) }
       def secure_opts(uri, args)
         return args unless uri.scheme == 'https'
 

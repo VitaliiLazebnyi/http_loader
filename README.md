@@ -1,36 +1,55 @@
 # Fiber-Native High-Concurrency Load Testing Harness
 
-An aggressively scalable asynchronous Ruby load testing harness built specifically to simulate, maintain, and monitor hundreds of thousands of active Keep-Alive connections seamlessly.
-By circumventing traditional `1:1` OS Thread-per-connection blockers and utilizing Ruby 4.0+'s native `Fiber::Scheduler` bridging to modern native loopbacks (`kqueue`/`epoll`), this architecture handles mammoth concurrent loads autonomously with very low CPU when idle (near `0%` with `--no-ping`) over just two hardware threads. Note that the default `--ping` mode fires a periodic `HEAD` per connection, so CPU rises with connection count and ping frequency (see `PERFORMANCE_REPORT.md`).
+An aggressively scalable asynchronous Ruby load testing harness built specifically to simulate, maintain, and monitor
+hundreds of thousands of active Keep-Alive connections seamlessly. By circumventing traditional `1:1` OS
+Thread-per-connection blockers and utilizing Ruby 4.0+'s native `Fiber::Scheduler` bridging to modern native loopbacks
+(`kqueue`/`epoll`), this architecture handles mammoth concurrent loads autonomously with very low CPU when idle (near
+`0%` with `--no-ping`) over just two hardware threads. Note that the default `--ping` mode fires a periodic `HEAD` per
+connection, so CPU rises with connection count and ping frequency (see `PERFORMANCE_REPORT.md`).
 
 ---
 
 ## Why & When to Use This Gem?
 
-Traditional load testing tools (like `wrk`, Apache Bench, or Locust) are heavily optimized to maximize **Requests Per Second (RPS)** across short-lived HTTP connections. However, they struggle structurally when mathematically tasked with sustaining hundreds of thousands of *idle, continuous* connections simultaneously due to Thread context-switching overhead or memory limits.
+Traditional load testing tools (like `wrk`, Apache Bench, or Locust) are heavily optimized to maximize **Requests Per
+Second (RPS)** across short-lived HTTP connections. However, they struggle structurally when mathematically tasked with
+sustaining hundreds of thousands of _idle, continuous_ connections simultaneously due to Thread context-switching
+overhead or memory limits.
 
 **You need `http_loader` when your principal bottleneck is concurrency, not throughput.**
 
-### Core Use Cases:
-1. **Testing Persistent Connections (SSE/WebSockets)**: Validating how gracefully your backend or infrastructure handles 100,000+ active users holding open Event Streams, WebSockets, or Long-Polling links without doing constant background work.
-2. **Infrastructure Limitation Discovery**: Revealing hidden OS configuration ceilings before deployment, precisely finding edge drops such as File Descriptor starvation (`EMFILE`), Ephemeral Port exhaustion (`EADDRNOTAVAIL`), or reverse proxy RAM caps.
-3. **Evaluating Cloud Load Balancers/Gateways**: Discovering the exact threshold where an AWS Application Load Balancer or Nginx edge autonomously decides to drop idle Keep-Alive mappings to release native memory.
-4. **Resilience & Slowloris Simulation**: Ensuring your Thread-based infrastructure (e.g. Puma) correctly maps constraints and doesn't experience total thread-pool lockups when subjected to thousands of concurrent malicious stalled connections gracefully holding sockets hostage.
+### Core Use Cases
+
+1.  **Testing Persistent Connections (SSE/WebSockets)**: Validating how gracefully your backend or infrastructure
+    handles 100,000+ active users holding open Event Streams, WebSockets, or Long-Polling links without doing constant
+    background work.
+2.  **Infrastructure Limitation Discovery**: Revealing hidden OS configuration ceilings before deployment, precisely
+    finding edge drops such as File Descriptor starvation (`EMFILE`), Ephemeral Port exhaustion (`EADDRNOTAVAIL`), or
+    reverse proxy RAM caps.
+3.  **Evaluating Cloud Load Balancers/Gateways**: Discovering the exact threshold where an AWS Application Load Balancer
+    or Nginx edge autonomously decides to drop idle Keep-Alive mappings to release native memory.
+4.  **Resilience & Slowloris Simulation**: Ensuring your Thread-based infrastructure (e.g. Puma) correctly maps
+    constraints and doesn't experience total thread-pool lockups when subjected to thousands of concurrent malicious
+    stalled connections gracefully holding sockets hostage.
 
 ---
 
 ## Technical Dependencies
 
-**Strict Requirements**
-- **Ruby 3.3+** (the gemspec requires `>= 3.3`; developed on 4.0.9). CI runs the suite on 3.3.13, 3.4.12 and 4.0.9. Any Ruby with native `Fiber::Scheduler` support works.
+### Strict Requirements
+
+- **Ruby 3.3+** (the gemspec requires `>= 3.3`; developed on 4.0.9). CI runs the suite on 3.3.13, 3.4.12 and 4.0.9. Any
+  Ruby with native `Fiber::Scheduler` support works.
 - **Core Gems**: `rack`, `rackup`, `falcon`, `async`, `async-http`
 
-**Installation**
-You can install the project globally as a gem which exposes the `http_loader` executable:
+**Installation** You can install the project globally as a gem which exposes the `http_loader` executable:
+
 ```bash
 gem install http_loader
 ```
+
 Or add it to your project via Bundler:
+
 ```bash
 bundle add http_loader
 ```
@@ -42,13 +61,22 @@ bundle add http_loader
 The architecture relies gracefully on three decoupled components mathematically synced through environment wrappers:
 
 ### 1. `http_loader harness` (The Orchestrator)
-The brain of the test. It parses constraints, artificially lifts File Descriptor caps (`setrlimit`), seamlessly manages process spawning, detects hardware bottlenecks in real-time, and aggressively reads Unix metrics (`ps`, `lsof`) translating them into a highly readable dashboard telemetry loop.
+
+The brain of the test. It parses constraints, artificially lifts File Descriptor caps (`setrlimit`), seamlessly manages
+process spawning, detects hardware bottlenecks in real-time, and aggressively reads Unix metrics (`ps`, `lsof`)
+translating them into a highly readable dashboard telemetry loop.
 
 ### 2. `http_loader server` (The Local Endpoint)
-Instead of relying on blocking thread platforms (like Puma), the local endpoint hosts `Rackup::Handler::Falcon`. Every request is answered with a minimal `200 OK` (a 2-byte `text/plain` body of `OK`) mapped strictly to the asynchronous reactor, keeping server-side overhead negligible while the client holds connections open.
+
+Instead of relying on blocking thread platforms (like Puma), the local endpoint hosts `Rackup::Handler::Falcon`. Every
+request is answered with a minimal `200 OK` (a 2-byte `text/plain` body of `OK`) mapped strictly to the asynchronous
+reactor, keeping server-side overhead negligible while the client holds connections open.
 
 ### 3. `http_loader client` (The Asynchronous Initiator)
-The client bypasses expensive `Thread.new` wrappers and deploys raw `Async` fiber blocks executing `Net::HTTP.start`. By utilizing `sleep`, the connections are specifically configured to never close from the client-side unless the target physically hangs up, guaranteeing true metric validation for idle Keep-Alive limits.
+
+The client bypasses expensive `Thread.new` wrappers and deploys raw `Async` fiber blocks executing `Net::HTTP.start`. By
+utilizing `sleep`, the connections are specifically configured to never close from the client-side unless the target
+physically hangs up, guaranteeing true metric validation for idle Keep-Alive limits.
 
 ---
 
@@ -56,65 +84,107 @@ The client bypasses expensive `Thread.new` wrappers and deploys raw `Async` fibe
 
 You engage all functions purely through the `http_loader` executable command interface.
 
-**Syntax:**
-`http_loader harness [--connections_count=NUM] [FLAGS...]`
+**Syntax:** `http_loader harness [--connections_count=NUM] [FLAGS...]`
 
-| Parameter | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `--connections_count=` | Integer | Optional | The total number of TCP sessions to spawn natively across the whole test. Defaults to 1000. (Must be >= 1). |
-| `--https` | Flag | Optional | Configures TLS/SSL context. Forces internal targets to boot securely on `8443` and configures client payloads with `VERIFY_NONE`. |
-| `--url=` | String | Optional | Triggers **External Target Mode** (e.g. `--url=https://site1.com,https://site2.com`). Harness bypasses local `http_loader server` boot sequences completely to swarm remote targets via natively load-balanced round-robin. |
-| `--verbose` | Flag | Optional | Enables extensive verbose logging dynamically mapping TCP `Connection established` and closures strictly into the Thread-safe `./logs/client.log` mutex. |
-| `--[no-]ping` | Flag | Optional | Toggles Keep-Alive dynamic heartbeat pings off or on (default `true`). Sends an explicit `HEAD` request within the Keep-Alive tunnel routinely. |
-| `--ping_period=` | Integer | Optional | Time in seconds strictly bounding how often Keep-Alive fiber pings aggressively repeat. Defaults to `5`. |
-| `--http_loader_timeout=` | Float | Optional | The strict mathematical upper-bound limit enforcing autonomous Client disconnects cleanly. Defaults to `0` (mathematically infinite). |
-| `--bind_ips=` | String | Optional | Comma separated loopback or generic networking interfaces to sequentially map outgoing sockets against. (E.g. `127.0.0.1,127.0.0.2`). |
-| `--proxy_pool=` | String | Optional | Comma separated proxy URIs (e.g. `http://proxy1:8080,http://user:pass@proxy2:8080`) to multiplex connections through. |
-| `--headers=` | String | Optional | Comma separated `Key:Value` mapping of custom authorization or edge cache-bust headers injected strictly bypassing CDNs. |
-| `--slowloris_delay=` | Float | Optional | Hijacks conventional HTTP handshakes writing raw single byte strings maliciously across mathematical delays designed natively to systematically lock thread-dependent Reverse Proxies cleanly. |
-| `--export_json=` | String | Optional | Dumps the execution telemetry including `peak_connections` and mathematically evaluated OS FDs bottlenecks directly into a formatted JSON sink natively. |
-| `--target_duration=` | Float | Optional | Enforces a hard runtime cap structurally across the `keep-alive` processes. The Harness mathematically halts explicitly once SECONDS is bypassed natively. |
-| `--qps_per_connection=` | Integer | Optional | Upgrades pipelines to launch active rhythmic `GET` payloads natively per connected socket at RATE. A positive QPS takes precedence over ping regardless of the `--[no-]ping` flag. |
-| `--connections_per_second=` | Integer | Optional | Native Fiber load rate-limiter dictating explicit TCP handshake delays natively avoiding `ddos`-style port clogs too early natively. Defaults to `0` (unlimited burst). |
-| `--ramp_up=` | Float | Optional | Systematically scales the initial spawning rate uniformly over Seconds to evade trigger-based target scaling architectures like simple ASGs. Overrides static rates. |
-| `--max_concurrent_connections=`| Integer | Optional | Configures strict `Async::Semaphore` caps mapping active concurrent sockets exactly natively. On the CLI it defaults to `--connections_count`; a `Config` built programmatically defaults to `1000`. |
-| `--reopen_closed_connections` | Flag | Optional | Maps organic resilience loops. TCP endpoints forcefully disrupted dynamically resurrect automatically via standard retry heuristics. |
-| `--reopen_interval=` | Float | Optional | Forces absolute temporal `sleep()` gaps before restoring dropped target loops avoiding internal spin-lock CPU floods. Defaults to `5.0`. |
-| `--read_timeout=` | Float | Optional | Directly hooks into native `Net::HTTP` parameters forcing standard request drop mechanics organically mapping. Defaults to `0` (unlimited). |
-| `--user_agent=` | String | Optional | Overrides all HTTP payload identities statically natively evading specific rigid Bot detection infrastructures. Defaults to `Keep-Alive Test`. |
-| `--jitter=` | Float | Optional | Adds a mathematical `±%` randomization (e.g., `0.2` for 20%) to all sleep intervals organically evading Thundering Herd bottlenecks. **Defaults to `1.0` (±100%), i.e. jitter is on by default;** pass `--jitter=0` to disable it. |
-| `--track_status_codes` | Flag | Optional | Synchronously intercepts Keeping-Alive Pings HTTP integer responses, safely logging HTTP `429` and `5xx` load balancer drops sequentially natively. |
+- `--connections_count=` (Integer, optional): The total number of TCP sessions to spawn natively across the whole test.
+  Defaults to 1000. (Must be >= 1).
+- `--https` (Flag, optional): Configures TLS/SSL context. Forces internal targets to boot securely on `8443` and
+  configures client payloads with `VERIFY_NONE`.
+- `--url=` (String, optional): Triggers **External Target Mode** (e.g. `--url=https://site1.com,https://site2.com`).
+  Harness bypasses local `http_loader server` boot sequences completely to swarm remote targets via natively
+  load-balanced round-robin.
+- `--verbose` (Flag, optional): Enables extensive verbose logging dynamically mapping TCP `Connection established` and
+  closures strictly into the Thread-safe `./logs/client.log` mutex.
+- `--[no-]ping` (Flag, optional): Toggles Keep-Alive dynamic heartbeat pings off or on (default `true`). Sends an
+  explicit `HEAD` request within the Keep-Alive tunnel routinely.
+- `--ping_period=` (Integer, optional): Time in seconds strictly bounding how often Keep-Alive fiber pings aggressively
+  repeat. Defaults to `5`.
+- `--http_loader_timeout=` (Float, optional): The strict mathematical upper-bound limit enforcing autonomous Client
+  disconnects cleanly. Defaults to `0` (mathematically infinite).
+- `--bind_ips=` (String, optional): Comma separated loopback or generic networking interfaces to sequentially map
+  outgoing sockets against. (E.g. `127.0.0.1,127.0.0.2`).
+- `--proxy_pool=` (String, optional): Comma separated proxy URIs (e.g.
+  `http://proxy1:8080,http://user:pass@proxy2:8080`) to multiplex connections through.
+- `--headers=` (String, optional): Comma separated `Key:Value` mapping of custom authorization or edge cache-bust
+  headers injected strictly bypassing CDNs.
+- `--slowloris_delay=` (Float, optional): Hijacks conventional HTTP handshakes writing raw single byte strings
+  maliciously across mathematical delays designed natively to systematically lock thread-dependent Reverse Proxies
+  cleanly.
+- `--export_json=` (String, optional): Dumps the execution telemetry including `peak_connections` and mathematically
+  evaluated OS FDs bottlenecks directly into a formatted JSON sink natively.
+- `--target_duration=` (Float, optional): Enforces a hard runtime cap structurally across the `keep-alive` processes.
+  The Harness mathematically halts explicitly once SECONDS is bypassed natively.
+- `--qps_per_connection=` (Integer, optional): Upgrades pipelines to launch active rhythmic `GET` payloads natively per
+  connected socket at RATE. A positive QPS takes precedence over ping regardless of the `--[no-]ping` flag.
+- `--connections_per_second=` (Integer, optional): Native Fiber load rate-limiter dictating explicit TCP handshake
+  delays natively avoiding `ddos`-style port clogs too early natively. Defaults to `0` (unlimited burst).
+- `--ramp_up=` (Float, optional): Systematically scales the initial spawning rate uniformly over Seconds to evade
+  trigger-based target scaling architectures like simple ASGs. Overrides static rates.
+- `--max_concurrent_connections=` (Integer, optional): Configures strict `Async::Semaphore` caps mapping active
+  concurrent sockets exactly natively. On the CLI it defaults to `--connections_count`; a `Config` built
+  programmatically defaults to `1000`.
+- `--reopen_closed_connections` (Flag, optional): Maps organic resilience loops. TCP endpoints forcefully disrupted
+  dynamically resurrect automatically via standard retry heuristics.
+- `--reopen_interval=` (Float, optional): Forces absolute temporal `sleep()` gaps before restoring dropped target loops
+  avoiding internal spin-lock CPU floods. Defaults to `5.0`.
+- `--read_timeout=` (Float, optional): Directly hooks into native `Net::HTTP` parameters forcing standard request drop
+  mechanics organically mapping. Defaults to `0` (unlimited).
+- `--user_agent=` (String, optional): Overrides all HTTP payload identities statically natively evading specific rigid
+  Bot detection infrastructures. Defaults to `Keep-Alive Test`.
+- `--jitter=` (Float, optional): Adds a mathematical `±%` randomization (e.g., `0.2` for 20%) to all sleep intervals
+  organically evading Thundering Herd bottlenecks. **Defaults to `1.0` (±100%), i.e. jitter is on by default;** pass
+  `--jitter=0` to disable it.
+- `--track_status_codes` (Flag, optional): Synchronously intercepts Keeping-Alive Pings HTTP integer responses, safely
+  logging HTTP `429` and `5xx` load balancer drops sequentially natively.
 
 ---
 
 ## Execution Scenarios & Code Examples
 
 ### Scenario 1: Standard Plaintext Benchmarking
-Benchmarks connection stability against the local application using plaintext packets. Perfect for finding file-descriptor limitations natively.
+
+Benchmarks connection stability against the local application using plaintext packets. Perfect for finding
+file-descriptor limitations natively.
+
 ```bash
 http_loader harness --connections_count=150000
 ```
+
 > Boots internal `http_loader server` implicitly on HTTP strictly port `8080`.
 
 ### Scenario 2: Encryption Cost Calculation
-Forces both local client/server infrastructure seamlessly into encrypted protocols using self-generated mathematical PKI contexts.
+
+Forces both local client/server infrastructure seamlessly into encrypted protocols using self-generated mathematical PKI
+contexts.
+
 ```bash
 http_loader harness --connections_count=1000 --https
 ```
+
 > Boots internal `http_loader server` natively on HTTPS securely executing over port `8443`.
 
 ### Scenario 3: External Endpoint Durability Testing
-Testing a foreign server (e.g., Google Maps) to determine exactly what their Keep-Alive edge restrictions natively drop out at.
+
+Testing a foreign server (e.g., Google Maps) to determine exactly what their Keep-Alive edge restrictions natively drop
+out at.
+
 ```bash
 http_loader harness --connections_count=5 --url="https://www.google.com/maps"
 ```
-> Avoids booting `http_loader server`. Metric Dashboard displays `"EXTERNAL"` for server metrics, while strictly tracking `Real Conns`. (Metrics show Google enforces a strict ~240-second (4 min) idle keep-alive retention hook before resetting TCP routes!).
+
+> Avoids booting `http_loader server`. Metric Dashboard displays `"EXTERNAL"` for server metrics, while strictly
+> tracking `Real Conns`. (Metrics show Google enforces a strict ~240-second (4 min) idle keep-alive retention hook
+> before resetting TCP routes!).
 
 ### Scenario 4: Automated Orchestrator Scripts (Executors)
-Instead of monitoring the terminal manually indefinitely, you can write Ruby wrapper scripts to trigger tests sequentially or track metrics completely autonomously.
+
+Instead of monitoring the terminal manually indefinitely, you can write Ruby wrapper scripts to trigger tests
+sequentially or track metrics completely autonomously.
 
 #### Example A: Protocol Dual-Testing (HTTP -> HTTPS)
+
 Executes a 5-second burst test across both local protocol frameworks back-to-back:
+
 ```ruby
 require 'fileutils'
 # test_protocols.rb
@@ -133,14 +203,21 @@ Process.wait(pid2)
 ```
 
 #### Example B: External Durability Tracking
+
 Spawns an external target and tracks how many strict seconds the target holds the socket before forcefully killing it:
+
 ```ruby
 require 'fileutils'
 # test_endurance.rb
 
 start_time = Time.now
-pid = spawn("http_loader harness --connections_count=5 --url='https://example.com'", out: 'monitor.log', err: 'monitor.err')
-sleep 10 # Wait for native initialization
+pid = spawn(
+  "http_loader harness --connections_count=5 --url='https://example.com'",
+  out: 'monitor.log',
+  err: 'monitor.err'
+)
+# Wait for native initialization.
+sleep 10
 
 loop do
   # Read the active output safely
@@ -149,9 +226,11 @@ loop do
   rescue StandardError
     ''
   end.split("\n").grep(/^\d{2}:\d{2}:\d{2}/)
-  if lines.any? && lines.last.split('|')[1].to_i.zero?
+  if lines.any? && Integer(lines.last.split('|')[1], 10).zero?
     puts "Server disconnected actively after #{(Time.now - start_time).round(2)} seconds."
     break
+  else
+    nil
   end
   sleep 4
 end
@@ -165,66 +244,104 @@ Process.kill('INT', pid)
 
 The `http_loader harness` dashboard prints active, real-time measurements describing exactly how the client is scaling.
 
-* **Time (UTC)**: Current absolute time in the UTC format for strict log matching.
-* **Real Conns (Real Connections)**: The number of ESTABLISHED TCP sockets owned by the active `client` process. On Linux this is derived by intersecting the process's socket file descriptors with the ESTABLISHED entries in `/proc/<PID>/net/tcp[6]`; on macOS it is counted from `lsof` `(ESTABLISHED)` lines. Both paths report the same thing.
-  - **Linux Fast-Path**: Bypasses external tools entirely, natively parsing symlinks directly in `/proc/<PID>/fd/` and counting exclusively the descriptors returning exactly `socket:[*]`.
-  - **macOS Fallback**: Since macOS lacks `/proc` socket references natively, it polls via `lsof -p <CLIENT_PID> -n -P` and mathematically counts the exact occurrences indicating the `ESTABLISHED` flag organically.
-* **Srv/Cli CPU/Thrds**: Thread counts and combined relative CPU% measured across all threads dynamically allocated to each discrete process natively.
-* **Srv/Cli Mem/Conn**: Provides immediate memory budgeting statistics organically derived by dividing total physical memory (RSS) by `Real Conns`.
+- **Time (UTC)**: Current absolute time in the UTC format for strict log matching.
+- **Real Conns (Real Connections)**: The number of ESTABLISHED TCP sockets owned by the active `client` process. On
+  Linux this is derived by intersecting the process's socket file descriptors with the ESTABLISHED entries in
+  `/proc/<PID>/net/tcp[6]`; on macOS it is counted from `lsof` `(ESTABLISHED)` lines. Both paths report the same thing.
+  - **Linux Fast-Path**: Bypasses external tools entirely, natively parsing symlinks directly in `/proc/<PID>/fd/` and
+    counting exclusively the descriptors returning exactly `socket:[*]`.
+  - **macOS Fallback**: Since macOS lacks `/proc` socket references natively, it polls via `lsof -p <CLIENT_PID> -n -P`
+    and mathematically counts the exact occurrences indicating the `ESTABLISHED` flag organically.
+- **Srv/Cli CPU/Thrds**: Thread counts and combined relative CPU% measured across all threads dynamically allocated to
+  each discrete process natively.
+- **Srv/Cli Mem/Conn**: Provides immediate memory budgeting statistics organically derived by dividing total physical
+  memory (RSS) by `Real Conns`.
 
 ---
 
 ## Hardware Limitations & Known Insights
 
-This suite effortlessly scales through software. When you finally hit a plateau, the limitation exists natively within the Operating System.
+This suite effortlessly scales through software. When you finally hit a plateau, the limitation exists natively within
+the Operating System.
 
 ### Limitations Observed During 150,000 Tests
 
-**1. Ephemeral Port Starvation (`EADDRNOTAVAIL`)**
-* **The Error:** `=> BOTTLENECK ACTIVE: [OS Ports Limit: 924 EADDRNOTAVAIL]`
-* **The Insight:** A single networking loopback interface mapping `127.0.0.1` -> `127.0.0.1:8080` has a mathematically finite amount of dynamic connection identifiers. Standard macOS endpoints run out of ephemeral sockets at strictly ~`32,768` (or ~`16,384`) active connections depending on the kernel version.
-* **The Reconnection Death-Spiral:** If your target Server hits its internal File Descriptor limits (for instance, dropping connections at exactly 5,000 sockets), and you run the test with `--reopen_closed_connections`, the Client will aggressively retry. This cycle will exhaust all 16k available ephemeral loopback ports within seconds by dumping them into `TIME_WAIT` lock, throwing `EADDRNOTAVAIL` artificially early.
-* **The Solution:** To achieve 150k endpoints effectively sourced from a singular physical piece of hardware, you must dynamically generate multiple loopback addresses to expand your subnet ports implicitly:
+#### 1. Ephemeral Port Starvation (`EADDRNOTAVAIL`)
+
+- **The Error:** `=> BOTTLENECK ACTIVE: [OS Ports Limit: 924 EADDRNOTAVAIL]`
+- **The Insight:** A single networking loopback interface mapping `127.0.0.1` -> `127.0.0.1:8080` has a mathematically
+  finite amount of dynamic connection identifiers. Standard macOS endpoints run out of ephemeral sockets at strictly
+  ~`32,768` (or ~`16,384`) active connections depending on the kernel version.
+- **The Reconnection Death-Spiral:** If your target Server hits its internal File Descriptor limits (for instance,
+  dropping connections at exactly 5,000 sockets), and you run the test with `--reopen_closed_connections`, the Client
+  will aggressively retry. This cycle will exhaust all 16k available ephemeral loopback ports within seconds by dumping
+  them into `TIME_WAIT` lock, throwing `EADDRNOTAVAIL` artificially early.
+- **The Solution:** To achieve 150k endpoints effectively sourced from a singular physical piece of hardware, you must
+  dynamically generate multiple loopback addresses to expand your subnet ports implicitly:
+
 ```bash
 sudo ifconfig lo0 alias 127.0.0.2 up
 sudo ifconfig lo0 alias 127.0.0.3 up
 ```
 
-**2. File Descriptor Limits (`EMFILE` & Server Rejections)**
-* **The Error:** `=> BOTTLENECK ACTIVE: [OS FDs Limit: 40 EMFILE]` (Or silently dropped connections hovering exactly at `~5,000` to `~10,000`)
-* **The Insight:** Operating systems heavily restrict total open file capabilities (sockets count as files natively). Standard macOS limits hardcap user file descriptors roughly near 5,000 or 10,000 (`kern.maxfilesperproc`). Once the Server hits this limit, it proactively rejects incoming sockets, which forces drops.
-* **The Solution:** The harness tries to execute `Process.setrlimit` dynamically to add buffers. If blocked securely by native OS permissions or deep kernel limits, execute these configurations natively before the benchmark:
+#### 2. File Descriptor Limits (`EMFILE` & Server Rejections)
+
+- **The Error:** `=> BOTTLENECK ACTIVE: [OS FDs Limit: 40 EMFILE]` (Or silently dropped connections hovering exactly at
+  `~5,000` to `~10,000`)
+- **The Insight:** Operating systems heavily restrict total open file capabilities (sockets count as files natively).
+  Standard macOS limits hardcap user file descriptors roughly near 5,000 or 10,000 (`kern.maxfilesperproc`). Once the
+  Server hits this limit, it proactively rejects incoming sockets, which forces drops.
+- **The Solution:** The harness tries to execute `Process.setrlimit` dynamically to add buffers. If blocked securely by
+  native OS permissions or deep kernel limits, execute these configurations natively before the benchmark:
+
 ```bash
 sudo sysctl -w kern.maxfiles=1000000
 sudo sysctl -w kern.maxfilesperproc=1000000
 ulimit -n 250000
 ```
 
-**3. External Connection Timeouts (Keep-Alive Death)**
-* **The Behavior:** When testing foreign servers (e.g., `--url=...`), external networking edges enforce strict limits on how long an idle HTTP TCP tunnel remains in `ESTABLISHED` mode.
-* **The Insight:** Because the `http_loader client` is engineered to `sleep` natively on $0.0\%$ CPU while holding the socket open, it will never close the connection locally. Instead, the upstream firewall organically terminates it.
-* **The Automation:** The main `http_loader harness` pipeline automatically calculates your peak connection limits. The exact moment the local OS recognizes the socket dropped natively (lapsing from `5` back down to `0`), the metric dashboard natively halts itself, intercepts the timeout organically, and reports exactly how long it survived directly to standard output:
+#### 3. External Connection Timeouts (Keep-Alive Death)
+
+- **The Behavior:** When testing foreign servers (e.g., `--url=...`), external networking edges enforce strict limits on
+  how long an idle HTTP TCP tunnel remains in `ESTABLISHED` mode.
+- **The Insight:** Because the `http_loader client` is engineered to `sleep` natively on $0.0\%$ CPU while holding the
+  socket open, it will never close the connection locally. Instead, the upstream firewall organically terminates it.
+- **The Automation:** The main `http_loader harness` pipeline automatically calculates your peak connection limits. The
+  exact moment the local OS recognizes the socket dropped natively (lapsing from `5` back down to `0`), the metric
+  dashboard natively halts itself, intercepts the timeout organically, and reports exactly how long it survived directly
+  to standard output:
+
 ```text
 [Harness] ⚠️ EXTERNAL SERVER DISCONNECTED! All TCP Keep-Alive sockets were forcefully dropped.
 [Harness] The endpoints natively survived for mathematically 242.25 seconds.
 ```
 
 ### Encryption Memory Economics
-CPU stays low over `2 Threads` when idle, but under the default `--ping` mode at scale the client and server measured roughly `55–70%` (see `PERFORMANCE_REPORT.md`). Tracking RAM natively produced useful deployment thresholds:
 
-* **HTTP Constraints:** Per-connection memory overhead is workload-dependent; treat the figures in `PERFORMANCE_REPORT.md` as the single measured source of truth rather than the rounded values quoted here.
-* **HTTPS Overhead:** Introducing block ciphers and OpenSSL buffers exponentially explodes user RAM requirements payload. Handshakes natively forced the Client metrics out to `~166.3 KB` natively per socket, increasing overhead practically by **`2.3x`**.
+CPU stays low over `2 Threads` when idle, but under the default `--ping` mode at scale the client and server measured
+roughly `55–70%` (see `PERFORMANCE_REPORT.md`). Tracking RAM natively produced useful deployment thresholds:
 
-Large HTTPS fan-outs are memory-bound; size the host from the per-connection RSS measured in `PERFORMANCE_REPORT.md` for your own build and target, rather than from a fixed headline number.
+- **HTTP Constraints:** Per-connection memory overhead is workload-dependent; treat the figures in
+  `PERFORMANCE_REPORT.md` as the single measured source of truth rather than the rounded values quoted here.
+- **HTTPS Overhead:** Introducing block ciphers and OpenSSL buffers exponentially explodes user RAM requirements
+  payload. Handshakes natively forced the Client metrics out to `~166.3 KB` natively per socket, increasing overhead
+  practically by **`2.3x`**.
+
+Large HTTPS fan-outs are memory-bound; size the host from the per-connection RSS measured in `PERFORMANCE_REPORT.md` for
+your own build and target, rather than from a fixed headline number.
 
 ---
 
 ## 🔍 Network Diagnostics & Local Telemetry
 
-When tracking aggressive keep-alive behavior, native macOS/Linux Unix telemetry tools are required to ensure connections are actually held in memory and the OS isn't silently closing endpoints.
+When tracking aggressive keep-alive behavior, native macOS/Linux Unix telemetry tools are required to ensure connections
+are actually held in memory and the OS isn't silently closing endpoints.
 
 ### 1. Diagnosing Local Ports & Connection Status
-To view if your benchmark endpoints are genuinely active, use `lsof` (List Open Files) bounded strictly to our local test ports:
+
+To view if your benchmark endpoints are genuinely active, use `lsof` (List Open Files) bounded strictly to our local
+test ports:
+
 ```bash
 # Check if Falcon successfully bound to network edges:
 lsof -i :8080 -sTCP:LISTEN
@@ -233,7 +350,10 @@ lsof -iTCP -sTCP:ESTABLISHED | grep ruby
 ```
 
 ### 2. Checking Ephemeral Port Busyness (TIME_WAIT Exhaustion)
-As seen in extremely fast harness loops, macOS frequently traps abruptly killed sockets in `TIME_WAIT` to catch trailing packets. You can trace this exhaustion organically utilizing `netstat`:
+
+As seen in extremely fast harness loops, macOS frequently traps abruptly killed sockets in `TIME_WAIT` to catch trailing
+packets. You can trace this exhaustion organically utilizing `netstat`:
+
 ```bash
 # Get strict mathematical counts of all heavily exhausted Keep-Alive sockets on your machine natively:
 netstat -an | grep TIME_WAIT | wc -l
@@ -243,7 +363,10 @@ netstat -anpf inet | grep 8080
 ```
 
 ### 3. Monitoring Raw Connection Traffic
-To observe underlying physical TCP/IP byte transfer rates and verify traffic flow explicitly, utilize the `nettop` (macOS native) or `ss` utilities:
+
+To observe underlying physical TCP/IP byte transfer rates and verify traffic flow explicitly, utilize the `nettop`
+(macOS native) or `ss` utilities:
+
 ```bash
 # macOS native active interface inspector:
 nettop -m tcp -J state,bytes_in,bytes_out
@@ -253,21 +376,27 @@ ss -tulpen | grep 8080
 ```
 
 ### 4. Intercepting Payload Data (Packet Sniffing)
-Because `rack/falcon` serves plaintext HTTP across the loopback (over HTTP on 8080), you can sniff and intercept the request/response traffic — the client's periodic `HEAD` pings and the server's `200 OK` replies — at the kernel layer using `tcpdump`.
+
+Because `rack/falcon` serves plaintext HTTP across the loopback (over HTTP on 8080), you can sniff and intercept the
+request/response traffic — the client's periodic `HEAD` pings and the server's `200 OK` replies — at the kernel layer
+using `tcpdump`.
+
 ```bash
-# Sniff strict ASCII payload headers and body bounds passing over local interface 0 mapping perfectly to the benchmark port:
+# Sniff the ASCII request headers and bodies on the loopback interface, port 8080:
 sudo tcpdump -i lo0 port 8080 -A
 ```
 
-*Note: You cannot intercept HTTPS (port `8443`) natively with `tcpdump` because it leverages block-cipher encryption. To inspect TLS loads, you would need to proxy the Ruby client bindings organically through a platform like `mitmproxy` and natively dump the Root CA into your macOS keychain.*
+_Note: You cannot intercept HTTPS (port `8443`) natively with `tcpdump` because it leverages block-cipher encryption. To
+inspect TLS loads, you would need to proxy the Ruby client bindings organically through a platform like `mitmproxy` and
+natively dump the Root CA into your macOS keychain._
 
 ---
 
 ## 🛠️ Development & Quality Gates
 
-This repository is held to a "zero warnings, zero suppressions, everything checked" standard.
-Every gate below runs in CI (each workflow ending with a warning gate that fails on any
-warning or deprecation in the logs) and can be run locally:
+This repository is held to a "zero warnings, zero suppressions, everything checked" standard. Every gate below runs in
+CI (each workflow ending with a warning gate that fails on any warning or deprecation in the logs) and can be run
+locally:
 
 ```bash
 bundle exec rake        # spec (100% line+branch), rubocop + suppressions, sorbet, yard, reek, flay, audit
@@ -275,27 +404,27 @@ bundle exec rake mutant # mutation testing: every mutant must be killed (run on 
 bundle exec rake outdated
 ```
 
-| Gate | Tool |
-| --- | --- |
-| Tests + coverage | RSpec + SimpleCov (100% line **and** branch, no skipped/pending/focused examples) |
-| Lint | RuboCop with every plugin, no todo file, no inline directives |
-| Suppression scan | `script/forbidden_suppressions.sh` (no `rubocop:disable`, `:nocov:`, `nosec`, `T.unsafe`, …) |
-| Types | Sorbet `srb tc` against Tapioca-generated RBIs; `lib/` is `# typed: strong` |
-| Docs | YARD (100% documented) |
-| Smells / duplication | Reek (`.reek.yml`) and Flay (mass 24, score 0) |
-| Dependencies | bundler-audit, and an "outdated" gate with documented holds (`script/outdated_holds.yml`) |
-| Mutation | Mutant — every mutant killed (`.mutant.yml`) |
-| Workflows / shell | actionlint, zizmor, ShellCheck |
-| Secrets | gitleaks (full history) |
-| Container | hadolint + Trivy image scan (fail on fixable HIGH/CRITICAL) |
+| Gate                 | Tool                                                                                         |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| Tests + coverage     | RSpec + SimpleCov (100% line **and** branch, no skipped/pending/focused examples)            |
+| Lint                 | RuboCop with every plugin, no todo file, no inline directives                                |
+| Suppression scan     | `script/forbidden_suppressions.sh` (no `rubocop:disable`, `:nocov:`, `nosec`, `T.unsafe`, …) |
+| Types                | Sorbet `srb tc` against Tapioca-generated RBIs; `lib/` is `# typed: strong`                  |
+| Docs                 | YARD (100% documented)                                                                       |
+| Smells / duplication | Reek (`.reek.yml`) and Flay (mass 24, score 0)                                               |
+| Dependencies         | bundler-audit, and an "outdated" gate with documented holds (`script/outdated_holds.yml`)    |
+| Mutation             | Mutant — every mutant killed (`.mutant.yml`)                                                 |
+| Workflows / shell    | actionlint, zizmor, ShellCheck                                                               |
+| Secrets              | gitleaks (full history)                                                                      |
+| Container            | hadolint + Trivy image scan (fail on fixable HIGH/CRITICAL)                                  |
 
-Install the pre-commit hook with `git config core.hooksPath .githooks`. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the full rules.
+Install the pre-commit hook with `git config core.hooksPath .githooks`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+full rules.
 
 ### Docker
 
-A `Dockerfile` (pinned to the newest `ruby:4.0.9` image by digest) and `docker-compose.yml`
-reproduce the Linux CI environment, including the native `/proc` resource-monitoring paths:
+A `Dockerfile` (pinned to the newest `ruby:4.0.9` image by digest) and `docker-compose.yml` reproduce the Linux CI
+environment, including the native `/proc` resource-monitoring paths:
 
 ```bash
 docker compose run --build --rm ci     # full gate

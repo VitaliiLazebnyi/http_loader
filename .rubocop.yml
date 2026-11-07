@@ -1,119 +1,201 @@
-# Maximum-strictness configuration. Every cop runs in "fail the build" mode and there is
-# no todo file. New code has no blanket exclusions: fix the code. A cop that genuinely
-# cannot apply to a file is configured narrowly below, with the reason next to it. Inline
-# RuboCop directives are forbidden (Style/DisableCopsWithinSourceCodeDirective) and are
-# additionally rejected by script/forbidden_suppressions.sh.
-plugins:
-  - rubocop-performance
-  - rubocop-thread_safety
-  - rubocop-rake
-  - rubocop-rspec
-  - rubocop-md
-  - rubocop-sorbet
-
-require:
-  - rubocop-ai
+---
+# Maximum strictness: every cop of RuboCop and of every plugin is enabled (EnabledByDefault), including the ones
+# RuboCop ships disabled, and every offense fails the build. There is no todo file and no inline directive
+# (Style/DisableCopsWithinSourceCodeDirective, script/forbidden_suppressions.sh). Keys are sorted (yamllint
+# key-ordering). Every setting below either tightens a cop or reconciles two enabled cops, and every disabled cop
+# names the cop or the Sorbet rule it contradicts.
 
 AllCops:
+  EnabledByDefault: true
+  # Generated or vendored trees that are not hand-authored source.
+  Exclude:
+    - .mutant/**/*
+    - .yardoc/**/*
+    - coverage/**/*
+    - doc/**/*
+    - sorbet/rbi/gems/**/*
+    - tmp/**/*
+    - tools/node_modules/**/*
+    - vendor/**/*
+  Include:
+    - '**/*.gemspec'
+    - '**/*.md'
+    - '**/*.rb'
+    - '**/Gemfile'
+    - '**/Rakefile'
+    - bin/*
+    - script/scorecard_check
+    - typecheck.gemfile
   NewCops: enable
   SuggestExtensions: false
   TargetRubyVersion: 3.3
-  Exclude:
-    # Generated or vendored trees that are not hand-authored source.
-    - 'vendor/**/*'
-    - 'coverage/**/*'
-    - 'sorbet/**/*'
-    - 'tmp/**/*'
-    - 'doc/**/*'
-    - '.yardoc/**/*'
-
-# --- Project conventions -------------------------------------------------------------------
-Style/FrozenStringLiteralComment:
-  Enabled: true
-  # README snippets are illustrative, not standalone programs.
-  Exclude:
-    - '**/*.md'
 
 Gemspec/DevelopmentDependencies:
   EnforcedStyle: gemspec
 
+# Continuation lines are indented by a fixed two spaces rather than aligned with the first argument, so every
+# indentation is a multiple of two (editorconfig-checker), as in leechtop-downloader.
+Layout/ArgumentAlignment:
+  EnforcedStyle: with_fixed_indentation
+Layout/ArrayAlignment:
+  EnforcedStyle: with_fixed_indentation
+Layout/LineEndStringConcatenationIndentation:
+  EnforcedStyle: indented
+
+# The width of every other file type (markdownlint, yamllint, .editorconfig), with none of the allowances
+# (heredocs, URIs, qualified names, directives, comment patterns) that let a line run longer.
 Layout/LineLength:
-  Max: 200
+  AllowCopDirectives: false
+  AllowHeredoc: false
+  AllowQualifiedName: false
+  AllowURI: false
+  AllowedPatterns: []
+  Max: 120
+Layout/MultilineMethodCallIndentation:
+  EnforcedStyle: indented
+Layout/ParameterAlignment:
+  EnforcedStyle: with_fixed_indentation
 
+# Requires a leading `::` on every constant. Style/RedundantConstantBase (enabled) forbids exactly that prefix,
+# and RuboCop documents the two cops as mutually exclusive.
+Lint/ConstantResolution:
+  Enabled: false
+
+# Layout/MultilineArrayLineBreaks, MultilineHashKeyLineBreaks and MultilineMethodArgumentLineBreaks (all enabled)
+# put every element of a multi-line literal or call on its own line. The length cops therefore count such a literal
+# or call as one line (as standalone_migrations does for examples); their default maximums stay.
+Metrics/BlockLength:
+  CountAsOne: &count_as_one
+    - array
+    - hash
+    - heredoc
+    - method_call
 Metrics/ClassLength:
-  Max: 140
-
-# The integration suite boots throwaway local servers on background threads to keep
-# end-to-end coverage off the network; the thread-safety and method-size cops do not
-# apply to that scaffolding.
-ThreadSafety/NewThread:
-  Exclude:
-    - 'spec/integration/**/*'
+  CountAsOne: *count_as_one
 Metrics/MethodLength:
-  Exclude:
-    - 'spec/integration/**/*'
-Metrics/AbcSize:
-  Exclude:
-    - 'spec/integration/**/*'
+  CountAsOne: *count_as_one
+Metrics/ModuleLength:
+  CountAsOne: *count_as_one
 
-RSpec/ExampleLength:
-  Max: 25
-RSpec/MultipleExpectations:
-  Max: 10
-RSpec/NestedGroups:
-  Max: 5
-RSpec/MultipleMemoizedHelpers:
-  Max: 7
-RSpec/AnyInstance:
-  Enabled: false
-RSpec/ContextWording:
-  Enabled: false
-
-# Sorbet signatures name every parameter, including the block, so anonymous block
-# forwarding (`&`) cannot be used in typed code.
+# Sorbet signatures name every parameter, including the block, so anonymous block forwarding (`&`) cannot be
+# used in typed code.
 Naming/BlockForwarding:
   EnforcedStyle: explicit
+
+# Rescued exceptions are named `error`, as in leechtop-downloader, rather than the default `e` (which Reek's
+# UncommunicativeVariableName rejects).
+Naming/RescuedExceptionsVariableName:
+  PreferredName: error
+
+# Sorbet type-checks the specs (sorbet/config: --enable-experimental-rspec). Explicit class names and explicit
+# predicate calls are statically resolved; `described_class::CONST` is a dynamic constant reference and dynamic
+# predicate matchers (`be_empty`) go through method_missing, neither of which Sorbet can check.
+RSpec/DescribedClass:
+  EnforcedStyle: explicit
+RSpec/ExampleLength:
+  CountAsOne: *count_as_one
+RSpec/PredicateMatcher:
+  EnforcedStyle: explicit
+
+# Two scripts run without the bundle and therefore without sorbet-runtime: RUBYOPT loads
+# script/upstream_warnings.rb into every Ruby process before any gem (including `gem build`), and the security
+# workflow runs script/scorecard_check.rb on a bare Ruby. They cannot declare runtime signatures, so they are
+# `typed: true` and Sorbet still checks them.
+Sorbet/EnforceSignatures:
+  Exclude:
+    - script/scorecard_check.rb
+    - script/upstream_warnings.rb
+
+# These cops exist for codebases that write their types as RBS comments (`#: (Integer) -> void`, `#: as Integer`,
+# `#: as !nil`). They forbid `sig`, `extend T::Sig`, `T.let`, `T.cast`, `T.must`, `T.type_alias`, `T::Struct` and
+# `T::Helpers`, the runtime-checked forms this gem uses: Sorbet/EnforceSignatures (enabled, `sig` style) requires a
+# `sig` on every method, and `typed: strong` requires `T.let` on every instance variable and a checked `T.cast`
+# wherever an untyped library value (OptionParser, Async) enters typed code. Sorbet/RedundantExtendTSig expects
+# T::Sig mixed into every Module of the process, a global monkey patch a gem must not make.
+Sorbet/ForbidSig:
+  Enabled: false
+Sorbet/ForbidSigWithRuntime:
+  Enabled: false
+Sorbet/ForbidTCast:
+  Enabled: false
+Sorbet/ForbidTHelpers:
+  Enabled: false
+Sorbet/ForbidTLet:
+  Enabled: false
+Sorbet/ForbidTMust:
+  Enabled: false
+Sorbet/ForbidTSig:
+  Enabled: false
+Sorbet/ForbidTStruct:
+  Enabled: false
+Sorbet/ForbidTTypeAlias:
+  Enabled: false
+Sorbet/ForbidTypeAliasedShapes:
+  Enabled: false
+Sorbet/RedundantExtendTSig:
+  Enabled: false
+
+# The sigil ladder: lib/ is `typed: strong` (no T.untyped value anywhere); the scripts, RBI tooling and spec
+# support modules are `strict`, except the two scripts above that run without sorbet-runtime; the specs are `true`
+# (TrueSigil applies to every file) because RSpec's `let` and example blocks have no signatures to declare.
+Sorbet/StrictSigil:
+  Exclude:
+    - script/scorecard_check.rb
+    - script/upstream_warnings.rb
+  Include:
+    - lib/**/*.rb
+    - script/**/*.rb
+    - sorbet/**/*.rb
+    - spec/support/**/*.rb
+Sorbet/StrongSigil:
+  Include:
+    - lib/**/*.rb
+
+# Rewrites named block parameters to anonymous `&` forwarding, which Naming/BlockForwarding (explicit, above) and
+# Sorbet signatures (every parameter is named) forbid.
 Style/ArgumentsForwarding:
   Enabled: false
 
-# --- Sorbet: strictest sigils that are reachable -------------------------------------------
-# lib/ is `typed: strong` (the strictest per-file level): every method has a signature and
-# no value is `T.untyped`. The bin entrypoint and the specs stay at their own sigils.
-Sorbet/StrongSigil:
-  Enabled: true
-  Include:
-    - 'lib/**/*.rb'
-Sorbet/StrictSigil:
-  Enabled: false
-Sorbet/TrueSigil:
-  Enabled: false
-Sorbet/FalseSigil:
-  Enabled: false
-Sorbet/EnforceSigilOrder:
-  Enabled: true
-Sorbet/EnforceSignatures:
-  Enabled: true
-  Include:
-    - 'lib/**/*.rb'
-Sorbet/ForbidTUnsafe:
-  Enabled: true
-# Sorbet/BlockMethodDefinition guards against `def` inside a block silently redefining a
-# method at the enclosing scope (a real hazard in lib/). RSpec example groups are blocks by
-# construction, and defining helper methods inside `describe`/`context` is the standard,
-# intended pattern, so the cop does not apply to the spec tree.
-Sorbet/BlockMethodDefinition:
-  Exclude:
-    - 'spec/**/*'
-Sorbet/ForbidTUntyped:
-  # lib/ uses `T.untyped` only for genuinely dynamic upstream collaborators (Async
-  # queues, Net::HTTP option hashes); `typed: strong` still forbids untyped *locals*,
-  # which is the guarantee that matters here.
-  Enabled: false
-
-# AI slop guard: reject adverb-heavy generated prose in user-facing Ruby string literals.
-# Markdown docs are excluded: their prose legitimately contains adverbs, and the cop's
-# autocorrect rewrites sentences rather than code.
-AI/AdverbSpam:
-  Enabled: true
+# Markdown code blocks are fragments of a program, not files, so they carry no copyright header.
+Style/Copyright:
+  AutocorrectNotice: '# Copyright (c) 2026 Vitalii Lazebnyi'
   Exclude:
     - '**/*.md'
+  Notice: ^# Copyright \(c\) 2026 Vitalii Lazebnyi$
+
+# Requires a comment directly above each public `def`, while Sorbet and yard-sorbet put the YARD comment above the
+# `sig`, which separates it from the `def`: the cop reports every documented method. `rake yard` (100% documented,
+# private methods included, no warnings) enforces documentation instead.
+Style/DocumentationMethod:
+  Enabled: false
+
+# Style/MissingElse requires an `else` on every `if` and `case`; with Style/EmptyElse at its default style ("both")
+# the two cops contradict each other on `else nil`. The "empty" style still rejects an empty `else`.
+Style/EmptyElse:
+  EnforcedStyle: empty
+
+# Contradicts Sorbet either way. The "fetch" style reports Sorbet's generic type syntax (`T::Array[String]`,
+# `T::Hash[K, V]`) as hash lookups and autocorrects it to `T::Array.fetch(String)`, which is not a type. The
+# "brackets" style rewrites `fetch` (non-nilable to Sorbet, raises on a missing key) into `[]` (nilable).
+Style/HashLookupMethod:
+  Enabled: false
+
+# Prefers Symbol hash keys. HTTP header maps are String-keyed by protocol: Net::HTTP request headers and Rack 3
+# response headers (the Rack SPEC requires String names). Its autocorrect turns them into Symbols, which silently
+# changes the headers the server sends and the client parses.
+Style/StringHashKeys:
+  Enabled: false
+
+plugins:
+  - rubocop-md
+  - rubocop-packaging
+  - rubocop-performance
+  - rubocop-rake
+  - rubocop-rspec
+  - rubocop-sorbet
+  - rubocop-thread_safety
+  - rubocop-yard
+
+require:
+  - rubocop-ai
+...

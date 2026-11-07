@@ -1,6 +1,8 @@
 # typed: strong
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'sorbet-runtime'
 
 # Primary namespace for the load testing framework.
@@ -82,7 +84,7 @@ module HttpLoader
       def require_positive!(name, value)
         return if value > 0.0
 
-        raise ArgumentError, "--#{name} must be greater than 0 (got #{value})"
+        raise(ArgumentError, "--#{name} must be greater than 0 (got #{value})")
       end
 
       # Rejects a parameter that must not be negative (zero is a valid "disabled" sentinel).
@@ -92,9 +94,9 @@ module HttpLoader
       # @return [void]
       sig { params(name: Symbol, value: Numeric).void }
       def require_non_negative!(name, value)
-        return unless value < 0.0
+        return if value >= 0.0
 
-        raise ArgumentError, "--#{name} must not be negative (got #{value})"
+        raise(ArgumentError, "--#{name} must not be negative (got #{value})")
       end
 
       # Warns when more connections are requested than the concurrency semaphore permits.
@@ -104,11 +106,13 @@ module HttpLoader
       # @return [void]
       sig { void }
       def warn_on_oversubscription
-        return unless connections > max_concurrent_connections
+        return if connections <= max_concurrent_connections
 
-        warn "[Client] Warning: --connections_count (#{connections}) exceeds " \
-             "--max_concurrent_connections (#{max_concurrent_connections}); " \
-             'surplus connections are queued and, in keep-alive modes, may never open.'
+        warn(
+          "[Client] Warning: --connections_count (#{connections}) exceeds " \
+            "--max_concurrent_connections (#{max_concurrent_connections}); " \
+            'surplus connections are queued and, in keep-alive modes, may never open.'
+        )
       end
     end
   end
