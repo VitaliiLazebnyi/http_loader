@@ -37,6 +37,8 @@ check 'markdownlint directive' 'markdownlint-(disable|enable|capture|restore|con
 check 'typos directive' 'typos: ?(ignore|off|disable)|spellchecker: ?(disable|ignore)'
 check 'LGTM/CodeQL suppression' 'lgtm\[|codeql\[|codeql-disable|lgtm: ?ignore'
 check 'nosec / noqa' 'nosec|noqa'
+check 'npm audit threshold above low' 'audit-level[= ]*(moderate|high|critical)|npm audit.*--omit'
+check 'OSV-Scanner ignore' 'IgnoredVulns|\[\[PackageOverrides\]\]'
 check 'warning silencing' '[$]VERBOSE *= *(nil|false)|Warning\.ignore|Warning\[:[a-z_]+\] *= *false|silence_warnings'
 check 'warning silencing' '[$]stderr *= *File::NULL|RUBYOPT=[^ ]*-W0|-W0\b|-W:no-'
 check 'real network access in specs' 'allow_net_connect!|WebMock\.disable!' 'spec/'

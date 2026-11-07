@@ -124,6 +124,39 @@ jobs:
           script/lint.sh gitleaks
     timeout-minutes: 15
 
+  # Every known vulnerability of any severity in every lockfile (OSV-Scanner), npm's advisories at the lowest
+  # threshold, and the registry signatures of the npm packages (script/lint.sh osv npmaudit).
+  vulnerabilities:
+    name: Dependency vulnerabilities (OSV-Scanner, npm audit)
+    permissions:
+      contents: read  # checks out the repository
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Harden the runner (egress limited to the endpoints below)
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          allowed-endpoints: >-
+            api.github.com:443
+            api.osv.dev:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+            tuf-repo-cdn.sigstore.dev:443
+          disable-sudo: true
+          disable-telemetry: true
+          egress-policy: block
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned linters and scanners
+        run: script/install_tools.sh
+      - name: Run the checks
+        run: script/lint.sh osv npmaudit
+    timeout-minutes: 15
+
   warning-gate:
     if: ${{ !cancelled() }}
     name: Warning gate (Security)
@@ -131,6 +164,7 @@ jobs:
       - bundler-audit
       - dependency-review
       - gitleaks
+      - vulnerabilities
     permissions:
       actions: read  # reads the logs of the other jobs of this run
       contents: read  # checks out the gate script

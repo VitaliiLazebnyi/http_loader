@@ -412,11 +412,11 @@ bundle exec rake outdated
 | Types                | Sorbet `srb tc` against Tapioca-generated RBIs; `lib/` is `# typed: strong`                  |
 | Docs                 | YARD (100% documented)                                                                       |
 | Smells / duplication | Reek (`.reek.yml`) and Flay (mass 24, score 0)                                               |
-| Dependencies         | bundler-audit, and an "outdated" gate with documented holds (`script/outdated_holds.yml`)    |
+| Dependencies         | bundler-audit, OSV-Scanner, `npm audit` (low), outdated gate (`script/outdated_holds.yml`)   |
 | Mutation             | Mutant — every mutant killed (`.mutant.yml`)                                                 |
 | Workflows / shell    | actionlint, zizmor, ShellCheck                                                               |
 | Secrets              | gitleaks (full history)                                                                      |
-| Container            | hadolint + Trivy image scan (fail on fixable HIGH/CRITICAL)                                  |
+| Container            | hadolint + Trivy image scan (fail on any fixable vulnerability of any severity)              |
 
 Install the pre-commit hook with `git config core.hooksPath .githooks`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
 full rules.

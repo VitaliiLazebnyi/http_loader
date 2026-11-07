@@ -6,7 +6,7 @@
 # Every check runs, also after one failed; each check function stops at its first failing command (`&&`), since
 # errexit does not apply inside a function called as the left operand of `||`.
 # Checks: suppressions actionlint zizmor shellcheck shfmt yamllint markdownlint typos taplo hadolint editorconfig
-# gitleaks
+# gitleaks osv npmaudit
 # zizmor runs its online audits too, so it needs GH_TOKEN (locally, the token of `gh auth token` is used).
 set -euo pipefail
 
@@ -73,7 +73,21 @@ check_editorconfig() { editorconfig-checker; }
 
 check_gitleaks() { gitleaks git --redact --verbose --exit-code 1 .; }
 
-all=(suppressions actionlint zizmor shellcheck shfmt yamllint markdownlint typos taplo hadolint editorconfig gitleaks)
+# Every known vulnerability, of any severity, in every lockfile: the gems of both bundles, the npm and PyPI linters.
+# OSV-Scanner names a lockfile by its parser when the file name is not the conventional one.
+check_osv() {
+  osv-scanner scan source --lockfile Gemfile.lock --lockfile Gemfile.lock:typecheck.gemfile.lock \
+    --lockfile tools/package-lock.json --lockfile requirements.txt:tools/requirements.txt
+}
+
+# npm's own advisory database at its lowest threshold, and the registry signatures and provenance attestations of
+# every installed package.
+check_npmaudit() {
+  npm audit --prefix tools --audit-level=low && npm audit signatures --prefix tools
+}
+
+all=(suppressions actionlint zizmor shellcheck shfmt yamllint markdownlint typos taplo hadolint editorconfig gitleaks
+  osv npmaudit)
 checks=("$@")
 [[ ${#checks[@]} -gt 0 ]] || checks=("${all[@]}")
 
