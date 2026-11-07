@@ -178,6 +178,12 @@ RSpec.describe(HttpLoader::Harness) do
   end
 
   describe '#duration_exceeded?' do
+    it 'is false for a negative target duration' do
+      harness.instance_variable_get(:@config).instance_variable_set(:@target_duration, -1.0)
+      harness.instance_variable_set(:@start_time, Time.now.utc - 10)
+      expect(harness.__send__(:duration_exceeded?)).to(be(false))
+    end
+
     it 'is false when no target duration is configured (target not > 0)' do
       harness.instance_variable_get(:@config).instance_variable_set(:@target_duration, 0.0)
       harness.instance_variable_set(:@start_time, Time.now.utc - 10)

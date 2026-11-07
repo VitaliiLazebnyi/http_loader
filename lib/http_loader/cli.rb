@@ -34,11 +34,11 @@ module HttpLoader
       new(argv).run
     end
 
-    # @param argv [Array<String>] the command-line arguments, subcommand first (not modified)
+    # @param argv [Array<String>] the command-line arguments, subcommand first (#run never modifies them)
     # @return [void]
     sig { params(argv: T::Array[String]).void }
     def initialize(argv)
-      @argv = T.let(argv.dup, T::Array[String])
+      @argv = argv
     end
 
     # Runs the subcommand named by the first argument.
@@ -136,7 +136,7 @@ module HttpLoader
     # @return [Integer] the exit status 1
     sig { params(error: StandardError).returns(Integer) }
     def configuration_error(error)
-      warn("Configuration Error: #{error.message}")
+      warn("Configuration Error: #{error}")
       1
     end
 

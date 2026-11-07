@@ -33,6 +33,10 @@ module HttpLoader
         const :http_args, HttpArgs
       end
 
+      # The resolved endpoints, one per target URL. A static type, checked by `srb tc`.
+      TargetList = T.type_alias { T::Array[Target] }
+      private_constant :TargetList
+
       # Matches `[scheme://][user[:pass]@]host[:port]` tolerantly, including credentialed
       # proxies that `URI.parse` rejects under the bundled `uri` gem.
       PROXY_RE = %r{\A(?:\w+://)?(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>[^:/@]+)(?::(?<port>\d+))?}
@@ -45,7 +49,7 @@ module HttpLoader
       sig { params(config: Config).void }
       def initialize(config)
         @config = config
-        @target_contexts = T.let(build_target_contexts, T::Array[Target])
+        @target_contexts = T.let(build_target_contexts, TargetList)
       end
 
       # Yields a formatted terminal label classifying protocol usage logic.
@@ -56,7 +60,7 @@ module HttpLoader
         if @config.target_urls.size > 1
           "MULTIPLE TARGETS (#{@config.target_urls.size})"
         elsif @config.target_urls.size == 1
-          "EXTERNAL #{@target_contexts.fetch(0).uri.scheme&.upcase}"
+          "EXTERNAL #{T.must(@target_contexts.first).uri.scheme&.upcase}"
         elsif @config.use_https
           'HTTPS'
         else

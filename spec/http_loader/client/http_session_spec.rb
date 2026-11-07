@@ -62,7 +62,7 @@ RSpec.describe(HttpLoader::Client::HttpSession) do
       end
 
       it 'measures the budget against the keep-alive timeout from the start time' do
-        expect(session).to(have_received(:budget_remaining).with(0.1, Time.at(0)).at_least(:once))
+        expect(session).to(have_received(:budget_remaining).with(0.1, Time.at(0)).twice)
       end
     end
 

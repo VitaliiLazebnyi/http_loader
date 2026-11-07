@@ -41,6 +41,15 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
   end
 
   describe '#run guards' do
+    context 'when slowloris_delay is negative' do
+      let(:overrides) { { slowloris_delay: -1.0 } }
+
+      it 'writes nothing' do
+        slowloris.run(0, URI('http://local/'), http, Time.now)
+        expect(File.read(io.path)).to(eq(''))
+      end
+    end
+
     context 'when slowloris_delay is 0' do
       let(:overrides) { { slowloris_delay: 0.0 } }
 
@@ -124,7 +133,7 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
       it('caps the pace (1.0s) to the remaining budget') { expect(slowloris).to(have_received(:sleep).with(0.1)) }
 
       it 'measures the budget against the keep-alive timeout from the start time' do
-        expect(slowloris).to(have_received(:budget_remaining).with(0.1, Time.at(0)).at_least(:once))
+        expect(slowloris).to(have_received(:budget_remaining).with(0.1, Time.at(0)).twice)
       end
     end
 

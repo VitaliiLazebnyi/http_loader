@@ -145,7 +145,7 @@ module HttpLoader
     # @return [Boolean] flags if logical expectations are broken natively
     sig { params(active: Integer, c_cpu: String, c_th: Integer, c_m: String).returns(T::Boolean) }
     def missing_socket?(active, c_cpu, c_th, c_m)
-      return false if @config.target_urls.none? || @peak_connections <= 0.0 || active.nonzero?
+      return false if @config.target_urls.none? || @peak_connections.zero? || active.nonzero?
 
       log_table_row(
         t: Time.now.utc.strftime('%H:%M:%S'),
