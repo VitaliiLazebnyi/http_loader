@@ -6,5 +6,9 @@
   "license": "MIT",
   "devDependencies": {
     "markdownlint-cli2": "0.24.0"
+  },
+  "overrides": {
+    "katex": "0.19.1",
+    "markdownlint": "0.42.1"
   }
 }
