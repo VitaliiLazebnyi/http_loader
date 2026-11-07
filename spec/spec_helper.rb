@@ -10,18 +10,26 @@
 # enforced by the warning gate.
 Warning[:experimental] = false
 
+require 'sorbet-runtime'
+
 # Drops exactly one warning that `ruby -w` reports in a dependency and that cannot be fixed here:
 # protocol-http 0.72.1 (the newest release; its main branch is unchanged) assigns `rescue => error`
 # without using `error` in lib/protocol/http/body/streamable.rb. Only that message from that file is
 # dropped, and only in the test process; every other warning still reaches stderr and the warning gate.
 module UpstreamWarningFilter
+  extend T::Sig
+
   # The one dropped warning: the file and the message are both pinned.
-  IGNORED = %r{/protocol-http-[\d.]+/lib/protocol/http/body/streamable\.rb:\d+: warning: assigned but unused variable - error\n\z}
+  IGNORED = Regexp.new(
+    '/protocol-http-[\d.]+/lib/protocol/http/body/streamable\.rb:\d+: ' \
+    'warning: assigned but unused variable - error\n\z'
+  )
   private_constant :IGNORED
 
   # @param message [String] the warning text
   # @param category [Symbol, nil] the warning category
   # @return [void]
+  sig { params(message: String, category: T.nilable(Symbol)).void }
   def warn(message, category: nil)
     return if message.match?(IGNORED)
 
@@ -41,7 +49,6 @@ SimpleCov.start
 
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
 require 'http_loader'
-require 'sorbet-runtime'
 require 'stringio'
 
 Dir[File.join(__dir__, 'support', '**', '*.rb')].each { |f| require(f) }
@@ -56,6 +63,7 @@ RSpec.configure do |config|
   end
 
   config.shared_context_metadata_behavior = :apply_to_host_groups
+  config.include(RequestMatchers)
 
   # Every example runs with $stdout and $stderr captured, and fails if it wrote anything there
   # that it did not assert itself (with the `output` matcher or a stubbed puts/warn). A stray
@@ -71,7 +79,11 @@ RSpec.configure do |config|
       leaked = { stdout: $stdout.string, stderr: $stderr.string }.reject { |_, text| text.empty? }
       $stdout, $stderr = streams
     end
-    raise(RSpec::Expectations::ExpectationNotMetError, "Example wrote unasserted output: #{leaked.inspect}") if leaked.any?
+    if leaked.any?
+      raise(RSpec::Expectations::ExpectationNotMetError, "Example wrote unasserted output: #{leaked.inspect}")
+    end
+
+    nil
   end
 end
 
@@ -81,8 +93,11 @@ end
 # a double is never an instance of the class a signature names. A real object of the wrong class still
 # raises.
 module DoubleTolerantTypeErrors
+  extend T::Sig
+
   # @param message [String] the type error message
   # @return [Boolean] whether the mismatch is only an RSpec test double standing in for a real object
+  sig { params(message: String).returns(T::Boolean) }
   def self.double?(message)
     message.include?('RSpec::Mocks')
   end
