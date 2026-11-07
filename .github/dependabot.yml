@@ -1,27 +1,51 @@
-version: 2
+---
+# Every ecosystem of the repository: the gems, the actions of the workflows, the base image of the Dockerfile, and
+# the pinned linters of tools/ (PyPI and npm). A release must have been public for a week before it is proposed.
 updates:
-  - package-ecosystem: bundler
-    directory: "/"
-    schedule:
-      interval: weekly
-    cooldown:
+  - cooldown:
       default-days: 7
+    directory: /
     groups:
       development-dependencies:
         dependency-type: development
-  - package-ecosystem: github-actions
-    directory: "/"
+    package-ecosystem: bundler
     schedule:
       interval: weekly
-    cooldown:
+  - cooldown:
       default-days: 7
+    directory: /
     groups:
       github-actions:
         patterns:
-          - "*"
-  - package-ecosystem: docker
-    directory: "/"
+          - '*'
+    package-ecosystem: github-actions
     schedule:
       interval: weekly
-    cooldown:
+  - cooldown:
       default-days: 7
+    directory: /
+    package-ecosystem: docker
+    schedule:
+      interval: weekly
+  - cooldown:
+      default-days: 7
+    directory: /tools
+    groups:
+      linters:
+        patterns:
+          - '*'
+    package-ecosystem: pip
+    schedule:
+      interval: weekly
+  - cooldown:
+      default-days: 7
+    directory: /tools
+    groups:
+      markdownlint:
+        patterns:
+          - '*'
+    package-ecosystem: npm
+    schedule:
+      interval: weekly
+version: 2
+...

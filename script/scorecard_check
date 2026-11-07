@@ -1,0 +1,10 @@
+#!/usr/bin/env ruby
+# typed: true
+# frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
+
+# Usage: DEPENDENCY_CHANGES='<JSON>' script/scorecard_check (see script/scorecard_check.rb)
+require_relative 'scorecard_check'
+
+exit(ScorecardCheck.main(ENV.fetch('DEPENDENCY_CHANGES')))

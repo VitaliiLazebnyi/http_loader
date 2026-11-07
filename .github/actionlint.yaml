@@ -1,4 +1,7 @@
-# actionlint configuration. Self-hosted runner labels are not used; the default GitHub-hosted
-# runner set is assumed.
+---
+# actionlint 1.7.12 (the newest release) predates the GA of the ubuntu-26.04 GitHub-hosted runner and
+# reports it as an unknown label. The label is valid: every job of this repository runs on it.
 self-hosted-runner:
-  labels: []
+  labels:
+    - ubuntu-26.04
+...

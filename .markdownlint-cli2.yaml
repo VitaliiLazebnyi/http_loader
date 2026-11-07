@@ -1,26 +1,26 @@
 ---
 # markdownlint-cli2 runs every rule (`default: true`) over every Markdown file; there are no inline
 # disable comments (script/forbidden_suppressions.sh). Settings below only tighten rules.
+
 config:
-  default: true
   # Lists use dashes everywhere.
   MD004:
     style: dash
-  # Two spaces after an ordered list number, so that the continuation lines of an item are indented by four, a
-  # multiple of the two-space indentation editorconfig-checker requires (`1. ` would need three).
-  MD030:
-    ol_multi: 2
-    ol_single: 2
   # No trailing spaces at all, not even the two-space hard line break.
   MD009:
     br_spaces: 0
     strict: true
   # Prose, code blocks and tables wrap at 120 columns, the width of the code (RuboCop Layout/LineLength).
   MD013:
-    line_length: 120
     code_blocks: true
-    tables: true
     headings: true
+    line_length: 120
+    tables: true
+  # Two spaces after an ordered list number, so that the continuation lines of an item are indented by four, a
+  # multiple of the two-space indentation editorconfig-checker requires (`1. ` would need three).
+  MD030:
+    ol_multi: 2
+    ol_single: 2
   # Code blocks are fenced with backticks.
   MD046:
     style: fenced
@@ -31,6 +31,7 @@ config:
     style: underscore
   MD050:
     style: asterisk
+  default: true
 globs:
   - '**/*.md'
 ignores:

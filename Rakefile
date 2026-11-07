@@ -11,7 +11,7 @@ require 'tmpdir'
 # Output of `yard stats` when every API object, public or private, is documented.
 FULLY_DOCUMENTED = '100.00% documented'
 # The Ruby code that the smell, duplication, complexity and dead-code checks analyze: the gem and its tooling.
-ANALYZED = %w[lib bin/http_loader script Rakefile].freeze
+ANALYZED = %w[lib bin/http_loader script script/scorecard_check Rakefile].freeze
 # Flay mass threshold. Below 24, Flay reports the identical Sorbet signatures of the three heartbeat methods of
 # HttpSession (same four typed parameters) and the two sibling numeric validators of Client::Config; from 24 up it
 # reports every duplicated piece of logic, and the code must score 0.
