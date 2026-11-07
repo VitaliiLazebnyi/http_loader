@@ -9,8 +9,8 @@ single-target connections, the testing bounds here are tightly constrained to a 
 
 We evaluated two protocol configurations:
 
-1. **Plaintext HTTP**
-2. **Encrypted HTTPS** (TLS 1.3 with a dynamic local certificate generated in memory)
+1.  **Plaintext HTTP**
+2.  **Encrypted HTTPS** (TLS 1.3 with a dynamic local certificate generated in memory)
 
 ## Resource Breakdown: Environment vs. Connection Overhead
 
@@ -112,47 +112,47 @@ Total retained:  1.16 kB (18 objects)
 
 allocated memory by gem
 -----------------------------------
- 981.82 kB  lib
- 128.84 kB  async-2.39.0
-  43.68 kB  other
-  12.41 kB  io-event-1.15.1
-   8.16 kB  fiber-annotation-0.2.0
+981.82 kB  lib
+128.84 kB  async-2.39.0
+43.68 kB  other
+12.41 kB  io-event-1.15.1
+8.16 kB  fiber-annotation-0.2.0
 
 allocated memory by file
 -----------------------------------
- 487.90 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb
- 162.20 kB  ruby/lib/lib/ruby/4.0.0/net/http/header.rb
- 133.06 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb
- 120.00 kB  async-2.39.0/lib/async/task.rb
-  70.80 kB  ruby/lib/lib/ruby/4.0.0/net/http/generic_request.rb
-  48.26 kB  ruby/lib/lib/ruby/4.0.0/uri/rfc3986_parser.rb
-  37.60 kB  ruby/lib/lib/ruby/4.0.0/uri/generic.rb
-  32.00 kB  profiler_task.rb
-  24.00 kB  ruby/lib/lib/ruby/4.0.0/net/protocol.rb
-  11.68 kB  <internal:io>
-  10.00 kB  ruby/lib/lib/ruby/4.0.0/uri/http.rb
-   8.16 kB  fiber-annotation-0.2.0/lib/fiber/annotation.rb
-   8.00 kB  ruby/lib/lib/ruby/4.0.0/uri/common.rb
-   7.34 kB  async-2.39.0/lib/async/promise.rb
-   6.29 kB  io-event-1.15.1/lib/io/event/selector.rb
-   6.08 kB  io-event-1.15.1/lib/io/event/timers.rb
-   1.18 kB  async-2.39.0/lib/async/scheduler.rb
-  160.00 B  async-2.39.0/lib/async/node.rb
-  160.00 B  async-2.39.0/lib/kernel/async.rb
-   40.00 B  io-event-1.15.1/lib/io/event/priority_heap.rb
+487.90 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb
+162.20 kB  ruby/lib/lib/ruby/4.0.0/net/http/header.rb
+133.06 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb
+120.00 kB  async-2.39.0/lib/async/task.rb
+70.80 kB  ruby/lib/lib/ruby/4.0.0/net/http/generic_request.rb
+48.26 kB  ruby/lib/lib/ruby/4.0.0/uri/rfc3986_parser.rb
+37.60 kB  ruby/lib/lib/ruby/4.0.0/uri/generic.rb
+32.00 kB  profiler_task.rb
+24.00 kB  ruby/lib/lib/ruby/4.0.0/net/protocol.rb
+11.68 kB  <internal:io>
+10.00 kB  ruby/lib/lib/ruby/4.0.0/uri/http.rb
+8.16 kB  fiber-annotation-0.2.0/lib/fiber/annotation.rb
+8.00 kB  ruby/lib/lib/ruby/4.0.0/uri/common.rb
+7.34 kB  async-2.39.0/lib/async/promise.rb
+6.29 kB  io-event-1.15.1/lib/io/event/selector.rb
+6.08 kB  io-event-1.15.1/lib/io/event/timers.rb
+1.18 kB  async-2.39.0/lib/async/scheduler.rb
+160.00 B  async-2.39.0/lib/async/node.rb
+160.00 B  async-2.39.0/lib/kernel/async.rb
+40.00 B  io-event-1.15.1/lib/io/event/priority_heap.rb
 
 allocated memory by location
 -----------------------------------
- 265.20 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1057
-  91.80 kB  async-2.39.0/lib/async/task.rb:519
-  78.00 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1058
-  60.00 kB  ruby/lib/lib/ruby/4.0.0/net/http/header.rb:498
-  46.00 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb:181
-  36.40 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb:174
-  32.80 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1161
-  32.30 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1101
-  30.48 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1789
-  28.20 kB  ruby/lib/lib/ruby/4.0.0/net/http/header.rb:284
-  26.26 kB  ruby/lib/lib/ruby/4.0.0/uri/rfc3986_parser.rb:115
-  24.80 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb:190
+265.20 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1057
+91.80 kB  async-2.39.0/lib/async/task.rb:519
+78.00 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1058
+60.00 kB  ruby/lib/lib/ruby/4.0.0/net/http/header.rb:498
+46.00 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb:181
+36.40 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb:174
+32.80 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1161
+32.30 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1101
+30.48 kB  ruby/lib/lib/ruby/4.0.0/net/http.rb:1789
+28.20 kB  ruby/lib/lib/ruby/4.0.0/net/http/header.rb:284
+26.26 kB  ruby/lib/lib/ruby/4.0.0/uri/rfc3986_parser.rb:115
+24.80 kB  ruby/lib/lib/ruby/4.0.0/net/http/response.rb:190
 ```

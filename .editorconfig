@@ -1,4 +1,4 @@
-# Checked by editorconfig-checker (script/check and the Lint workflow) on every tracked file.
+# Checked by editorconfig-checker (script/lint.sh) on every tracked file.
 root = true
 
 [*]
@@ -9,3 +9,7 @@ indent_style = space
 insert_final_newline = true
 max_line_length = 120
 trim_trailing_whitespace = true
+
+# Generated files, written by Bundler, npm and pip-compile: their line lengths are the generators'.
+[{Gemfile.lock,tools/package-lock.json,tools/requirements.txt}]
+max_line_length = off

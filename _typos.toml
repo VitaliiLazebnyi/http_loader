@@ -1,0 +1,5 @@
+[default.extend-words]
+# RSpec's method that skips an example group, named by the suppression check.
+xdescribe = "xdescribe"
+# wrk, the HTTP benchmarking tool the README compares http_loader with.
+wrk = "wrk"

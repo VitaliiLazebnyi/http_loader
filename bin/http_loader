@@ -5,13 +5,23 @@
 
 # Executable of the gem: runs the `client`, `server` or `harness` subcommand (see HttpLoader::CLI).
 
-# Opt out of only the "experimental feature" warning category: the async fiber scheduler does non-blocking
-# file IO through Ruby's IO::Buffer, which Ruby 4.0 still flags as experimental. Deprecation and performance
-# warnings stay on.
-Warning[:experimental] = false
-
 lib = File.expand_path('../lib', __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require 'http_loader/cli'
+
+# Ruby 4.0 flags IO::Buffer as experimental, and the async fiber scheduler does its non-blocking file IO through
+# it, so every run would print that notice. Only that one message is dropped; every other warning is shown.
+module IoBufferNotice
+  extend T::Sig
+
+  # @param message [String] the warning
+  # @param category [Symbol, nil] the warning category
+  # @return [void]
+  sig { params(message: String, category: T.nilable(Symbol)).void }
+  def warn(message, category: nil)
+    super unless category == :experimental && message.include?('IO::Buffer is experimental')
+  end
+end
+Warning.singleton_class.prepend(IoBufferNotice)
 
 exit(HttpLoader::CLI.run(ARGV))

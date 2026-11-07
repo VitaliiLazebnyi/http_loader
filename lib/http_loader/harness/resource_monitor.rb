@@ -110,7 +110,7 @@ module HttpLoader
 
       # Queries an immutable `getconf` system constant, falling back on any failure (the jiffy
       # fields in `/proc/<pid>/stat` are counted in CLK_TCK ticks, so assuming a literal 100
-      # mis-scales CPU% on kernels where `CLK_TCK != 100`).
+      # scales CPU% wrongly on kernels where `CLK_TCK != 100`).
       #
       # @param name [String] the getconf variable name
       # @param fallback [Integer] the value to use when getconf is unavailable or invalid

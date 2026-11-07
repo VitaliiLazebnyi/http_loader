@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Runs every check of CI locally, with the same settings, and fails on the first failing one or, at the end, on any
+# warning in the output of any of them (the same pattern as the warning gate of every workflow):
+#   - `rake` (RSpec with 100% coverage, RuboCop, suppressions, Sorbet, YARD, Reek, Flay, Flog, Debride,
+#     bundler-audit), `rake outdated`, the strict gem build and the executable;
+#   - mutation testing, on Ruby 3.3.13 (see CONTRIBUTING.md), run through mise when another Ruby is active;
+#   - script/lint.sh: every linter and scanner of the files that are not Ruby, installed by script/install_tools.sh.
+# CI also runs CodeQL, the OpenSSF Scorecard and the dependency review, which are GitHub services, the RSpec suite on
+# every supported Ruby, and the Docker image build with its Trivy scan.
+#
+# Usage: script/check
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${root}"
+mkdir -p tmp
+log="${root}/tmp/check.log"
+: >"${log}"
+
+# Runs one check with every Ruby warning enabled (see script/upstream_warnings.rb), appending its output to the log.
+run() {
+  echo "==> $*" | tee -a "${log}"
+  RUBYOPT="-w -W:deprecated -W:performance -r${root}/script/upstream_warnings.rb" "$@" 2>&1 | tee -a "${log}"
+}
+
+script/install_tools.sh >/dev/null
+
+run script/check_ruby.sh
+run bundle exec rake
+run bundle exec rake outdated
+# Built like the CI build job, without a signing key (the gemspec signs only when ~/.gem has one).
+mkdir -p tmp/gem-home
+run env HOME="${root}/tmp/gem-home" gem build --strict http_loader.gemspec
+run bundle exec bin/http_loader client --help
+
+mutant_ruby=3.3.13
+active_ruby=$(ruby -e 'print RUBY_VERSION')
+if [[ ${active_ruby} == "${mutant_ruby}" ]]; then
+  run env LANG=C.UTF-8 LC_ALL=C.UTF-8 bundle exec rake mutant
+elif command -v mise >/dev/null; then
+  mise exec "ruby@${mutant_ruby}" -- bundle install --quiet
+  run env LANG=C.UTF-8 LC_ALL=C.UTF-8 mise exec "ruby@${mutant_ruby}" -- bundle exec rake mutant
+else
+  echo "Mutation testing needs Ruby ${mutant_ruby}: activate it, or install mise" >&2
+  exit 1
+fi
+
+run script/lint.sh
+
+script/warning_gate.sh "${log}"
+echo "All checks passed."

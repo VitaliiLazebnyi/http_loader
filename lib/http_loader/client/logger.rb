@@ -121,7 +121,9 @@ module HttpLoader
       # @return [void]
       sig { void }
       def drain_queue
-        write_msg(T.cast(@log_queue.dequeue, T::Array[T.any(Symbol, String)])) until T.cast(@log_queue.empty?, T::Boolean)
+        until T.cast(@log_queue.empty?, T::Boolean)
+          write_msg(T.cast(@log_queue.dequeue, T::Array[T.any(Symbol, String)]))
+        end
       end
 
       # Appends one queued message to the file for its channel; an unknown channel is dropped.

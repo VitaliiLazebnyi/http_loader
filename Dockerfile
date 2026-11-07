@@ -18,7 +18,7 @@ WORKDIR /app
 COPY Gemfile Gemfile.lock http_loader.gemspec ./
 COPY lib/http_loader/version.rb lib/http_loader/version.rb
 RUN gem install bundler:4.0.24 --no-document \
- && bundle install
+  && bundle install
 
 # The ruby:4.0.9 base image ships json 2.18.0 as a default gem (CVE-2026-33210). The bundle
 # resolves a patched json (3.1.0) that `bundle exec` loads instead, so the unused vulnerable

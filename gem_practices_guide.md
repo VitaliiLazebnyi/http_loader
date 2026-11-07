@@ -36,12 +36,14 @@ default rule set.
   - `rubocop-thread_safety` (imperative for async/threaded workloads)
   - `rubocop-rake`, `rubocop-rspec`, `rubocop-md` (Markdown linting).
 - **Custom Local Cops**: The configuration allows for custom, domain-specific AI cops defined in the project:
+
   ```yaml
   require:
     - ./lib/rubocop/cop/ai/adverb_spam.rb
   AI/AdverbSpam:
     Enabled: true
   ```
+
 - **Constraints enforced**:
   - `Style/FrozenStringLiteralComment: Enabled: true` (for memory footprint optimization).
   - Target Ruby execution contexts are explicitly defined.
@@ -51,18 +53,18 @@ default rule set.
 
 ## 3. RSpec Testing Suite
 
-1. **RSpec Configuration** (`.rspec`):
-   - Execution is randomized (`--order random`) to expose state bleed between tests.
-   - Profiling is enabled (`--profile 10`) to identify the top 10 slowest executing tests continuously.
-2. **Coverage mandates (SimpleCov)**:
-   - Initialized in `spec_helper.rb`, setting `enable_coverage :branch` mapping all tested code.
-   - **Strict 100% Coverage**: 100% logic and branch test coverage is rigorously mandated.
-   - **No Exemptions**: The codebase strictly forbids the use of coverage-dodging exception directives (e.g.,
-     `# rubocop:disable`, `# type: ignore`, `# pragma: no cover`) to artificially inflate coverage metrics. All tests
-     must verify real state changes.
-3. **Mocks and Expectations**:
-   - `verify_partial_doubles = true` ensures that when mocking an object, it accurately implements the original object's
-     signature preventing "mock drift".
+1.  **RSpec Configuration** (`.rspec`):
+    - Execution is randomized (`--order random`) to expose state bleed between tests.
+    - Profiling is enabled (`--profile 10`) to identify the top 10 slowest executing tests continuously.
+2.  **Coverage mandates (SimpleCov)**:
+    - Initialized in `spec_helper.rb`, setting `enable_coverage :branch` mapping all tested code.
+    - **Strict 100% Coverage**: 100% logic and branch test coverage is rigorously mandated.
+    - **No Exemptions**: The codebase strictly forbids the use of coverage-dodging exception directives (e.g.,
+      `# rubocop:disable`, `# type: ignore`, `# pragma: no cover`) to artificially inflate coverage metrics. All tests
+      must verify real state changes.
+3.  **Mocks and Expectations**:
+    - `verify_partial_doubles = true` ensures that when mocking an object, it accurately implements the original
+      object's signature preventing "mock drift".
 
 ## 4. Documentation (YARD)
 
@@ -101,51 +103,51 @@ end
 
 The workflow operates on every push/PR against a matrix. Steps execute sequentially blocking failures:
 
-1. **Modern Action Tools**: Always utilize up-to-date, pinned major versions for core actions (e.g.,
-   `actions/checkout@v6`, `ruby/setup-ruby@v1`).
-2. **Fast Dependency Tracking**: Setup Ruby and aggressively cache dependencies natively via `bundler-cache: true`.
-3. **Linting**: `bundle exec rubocop`
-4. **Testing**: `bundle exec rspec`
-5. **Typing**: `bundle exec srb tc --typed strong`
-6. **Documentation**: Build YARD and run `yard stats --list-undoc`
-7. **Integrity checks**: Validating gem builds locally (`gem build`).
+1.  **Modern Action Tools**: Always utilize up-to-date, pinned major versions for core actions (e.g.,
+    `actions/checkout@v6`, `ruby/setup-ruby@v1`).
+2.  **Fast Dependency Tracking**: Setup Ruby and aggressively cache dependencies natively via `bundler-cache: true`.
+3.  **Linting**: `bundle exec rubocop`
+4.  **Testing**: `bundle exec rspec`
+5.  **Typing**: `bundle exec srb tc --typed strong`
+6.  **Documentation**: Build YARD and run `yard stats --list-undoc`
+7.  **Integrity checks**: Validating gem builds locally (`gem build`).
 
 ### Automated Secure Releases (`release.yml`)
 
 Initiated upon semantic version tagging (`v*.*.*`):
 
-1. **Version synchronisation**: Dynamically replaces the static version string in `lib/.../version.rb` mapped directly
-   from the git tag.
-2. **Key Inject**: Reconstructs `gem-private_key.pem` through GitHub Secrets to sign the release.
-3. **Release deployment**: Pushes to GitHub Releases (creating assets like `.gem`).
-4. **Registry Push**: Distributes directly to `--push_host` RubyGems securely via GitHub OIDC publishing actions,
-   circumventing standard OTP complications.
+1.  **Version synchronisation**: Dynamically replaces the static version string in `lib/.../version.rb` mapped directly
+    from the git tag.
+2.  **Key Inject**: Reconstructs `gem-private_key.pem` through GitHub Secrets to sign the release.
+3.  **Release deployment**: Pushes to GitHub Releases (creating assets like `.gem`).
+4.  **Registry Push**: Distributes directly to `--push_host` RubyGems securely via GitHub OIDC publishing actions,
+    circumventing standard OTP complications.
 
 ## 7. Reliability & Architecture Guidelines (Best Practices)
 
 To make a Ruby project strictly resilient and reliable:
 
-1. **Segregation of Intent**:
-   - Dedicate `REQUIREMENTS.md` representing current active specifications uniquely tagged (e.g., `CORE-REQ-001`).
-   - Catalog defects explicitly in `BUGS.md` decoupled from standard development tasks.
-2. **Immutability First**: Default to `# frozen_string_literal: true`. Never map values loosely.
-3. **Fail-Fast Error Handling**: Throw explicit custom library exceptions inside domain boundaries rather than
-   propagating StandardError out un-handled.
-4. **Hermetic Testing**: Utilize clock freezes, deterministic PRNGs, and exact mock borders. Never execute network
-   commands in RSpec suites.
-5. **Absolute Thread Safety**: When writing multi-concurrency code in Ruby, utilize `Mutex` heavily, avoid mutating
-   class-level/global state variables, and leverage `rubocop-thread_safety` analyzers strictly.
+1.  **Segregation of Intent**:
+    - Dedicate `REQUIREMENTS.md` representing current active specifications uniquely tagged (e.g., `CORE-REQ-001`).
+    - Catalog defects explicitly in `BUGS.md` decoupled from standard development tasks.
+2.  **Immutability First**: Default to `# frozen_string_literal: true`. Never map values loosely.
+3.  **Fail-Fast Error Handling**: Throw explicit custom library exceptions inside domain boundaries rather than
+    propagating StandardError out un-handled.
+4.  **Hermetic Testing**: Utilize clock freezes, deterministic PRNGs, and exact mock borders. Never execute network
+    commands in RSpec suites.
+5.  **Absolute Thread Safety**: When writing multi-concurrency code in Ruby, utilize `Mutex` heavily, avoid mutating
+    class-level/global state variables, and leverage `rubocop-thread_safety` analyzers strictly.
 
 ## 8. Environment & Dependency Management
 
 Establishing reproducible development environments relies on explicitly defined configurations:
 
-1. **Ruby Versioning**: Track the exact Ruby version using a `.ruby-version` file to ensure parity between developer
-   machines and CI contexts. Modern toolchains (like `mise` or `rbenv`) naturally ingest this.
-2. **Dependency Pinning (Gemspec vs. Gemfile)**:
-   - For execution contexts and CI runs, strictly commit and lock versions via `Gemfile.lock`.
-   - For standard gem distribution, specify safe version bounds utilizing the pessimistic operator (`~>`) inside the
-     `gemspec`. Do not aggressively over-constrain the gem's dependencies.
-3. **Environment Determinism**: Enforce locale semantics explicitly (e.g., establishing
-   `ENV['LANG'] = ENV.fetch('LANG', 'en_US.UTF-8')` statically in Rakefiles or CI configurations) to avert subtle
-   encoding failures across distributed platforms.
+1.  **Ruby Versioning**: Track the exact Ruby version using a `.ruby-version` file to ensure parity between developer
+    machines and CI contexts. Modern toolchains (like `mise` or `rbenv`) naturally ingest this.
+2.  **Dependency Pinning (Gemspec vs. Gemfile)**:
+    - For execution contexts and CI runs, strictly commit and lock versions via `Gemfile.lock`.
+    - For standard gem distribution, specify safe version bounds utilizing the pessimistic operator (`~>`) inside the
+      `gemspec`. Do not aggressively over-constrain the gem's dependencies.
+3.  **Environment Determinism**: Enforce locale semantics explicitly (e.g., establishing
+    `ENV['LANG'] = ENV.fetch('LANG', 'en_US.UTF-8')` statically in Rakefiles or CI configurations) to avert subtle
+    encoding failures across distributed platforms.

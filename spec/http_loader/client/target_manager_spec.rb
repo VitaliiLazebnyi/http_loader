@@ -215,7 +215,7 @@ RSpec.describe(HttpLoader::Client::TargetManager) do
       end
     end
 
-    context 'with an unparseable proxy entry' do
+    context 'with a proxy entry that cannot be parsed' do
       let(:overrides) { { proxy_pool: ['@'] } }
 
       it 'raises a clear error naming it' do

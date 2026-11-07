@@ -35,3 +35,7 @@ doc/
 
 # Mutant local result cache
 /.mutant/
+
+# Linters installed by script/install_tools.sh, and the output of script/check
+/tmp/
+/tools/node_modules/

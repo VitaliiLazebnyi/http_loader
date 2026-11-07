@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# Pre-commit hook: runs the fast gates. Install with: git config core.hooksPath .githooks
+# Pre-commit hook: runs the fast gates with every Ruby warning enabled. It uses `bundle exec` only,
+# never a version-manager prefix, so it works with any Ruby installation. script/check runs every check of CI.
+# Install: git config core.hooksPath .githooks
 set -euo pipefail
 
-echo "==> RSpec (100% line + branch coverage)..."
-CI=true bundle exec rspec --format progress
+root="$(git rev-parse --show-toplevel)"
+cd "${root}"
+RUBYOPT="-w -W:deprecated -W:performance -r${root}/script/upstream_warnings.rb"
+export RUBYOPT
 
-echo "==> RuboCop..."
-bundle exec rubocop
+echo "==> RSpec (100% line and branch coverage, warnings are errors)"
+bundle exec rspec --format progress
 
-echo "==> Forbidding inline suppressions..."
-script/forbidden_suppressions.sh
+echo "==> RuboCop, suppressions, Sorbet, YARD, Reek, Flay, Flog and Debride"
+bundle exec rake rubocop suppressions typecheck yard reek flay flog debride
 
-echo "==> Sorbet type-check..."
-bundle exec rake typecheck
-
-echo "==> Reek and Flay..."
-bundle exec rake reek flay
+echo "==> Linters and scanners of the other files"
+script/install_tools.sh >/dev/null
+script/lint.sh
 
 echo "==> All checks passed."

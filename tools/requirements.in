@@ -1,0 +1,9 @@
+# The linters and scanners of script/lint.sh that are published on PyPI, installed by script/install_tools.sh with
+# `pip install --require-hashes -r tools/requirements.txt`. Dependabot keeps them current.
+# Regenerate the lock with: pip-compile --generate-hashes --strip-extras tools/requirements.in
+shellcheck-py
+shfmt-py
+taplo
+typos
+yamllint
+zizmor

@@ -1,0 +1,48 @@
+---
+# yamllint (https://github.com/adrienverge/yamllint): every rule is enabled, and script/lint.sh runs it with
+# --strict, so that a warning fails as well.
+extends: default
+
+rules:
+  anchors: enable
+  braces:
+    forbid: non-empty
+  brackets: enable
+  colons: enable
+  commas: enable
+  comments:
+    level: error
+  comments-indentation:
+    level: error
+  document-end:
+    present: true
+  document-start:
+    present: true
+  empty-lines: enable
+  empty-values: enable
+  float-values:
+    forbid-inf: true
+    forbid-nan: true
+    forbid-scientific-notation: true
+    require-numeral-before-decimal: true
+  hyphens: enable
+  indentation:
+    indent-sequences: true
+    spaces: 2
+  key-duplicates:
+    forbid-duplicated-merge-keys: true
+  key-ordering: enable
+  line-length:
+    max: 120
+  new-line-at-end-of-file: enable
+  new-lines: enable
+  octal-values:
+    forbid-explicit-octal: true
+    forbid-implicit-octal: true
+  quoted-strings:
+    quote-type: single
+    required: only-when-needed
+  trailing-spaces: enable
+  truthy:
+    level: error
+...

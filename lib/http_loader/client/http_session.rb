@@ -83,7 +83,10 @@ module HttpLoader
       # @param http [Net::HTTP] active outbound resource allocation
       # @param remaining [Float, nil] remaining keep-alive budget in seconds, or nil if unbounded
       # @return [Boolean] returns true to perpetuate cycle, false to break and exit
-      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
+      sig do
+        params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float))
+          .returns(T::Boolean)
+      end
       def process_heartbeat?(client_index, uri, http, remaining)
         if @config.qps_per_connection.positive?
           perform_qps?(client_index, uri, http, remaining)
@@ -102,7 +105,10 @@ module HttpLoader
       # @param http [Net::HTTP] live outgoing data streams
       # @param remaining [Float, nil] remaining keep-alive budget in seconds, or nil if unbounded
       # @return [Boolean] success logic representing connection continuation validation
-      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
+      sig do
+        params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float))
+          .returns(T::Boolean)
+      end
       def perform_qps?(client_index, uri, http, remaining)
         sleep(cap_to_budget(jittered_interval(1.0 / @config.qps_per_connection, @config.jitter), remaining))
         req = build_request(Net::HTTP::Get.new(uri))
@@ -119,7 +125,10 @@ module HttpLoader
       # @param http [Net::HTTP] executing communication object
       # @param remaining [Float, nil] remaining keep-alive budget in seconds, or nil if unbounded
       # @return [Boolean] true predicting session extension
-      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float)).returns(T::Boolean) }
+      sig do
+        params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, remaining: T.nilable(Float))
+          .returns(T::Boolean)
+      end
       def perform_ping?(client_index, uri, http, remaining)
         sleep(cap_to_budget(jittered_interval(@config.ping_period, @config.jitter), remaining))
         req = build_request(Net::HTTP::Head.new(uri))

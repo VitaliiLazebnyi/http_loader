@@ -20,17 +20,17 @@ overhead or memory limits.
 
 ### Core Use Cases
 
-1. **Testing Persistent Connections (SSE/WebSockets)**: Validating how gracefully your backend or infrastructure handles
-   100,000+ active users holding open Event Streams, WebSockets, or Long-Polling links without doing constant background
-   work.
-2. **Infrastructure Limitation Discovery**: Revealing hidden OS configuration ceilings before deployment, precisely
-   finding edge drops such as File Descriptor starvation (`EMFILE`), Ephemeral Port exhaustion (`EADDRNOTAVAIL`), or
-   reverse proxy RAM caps.
-3. **Evaluating Cloud Load Balancers/Gateways**: Discovering the exact threshold where an AWS Application Load Balancer
-   or Nginx edge autonomously decides to drop idle Keep-Alive mappings to release native memory.
-4. **Resilience & Slowloris Simulation**: Ensuring your Thread-based infrastructure (e.g. Puma) correctly maps
-   constraints and doesn't experience total thread-pool lockups when subjected to thousands of concurrent malicious
-   stalled connections gracefully holding sockets hostage.
+1.  **Testing Persistent Connections (SSE/WebSockets)**: Validating how gracefully your backend or infrastructure
+    handles 100,000+ active users holding open Event Streams, WebSockets, or Long-Polling links without doing constant
+    background work.
+2.  **Infrastructure Limitation Discovery**: Revealing hidden OS configuration ceilings before deployment, precisely
+    finding edge drops such as File Descriptor starvation (`EMFILE`), Ephemeral Port exhaustion (`EADDRNOTAVAIL`), or
+    reverse proxy RAM caps.
+3.  **Evaluating Cloud Load Balancers/Gateways**: Discovering the exact threshold where an AWS Application Load Balancer
+    or Nginx edge autonomously decides to drop idle Keep-Alive mappings to release native memory.
+4.  **Resilience & Slowloris Simulation**: Ensuring your Thread-based infrastructure (e.g. Puma) correctly maps
+    constraints and doesn't experience total thread-pool lockups when subjected to thousands of concurrent malicious
+    stalled connections gracefully holding sockets hostage.
 
 ---
 
@@ -382,7 +382,7 @@ request/response traffic — the client's periodic `HEAD` pings and the server's
 using `tcpdump`.
 
 ```bash
-# Sniff strict ASCII payload headers and body bounds passing over local interface 0 mapping perfectly to the benchmark port:
+# Sniff the ASCII request headers and bodies on the loopback interface, port 8080:
 sudo tcpdump -i lo0 port 8080 -A
 ```
 

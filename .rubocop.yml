@@ -57,6 +57,11 @@ Layout/ParameterAlignment:
 
 # The same width as Markdown (markdownlint MD013), YAML (yamllint) and every other file (.editorconfig).
 Layout/LineLength:
+  AllowCopDirectives: false
+  AllowHeredoc: false
+  AllowQualifiedName: false
+  AllowURI: false
+  AllowedPatterns: []
   Max: 120
 
 Gemspec/DevelopmentDependencies:
