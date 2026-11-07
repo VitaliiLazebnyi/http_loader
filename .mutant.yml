@@ -30,11 +30,11 @@ mutation:
     # sorbet-runtime checks generics shallowly), so no runtime test can observe it -- same basis as
     # a `sig` block.
     - block{receiver=send{selector=type_alias}}
-    # `Server#build_cert`'s `cert.sign(rsa, OpenSSL::Digest.new('SHA256'))` -- the sole `.sign` call in
+    # `Server.certificate`'s `cert.sign(rsa, OpenSSL::Digest.new('SHA256'))` -- the sole `.sign` call in
     # lib/. OpenSSL's RSA signing treats `OpenSSL::Digest.new('SHA256')`, the string `'SHA256'` and
     # `nil` (which defaults to SHA256 for RSA keys) as the same digest, producing a byte-identical
     # certificate, so no runtime test can distinguish the digest expression. That the certificate is
-    # validly signed by the key is covered end-to-end by `#generate_ssl_context`'s verify spec.
+    # validly signed by the key is covered end-to-end by `.ssl_context`'s verify spec.
     - send{selector=sign}
   timeout: 20.0
 requires:

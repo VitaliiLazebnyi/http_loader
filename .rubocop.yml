@@ -137,7 +137,9 @@ Sorbet/RedundantExtendTSig:
 
 # The sigil ladder: lib/ is `typed: strong` (no T.untyped value anywhere); the scripts, RBI tooling and spec
 # support modules are `strict`, except the two scripts above that run without sorbet-runtime; the specs are `true`
-# (TrueSigil applies to every file) because RSpec's `let` and example blocks have no signatures to declare.
+# (TrueSigil applies to every file). At `strict`, Sorbet's RSpec support requires a `sig` on every `let`, which can
+# only be written on the line before it; that splits every group of `let`s, which RSpec/ScatteredLet (enabled)
+# rejects.
 Sorbet/StrictSigil:
   Exclude:
     - script/scorecard_check.rb

@@ -12,13 +12,12 @@ require 'tmpdir'
 FULLY_DOCUMENTED = '100.00% documented'
 # The Ruby code that the smell, duplication, complexity and dead-code checks analyze: the gem and its tooling.
 ANALYZED = %w[lib bin/http_loader script script/scorecard_check Rakefile].freeze
-# Flay mass threshold. Below 24, Flay reports the identical Sorbet signatures of the three heartbeat methods of
-# HttpSession (same four typed parameters) and the two sibling numeric validators of Client::Config; from 24 up it
-# reports every duplicated piece of logic, and the code must score 0.
-FLAY_MASS = 24
-# Flog score above which a single method counts as too complex and must be split up (the most complex method of
-# lib/ scores just below it).
-FLOG_METHOD_THRESHOLD = 25
+# Flay mass threshold: Flay's default, the lowest of the sibling gems. Every duplicated piece of logic of that size
+# is reported, and the code must score 0.
+FLAY_MASS = 16
+# Flog score above which a single method counts as too complex and must be split up (flog's "good" band ends at 20,
+# the threshold of every sibling gem).
+FLOG_METHOD_THRESHOLD = 20
 # Methods debride cannot see a caller for, each with the caller it cannot see.
 DEBRIDE_ALLOWED = { VERSION: 'read by http_loader.gemspec' }.freeze
 
@@ -73,7 +72,7 @@ task :yard do
   abort 'YARD: warnings found' if output.match?(/\[warn\]|warning/i)
 end
 
-desc 'Fail on any code smell (configured Reek detectors, see .reek.yml)'
+desc 'Fail on any code smell (Reek, default configuration; see .reek.yml)'
 task :reek do
   sh('bundle', 'exec', 'reek', *ANALYZED)
 end

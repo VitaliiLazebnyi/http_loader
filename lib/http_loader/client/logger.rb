@@ -38,7 +38,7 @@ module HttpLoader
       #
       # @return [void]
       sig { void }
-      def setup_files!
+      def prepare_files
         FileUtils.mkdir_p(@log_dir)
         # The Logger is the sole writer of these files (the harness captures the child's raw
         # stdout/stderr into separate `client.stdout.log`/`client.stderr.log`), so creating and
@@ -63,7 +63,7 @@ module HttpLoader
       #
       # @return [void]
       sig { void }
-      def flush_synchronously!
+      def flush
         drain_queue
       rescue StandardError
         nil

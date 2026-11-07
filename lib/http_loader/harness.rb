@@ -35,14 +35,9 @@ module HttpLoader
     # @return [void]
     sig { params(config: Config).void }
     def initialize(config)
-      config.validate!
+      config.validate
       @config = config
-      # Only elapsed-second deltas are taken from @start_time (here, in the monitor loop, and in
-      # telemetry), and `Time#-` is instant-based, so the Time's zone never surfaces -- no `.utc`.
-      @start_time = T.let(Time.now, Time)
-      @peak_connections = T.let(0, Integer)
-      log_dir = T.let(File.expand_path('../../logs', __dir__), String)
-      @telemetry = T.let(Telemetry.new(log_dir, config.export_json), Telemetry)
+      @telemetry = T.let(Telemetry.new(File.expand_path('../../logs', __dir__), config.export_json), Telemetry)
       @pm = T.let(ProcessManager.new(config), ProcessManager)
       @monitor = T.let(ResourceMonitor.new, ResourceMonitor)
     end
@@ -54,47 +49,47 @@ module HttpLoader
     def start
       T.let($stdout, T.any(IO, StringIO)).sync = true
       print_startup_banner
-      bump_file_limits
-
+      FileLimits.bump!(@config.connections + 1024, label: '[Harness]')
       run_lifecycle
     end
 
     private
 
-    # Orchestrates process lifecycle, binding trap behaviors, and triggers active resource monitoring.
+    # Spawns the processes and monitors them until the run ends, then exports the report and stops them. The
+    # interrupt handler is installed before spawning, so an early Ctrl+C still cleans up; cleanup is a guarded
+    # no-op while the child PIDs are still unset.
     #
     # @return [void]
     sig { void }
     def run_lifecycle
-      # Install the trap before spawning so an early Ctrl+C still runs cleanup;
-      # cleanup is a guarded no-op while the child PIDs are still unset.
-      trap('INT') do
-        puts("\n[Harness] Caught interrupt, cleaning up processes...")
-        @pm.cleanup
-        exit(0)
-      end
+      trap('INT') { interrupt }
       @pm.spawn_processes
       monitor_resources
     ensure
-      @telemetry.export!(@peak_connections, @start_time)
+      @telemetry.export
       @pm.cleanup
     end
 
-    # Blocks the main execution thread actively querying and evaluating subsystem statuses periodically.
+    # Stops the processes and exits, on Ctrl+C.
+    #
+    # @return [void]
+    sig { void }
+    def interrupt
+      puts("\n[Harness] Caught interrupt, cleaning up processes...")
+      @pm.cleanup
+      exit(0)
+    end
+
+    # Prints a row of the metrics table every two seconds until the target duration is reached or a process
+    # is missing.
     #
     # @return [void]
     sig { void }
     def monitor_resources
       print_table_header
-      @start_time = Time.now
-
-      loop do
-        break if duration_exceeded?
-
-        tick_result = tick_failed?
-        break if tick_result
-
-        @telemetry.check_bottlenecks!
+      @telemetry.restart
+      until duration_exceeded? || tick_failed?
+        @telemetry.report_bottlenecks
         sleep(2)
       end
     end
@@ -105,58 +100,36 @@ module HttpLoader
     sig { returns(T::Boolean) }
     def duration_exceeded?
       target = @config.target_duration
-      # Time#- already yields Float seconds (instant-based).
-      elapsed = Time.now - @start_time
-      return false if target <= 0.0 || elapsed < target
+      return false if target <= 0.0 || @telemetry.elapsed < target
 
       puts("[Harness] Target duration mathematically reached (#{target}s). auto-shutdown.")
       true
     end
 
-    # Evaluates the instantaneous point-in-time statistical frame against failure parameters.
+    # Samples the client and prints a row of the metrics table, unless a socket or a process is missing.
     #
     # @return [Boolean] true implying fatal failure requiring immediate test abort
     sig { returns(T::Boolean) }
     def tick_failed?
-      active_c, c_cpu, c_th, c_m = extract_client_stats
-      @peak_connections = [@peak_connections, active_c].max
+      active, client = extract_client_stats
+      @telemetry.observe(active)
+      return true if missing_socket?(active, client) || @pm.missing_process?
 
-      return true if missing_socket?(active_c, c_cpu, c_th, c_m)
-      return true if @pm.missing_process?
-
-      print_combined_stats(active_c, c_cpu, c_th, c_m)
+      print_combined_stats(active, client)
       false
     end
 
-    # Hooks deeply into OS boundaries augmenting `ulimit -n` metrics facilitating bulk HTTP pipelines.
+    # Whether every connection to the external targets dropped after some were established: the row then
+    # shows the external server as gone.
     #
-    # @return [void]
-    sig { void }
-    def bump_file_limits
-      FileLimits.bump!(@config.connections + 1024, label: '[Harness]')
-    end
+    # @param active [Integer] the established connections of the client
+    # @param client [ProcessStats] the stats of the client
+    # @return [Boolean] true when the external server disconnected
+    sig { params(active: Integer, client: ProcessStats).returns(T::Boolean) }
+    def missing_socket?(active, client)
+      return false if @config.target_urls.none? || @telemetry.peak_connections.zero? || active.nonzero?
 
-    # Diagnostically evaluates sudden connection termination from upstream server endpoints natively.
-    #
-    # @param active [Integer] active instantaneous sockets
-    # @param c_cpu [String] formatted client cpu util
-    # @param c_th [Integer] aggregated client thread pools count
-    # @param c_m [String] string formatted consumed heap
-    # @return [Boolean] flags if logical expectations are broken natively
-    sig { params(active: Integer, c_cpu: String, c_th: Integer, c_m: String).returns(T::Boolean) }
-    def missing_socket?(active, c_cpu, c_th, c_m)
-      return false if @config.target_urls.none? || @peak_connections.zero? || active.nonzero?
-
-      log_table_row(
-        t: Time.now.utc.strftime('%H:%M:%S'),
-        ac: active,
-        sc: 'EXTERNAL',
-        sm: 'N/A',
-        sk: 'N/A',
-        cc: "#{c_cpu}% / #{c_th}T",
-        cm: c_m,
-        ck: 'N/A'
-      )
+      log_table_row([Formatter.clock, active, 'EXTERNAL', 'N/A', 'N/A', "#{client.load}T", client.memory, 'N/A'])
       puts("\n[Harness] \u26A0\uFE0F EXTERNAL SERVER DISCONNECTED!")
       true
     end

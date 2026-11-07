@@ -16,16 +16,19 @@ module HttpLoader
     # Manages child process lifecycles natively and checks status dynamically.
     class ProcessManager
       extend T::Sig
-      include ProcessControl
 
       # Absolute path to the CLI entrypoint, resolved independently of the current
       # working directory so the harness works when invoked from anywhere.
       BIN_PATH = T.let(File.expand_path('../../../bin/http_loader', __dir__), String)
       public_constant :BIN_PATH
 
-      # Seconds to wait for the spawned server to accept TCP connections before giving up.
-      SERVER_BOOT_TIMEOUT = 15.0
-      private_constant :SERVER_BOOT_TIMEOUT
+      # Seconds between two probes of the spawned server's port.
+      SERVER_POLL_INTERVAL = 0.1
+      private_constant :SERVER_POLL_INTERVAL
+
+      # How many times to probe the spawned server's port before giving up (after 15 seconds).
+      SERVER_POLLS = 150
+      private_constant :SERVER_POLLS
 
       # The IPv4 loopback address (INADDR_LOOPBACK) the readiness probe connects to.
       LOOPBACK = T.let(IPAddr.new(Socket::INADDR_LOOPBACK, Socket::AF_INET).to_s, String)
@@ -34,6 +37,27 @@ module HttpLoader
       # Map of spawned child role (:server / :client) to its OS pid. A static type.
       Pids = T.type_alias { T::Hash[Symbol, Integer] }
       private_constant :Pids
+
+      # Probes a local TCP port; a successful accept is a valid readiness proxy even for HTTPS.
+      #
+      # @param port [Integer] the port to probe
+      # @return [Boolean] true if a TCP connection succeeds
+      sig { params(port: Integer).returns(T::Boolean) }
+      def self.port_open?(port)
+        TCPSocket.new(LOOPBACK, port).close
+        true
+      rescue StandardError
+        false
+      end
+
+      # Whether a started process has exited.
+      #
+      # @param pid [Integer, nil] the process, or nil when it was not started
+      # @return [Boolean] true for a started process that is gone
+      sig { params(pid: T.nilable(Integer)).returns(T::Boolean) }
+      def self.dead?(pid)
+        pid ? ProcessControl.dead?(pid) : false
+      end
 
       # Allocates a new supervisor manager evaluating local child architectures natively. The spawned
       # child pids live in a single map (empty until a child is spawned) rather than two nil ivars, so
@@ -80,8 +104,8 @@ module HttpLoader
       # @return [void]
       sig { void }
       def cleanup
-        terminate(server_pid)
-        terminate(client_pid)
+        ProcessControl.terminate(server_pid)
+        ProcessControl.terminate(client_pid)
       end
 
       # Resolves active PID statuses ensuring both mapped logic ends remain alive actively.
@@ -89,12 +113,7 @@ module HttpLoader
       # @return [Boolean] true flag implying fatal termination of tracked underlying routines
       sig { returns(T::Boolean) }
       def missing_process?
-        cpid = client_pid
-        spid = server_pid
-        return true if cpid && dead?(cpid)
-        return true if spid && dead?(spid)
-
-        false
+        [client_pid, server_pid].any? { |pid| ProcessManager.dead?(pid) }
       end
 
       private
@@ -145,28 +164,24 @@ module HttpLoader
       sig { void }
       def wait_for_server
         port = @config.use_https ? 8443 : 8080
-        stop_at = Time.now + SERVER_BOOT_TIMEOUT
-        while Time.now < stop_at
-          return if port_open?(port)
+        return if server_ready?(port)
 
-          spid = server_pid
-          break if spid && dead?(spid)
-
-          sleep(0.1)
-        end
-        warn("[Harness] Warning: server did not become ready on port #{port} within #{SERVER_BOOT_TIMEOUT}s.")
+        timeout = SERVER_POLLS * SERVER_POLL_INTERVAL
+        warn("[Harness] Warning: server did not become ready on port #{port} within #{timeout}s.")
       end
 
-      # Probes a local TCP port; a successful accept is a valid readiness proxy even for HTTPS.
+      # Polls the server's port every SERVER_POLL_INTERVAL, SERVER_POLLS times.
       #
-      # @param port [Integer] the port to probe
-      # @return [Boolean] true if a TCP connection succeeds
+      # @param port [Integer] the port of the server
+      # @return [Boolean] true once the port accepts a connection; false on the timeout or the server's exit
       sig { params(port: Integer).returns(T::Boolean) }
-      def port_open?(port)
-        sock = T.let(TCPSocket.new(LOOPBACK, port), TCPSocket)
-        sock.close
-        true
-      rescue StandardError
+      def server_ready?(port)
+        SERVER_POLLS.times do
+          return true if ProcessManager.port_open?(port)
+          return false if ProcessManager.dead?(server_pid)
+
+          sleep(SERVER_POLL_INTERVAL)
+        end
         false
       end
     end

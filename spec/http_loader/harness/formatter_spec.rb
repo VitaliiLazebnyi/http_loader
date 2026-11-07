@@ -58,37 +58,9 @@ RSpec.describe(HttpLoader::Harness::Formatter) do
     end
   end
 
-  describe '#format_kb_conn' do
-    it 'returns EXTERNAL when the pid is nil' do
-      expect(harness.format_kb_conn(10.0, 1, nil)).to(eq('EXTERNAL'))
-    end
-
-    it 'returns N/A when connections are zero' do
-      expect(harness.format_kb_conn(10.0, 0, 123)).to(eq('N/A'))
-    end
-
-    it 'returns N/A when connections are negative' do
-      expect(harness.format_kb_conn(10.0, -1, 123)).to(eq('N/A'))
-    end
-
-    it 'rounds the per-connection footprint to two decimals' do
-      expect(harness.format_kb_conn(10.0, 3, 123)).to(eq('3.33 KB'))
-    end
-  end
-
   describe '#log_table_row' do
     it 'left-justifies every field to its column width, pipe-separated' do
-      fields = {
-        t: '12:34:56',
-        ac: '10',
-        sc: '50.0% / 8',
-        sm: '100MB',
-        sk: '128.0 KB',
-        cc: '30.0% / 4',
-        cm: '60MB',
-        ck: '102.4 KB'
-      }
-      harness.log_table_row(fields)
+      harness.log_table_row(['12:34:56', 10, '50.0% / 8', '100MB', '128.0 KB', '30.0% / 4', '60MB', '102.4 KB'])
       expect(lines).to(
         eq(
           [
@@ -100,22 +72,24 @@ RSpec.describe(HttpLoader::Harness::Formatter) do
     end
   end
 
-  describe '#extract_server_stats' do
-    it 'returns server cpu, mem, threads and the formatted mem/conn' do
+  describe '#server_columns' do
+    it 'returns the server load, memory and memory per connection' do
       stub_backends(harness)
-      expect(harness.extract_server_stats).to(eq(['50.0', '100MB', 8, '128.0 KB']))
+      expect(harness.server_columns).to(eq(['50.0% / 8', '100MB', '128.0 KB']))
     end
 
-    it 'labels the mem/conn EXTERNAL when the server pid is nil' do
+    it 'labels the memory per connection EXTERNAL for an external server' do
       stub_backends(harness, server_pid: nil)
-      expect(harness.extract_server_stats).to(eq(['50.0', '100MB', 8, 'EXTERNAL']))
+      expect(harness.server_columns).to(eq(['50.0% / 8', '100MB', 'EXTERNAL']))
     end
   end
 
   describe '#extract_client_stats' do
-    it 'returns client active conns, cpu, threads and mem' do
+    it 'returns the client connections and stats', :aggregate_failures do
       stub_backends(harness)
-      expect(harness.extract_client_stats).to(eq([5, '30.0', 4, '60MB']))
+      active, stats = harness.extract_client_stats
+      expect(active).to(eq(5))
+      expect(stats).to(have_attributes(cpu: '30.0', memory: '60MB', threads: 4))
     end
   end
 
@@ -123,12 +97,15 @@ RSpec.describe(HttpLoader::Harness::Formatter) do
     # #utc yields a real UTC time (so strftime format mutations are caught), while the receiver's
     # own #strftime returns a sentinel, so dropping the `.utc` call visibly changes the printed row.
     let(:frozen_now) { instance_double(Time, utc: Time.utc(2021, 1, 1, 7, 34, 56), strftime: 'LOCAL-NOT-UTC') }
+    let(:client_stats) do
+      HttpLoader::Harness::ProcessStats.new(cpu: '30.0', memory: '60MB', kilobytes: 1024.0, threads: 4)
+    end
 
     before { allow(Time).to(receive(:now).and_return(frozen_now)) }
 
     it 'prints a fully formatted row combining server and client metrics in UTC' do
       stub_backends(harness)
-      harness.print_combined_stats(10, '30.0', 4, '60MB')
+      harness.print_combined_stats(10, client_stats)
       expect(lines).to(
         eq(
           [
@@ -139,15 +116,15 @@ RSpec.describe(HttpLoader::Harness::Formatter) do
       )
     end
 
-    it 'labels the client mem/conn EXTERNAL when the client pid is nil' do
-      stub_backends(harness, client_pid: nil)
-      harness.print_combined_stats(10, '30.0', 4, '60MB')
+    it 'labels the client memory per connection EXTERNAL for an external client' do
+      stub_backends(harness)
+      harness.print_combined_stats(10, StatsFactory.stats(cpu: '30.0', memory: '60MB', threads: 4, external: true))
       expect(lines.first).to(end_with("| #{'EXTERNAL'.ljust(14)}"))
     end
 
-    it 'labels the server mem/conn EXTERNAL when the server pid is nil' do
+    it 'labels the server memory per connection EXTERNAL for an external server' do
       stub_backends(harness, server_pid: nil)
-      harness.print_combined_stats(10, '30.0', 4, '60MB')
+      harness.print_combined_stats(10, client_stats)
       expect(lines.first.include?("| #{'EXTERNAL'.ljust(14)} |")).to(be(true))
     end
   end

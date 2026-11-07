@@ -9,40 +9,33 @@ require 'sorbet-runtime'
 # Primary namespace for the load testing framework.
 module HttpLoader
   class Harness
-    # Counts the ESTABLISHED TCP connections of a process for ResourceMonitor: from `/proc` on Linux, from
-    # `lsof` elsewhere.
+    # Counts the ESTABLISHED TCP connections of a process: from `/proc` on Linux, from `lsof` elsewhere.
     module ConnectionCounter
       extend T::Sig
 
-      # Aggregates physical network sockets representing valid ESTABLISHED system patterns cleanly without collision.
+      # The established TCP connections of a process.
       #
-      # @param pid [Integer, nil] OS map matching tracking subsystem explicitly
-      # @return [Integer] sum total connected target bound structures natively
+      # @param pid [Integer, nil] the process, or nil for an external one
+      # @return [Integer] the count; 0 for an external process or when it cannot be read
       sig { params(pid: T.nilable(Integer)).returns(Integer) }
-      def count_established_connections(pid)
-        return 0 if pid.nil?
+      def self.count(pid)
+        return 0 unless pid
 
-        if File.directory?("/proc/#{pid}/fd")
-          count_linux_connections(pid)
-        else
-          count_lsof_connections(pid)
-        end
+        File.directory?("/proc/#{pid}/fd") ? count_linux(pid) : count_lsof(pid)
       rescue StandardError
         0
       end
 
-      private
-
       # Counts only ESTABLISHED TCP sockets on Linux, matching the macOS `lsof` path.
-      # A bare `socket:[` prefix would over-count listening/UNIX/UDP sockets, so we
-      # intersect the process's socket fds with the inodes of ESTABLISHED entries in
+      # A bare `socket:[` prefix would over-count listening/UNIX/UDP sockets, so the
+      # process's socket fds are intersected with the inodes of ESTABLISHED entries in
       # `/proc/<pid>/net/tcp[6]` (state `01`).
       #
-      # @param pid [Integer] physical identifier dynamically mapped logically
+      # @param pid [Integer] the process
       # @return [Integer] count of established TCP connections
       sig { params(pid: Integer).returns(Integer) }
-      def count_linux_connections(pid)
-        established = established_inodes(pid)
+      def self.count_linux(pid)
+        established = %w[tcp tcp6].flat_map { |proto| established_inodes("/proc/#{pid}/net/#{proto}") }
         fd_socket_inodes(pid).count { |inode| established.include?(inode) }
       end
 
@@ -50,10 +43,10 @@ module HttpLoader
       # that are not sockets (and any that vanish mid-walk: a readlink on a since-closed fd raises
       # and is skipped rather than aborting the whole count).
       #
-      # @param pid [Integer] tracked process identifier
+      # @param pid [Integer] the process
       # @return [Array<String>] socket inode strings for the process's socket fds
       sig { params(pid: Integer).returns(T::Array[String]) }
-      def fd_socket_inodes(pid)
+      def self.fd_socket_inodes(pid)
         Dir.glob("/proc/#{pid}/fd/*").filter_map do |fd_path|
           socket_inode(fd_path)
         rescue StandardError
@@ -68,40 +61,48 @@ module HttpLoader
       # @param fd_path [String] absolute path of the file-descriptor symlink
       # @return [String, nil] the socket inode, or nil when the target is not a socket link
       sig { params(fd_path: String).returns(T.nilable(String)) }
-      def socket_inode(fd_path)
+      def self.socket_inode(fd_path)
         File.readlink(fd_path).match(/\Asocket:\[(\d+)\]\z/)&.[](1)
       end
 
-      # Collects the socket inodes of ESTABLISHED TCP (IPv4 + IPv6) connections owned
-      # by the process, parsed from `/proc/<pid>/net/tcp` and `net/tcp6`.
+      # The socket inodes of the ESTABLISHED connections in one `/proc/<pid>/net/tcp[6]` table.
       #
-      # @param pid [Integer] tracked process identifier
-      # @return [Array<String>] inode strings of ESTABLISHED sockets
-      sig { params(pid: Integer).returns(T::Array[String]) }
-      def established_inodes(pid)
-        %w[tcp tcp6].flat_map do |proto|
-          path = "/proc/#{pid}/net/#{proto}"
-          next [] unless File.exist?(path)
+      # @param path [String] the table
+      # @return [Array<String>] the inodes; none when the table does not exist
+      sig { params(path: String).returns(T::Array[String]) }
+      def self.established_inodes(path)
+        return [] unless File.exist?(path)
 
-          # The header row's state column is never '01', so it is filtered out like any other
-          # non-ESTABLISHED row; no explicit header drop is needed. Each data row has >= 10
-          # whitespace fields, so `fetch` is total.
-          File.read(path).each_line.filter_map do |line|
-            cols = line.split
-            cols.fetch(9) if cols.fetch(3) == '01'
-          end
-        end
+        File.read(path).each_line.filter_map { |line| established_inode(line) }
       end
 
-      # Leverages legacy UNIX tooling safely generating mapped logic structures universally.
+      # The socket inode of one row of a TCP table when the connection is ESTABLISHED (state `01`). The header
+      # row's state column is never '01', so it is filtered out like any other row; every row has at least
+      # 10 whitespace-separated fields, so `fetch` is total.
       #
-      # @param pid [Integer] ID
-      # @return [Integer] connections count actively evaluated
+      # @param line [String] the row
+      # @return [String, nil] the inode, or nil for another state
+      sig { params(line: String).returns(T.nilable(String)) }
+      def self.established_inode(line)
+        cols = line.split
+        cols.fetch(9) if cols.fetch(3) == '01'
+      end
+
+      # Counts the ESTABLISHED connections `lsof` lists for the process.
+      #
+      # @param pid [Integer] the process
+      # @return [Integer] connections count
       sig { params(pid: Integer).returns(Integer) }
-      def count_lsof_connections(pid)
-        out, _s = Open3.capture2('lsof', '-p', pid.to_s, '-n', '-P')
+      def self.count_lsof(pid)
+        out, _status = Open3.capture2('lsof', '-p', pid.to_s, '-n', '-P')
         out.lines.count { |line| line.include?('(ESTABLISHED)') }
       end
+      private_class_method :count_linux,
+        :fd_socket_inodes,
+        :socket_inode,
+        :established_inodes,
+        :established_inode,
+        :count_lsof
     end
   end
 end

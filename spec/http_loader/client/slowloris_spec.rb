@@ -31,8 +31,8 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
     allow(slowloris).to(receive(:sleep))
     allow(io).to(receive(:write).and_call_original)
     allow(io).to(receive(:flush).and_call_original)
-    # Keep-alive byte is rand(97..122).chr => 'a'; the jitter call rand(-0.0..0.0) stays 0.0.
-    allow(slowloris).to(receive(:rand) { |range| range == (97..122) ? 97 : 0.0 })
+    # The keep-alive byte is rand(97..122).chr => 'a'.
+    allow(slowloris).to(receive(:rand).and_return(97))
   end
 
   after do
@@ -40,12 +40,32 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
     File.unlink(io.path)
   end
 
+  describe '.payload' do
+    it 'is the request line, Host and the headers in order, with an unfinished last header' do
+      expect(HttpLoader::Client::Slowloris.payload(URI('http://h:81/'), { 'A' => '1', 'B' => '2' }))
+        .to(eq("GET / HTTP/1.1\r\nHost: h\r\nA: 1\r\nB: 2\r\nX-Slowloris: "))
+    end
+  end
+
+  describe '.request_target' do
+    it('is the path') { expect(HttpLoader::Client::Slowloris.request_target(URI('http://h/a/b'))).to(eq('/a/b')) }
+    it('is / for an empty path') { expect(HttpLoader::Client::Slowloris.request_target(URI('http://h'))).to(eq('/')) }
+
+    it 'appends the query' do
+      expect(HttpLoader::Client::Slowloris.request_target(URI('http://h/p?q=1&r=2'))).to(eq('/p?q=1&r=2'))
+    end
+
+    it 'keeps an empty query' do
+      expect(HttpLoader::Client::Slowloris.request_target(URI('http://h/p?'))).to(eq('/p?'))
+    end
+  end
+
   describe '#run guards' do
     context 'when slowloris_delay is negative' do
       let(:overrides) { { slowloris_delay: -1.0 } }
 
       it 'writes nothing' do
-        slowloris.run(0, URI('http://local/'), http, Time.now)
+        slowloris.run(ConnectionFactory.build(http, index: 0, uri: 'http://local/', started: Time.now))
         expect(File.read(io.path)).to(eq(''))
       end
     end
@@ -54,7 +74,7 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
       let(:overrides) { { slowloris_delay: 0.0 } }
 
       it 'writes nothing and never reads the socket', :aggregate_failures do
-        slowloris.run(0, URI('http://local/'), http, Time.now)
+        slowloris.run(ConnectionFactory.build(http, index: 0, uri: 'http://local/', started: Time.now))
         expect(http).not_to(have_received(:instance_variable_get))
         expect(File.read(io.path)).to(eq(''))
       end
@@ -62,7 +82,7 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
 
     it 'writes nothing when the socket is absent' do
       allow(http).to(receive(:instance_variable_get).with(:@socket).and_return(nil))
-      slowloris.run(0, URI('http://local/'), http, Time.now)
+      slowloris.run(ConnectionFactory.build(http, index: 0, uri: 'http://local/', started: Time.now))
       expect(File.read(io.path)).to(eq(''))
     end
   end
@@ -73,36 +93,36 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
     before { allow(Time).to(receive(:now).and_return(Time.at(0), Time.at(1))) }
 
     it 'streams the exact incomplete request then one keep-alive byte' do
-      slowloris.run(3, URI('http://local/'), http, Time.at(0))
+      slowloris.run(ConnectionFactory.build(http, index: 3, uri: 'http://local/', started: Time.at(0)))
       expect(File.read(io.path))
         .to(eq("GET / HTTP/1.1\r\nHost: local\r\nConnection: keep-alive\r\nUser-Agent: A\r\nX-Slowloris: a"))
     end
 
     it 'logs the client index when the hold ends' do
-      slowloris.run(3, URI('http://local/'), http, Time.at(0))
+      slowloris.run(ConnectionFactory.build(http, index: 3, uri: 'http://local/', started: Time.at(0)))
       expect(logger).to(have_received(:info).with('[Client 3] Keep-alive timeout reached, closing Slowloris thread.'))
     end
 
     it 'maps the path and query into the request line' do
-      slowloris.run(0, URI('http://local/path?q=1'), http, Time.at(0))
+      slowloris.run(ConnectionFactory.build(http, index: 0, uri: 'http://local/path?q=1', started: Time.at(0)))
       expect(File.read(io.path)).to(start_with('GET /path?q=1 HTTP/1.1'))
     end
 
     it 'defaults an empty path to /' do
-      slowloris.run(0, URI('http://local'), http, Time.at(0))
+      slowloris.run(ConnectionFactory.build(http, index: 0, uri: 'http://local', started: Time.at(0)))
       expect(File.read(io.path)).to(start_with('GET / HTTP/1.1'))
     end
 
     it 'paces every byte but the first with the slowloris delay, then caps the keep-alive pace to the budget',
       :aggregate_failures do
-      slowloris.run(0, URI('http://local/'), http, Time.at(0))
+      slowloris.run(ConnectionFactory.build(http, index: 0, uri: 'http://local/', started: Time.at(0)))
       written = File.size(io.path)
       expect(slowloris).to(have_received(:sleep).with(1.0).exactly(written - 2).times)
       expect(slowloris).to(have_received(:sleep).with(0.1).once)
     end
 
     it 'flushes after every byte' do
-      slowloris.run(0, URI('http://local/'), http, Time.at(0))
+      slowloris.run(ConnectionFactory.build(http, index: 0, uri: 'http://local/', started: Time.at(0)))
       expect(io).to(have_received(:flush).exactly(File.size(io.path)).times)
     end
 
@@ -110,21 +130,21 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
       let(:overrides) { { headers: { 'X-Foo' => 'bar' } } }
 
       it 'appends each before the unfinished one' do
-        slowloris.run(0, URI('http://local/'), http, Time.at(0))
+        slowloris.run(ConnectionFactory.build(http, index: 0, uri: 'http://local/', started: Time.at(0)))
         expect(File.read(io.path)).to(end_with("User-Agent: A\r\nX-Foo: bar\r\nX-Slowloris: a"))
       end
     end
   end
 
-  describe '#maintain_hold budget handling' do
-    # These isolate maintain_hold by stubbing the payload phase and driving budget_remaining with a fixed
+  describe '#run hold budget handling' do
+    # These isolate the hold by stubbing the payload phase and driving budget_remaining with a fixed
     # sequence, so each keep-alive decision is deterministic and the loop always terminates.
-    before { allow(slowloris).to(receive(:fire_initial_payload)) }
+    before { allow(slowloris).to(receive(:trickle)) }
 
     context 'with budget left for one byte' do
       before do
-        allow(slowloris).to(receive(:budget_remaining).and_return(0.1, 0.0))
-        slowloris.run(5, URI('http://local/'), http, Time.at(0))
+        allow(HttpLoader::Client::Pacing).to(receive(:budget_remaining).and_return(0.1, 0.0))
+        slowloris.run(ConnectionFactory.build(http, index: 5, uri: 'http://local/', started: Time.at(0)))
       end
 
       it('writes one random lowercase keep-alive byte') { expect(File.read(io.path)).to(eq('a')) }
@@ -133,20 +153,20 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
       it('caps the pace (1.0s) to the remaining budget') { expect(slowloris).to(have_received(:sleep).with(0.1)) }
 
       it 'measures the budget against the keep-alive timeout from the start time' do
-        expect(slowloris).to(have_received(:budget_remaining).with(0.1, Time.at(0)).twice)
+        expect(HttpLoader::Client::Pacing).to(have_received(:budget_remaining).with(0.1, Time.at(0)).twice)
       end
     end
 
     it 'logs (with the client index) and stops when the budget is exactly exhausted', :aggregate_failures do
-      allow(slowloris).to(receive(:budget_remaining).and_return(0.0, -1.0))
-      slowloris.run(7, URI('http://local/'), http, Time.now)
+      allow(HttpLoader::Client::Pacing).to(receive(:budget_remaining).and_return(0.0, -1.0))
+      slowloris.run(ConnectionFactory.build(http, index: 7, uri: 'http://local/', started: Time.now))
       expect(logger).to(have_received(:info).with('[Client 7] Keep-alive timeout reached, closing Slowloris thread.'))
       expect(io).not_to(have_received(:write))
     end
 
     it 'stops on a negative (overrun) budget rather than only on exactly zero' do
-      allow(slowloris).to(receive(:budget_remaining).and_return(-0.5, 0.0))
-      slowloris.run(0, URI('http://local/'), http, Time.now)
+      allow(HttpLoader::Client::Pacing).to(receive(:budget_remaining).and_return(-0.5, 0.0))
+      slowloris.run(ConnectionFactory.build(http, index: 0, uri: 'http://local/', started: Time.now))
       expect(io).not_to(have_received(:write))
     end
 
@@ -156,7 +176,7 @@ RSpec.describe(HttpLoader::Client::Slowloris) do
       it 'keeps going rather than crashing' do
         # Otherwise the hold never ends.
         allow(io).to(receive(:write).and_raise('stop-the-loop'))
-        expect { slowloris.run(0, URI('http://local/'), http, Time.now) }
+        expect { slowloris.run(ConnectionFactory.build(http, index: 0, uri: 'http://local/', started: Time.now)) }
           .to(raise_error('stop-the-loop'))
       end
     end

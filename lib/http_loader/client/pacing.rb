@@ -9,17 +9,12 @@ require 'time'
 # Primary namespace for the load testing framework.
 module HttpLoader
   class Client
-    # Shared connection-pacing arithmetic mixed into the client engine and the per-protocol
-    # sessions: jittered sleep intervals and keep-alive budget bookkeeping. Keeping it in one
-    # place means a single definition is specified and mutation-tested, rather than three
-    # copies drifting apart.
+    # Shared connection-pacing arithmetic of the client engine and the per-protocol sessions: jittered
+    # sleep intervals and keep-alive budget bookkeeping. They are pure functions of their arguments, so
+    # they are module functions; keeping them in one place means a single definition is specified and
+    # mutation-tested, rather than three copies drifting apart.
     module Pacing
       extend T::Sig
-      extend T::Helpers
-
-      # Mixed only into objects that carry Kernel (the client engine and the sessions), so the
-      # private Kernel helpers (`rand`) resolve on `self` under `typed: strong`.
-      requires_ancestor { Kernel }
 
       # Applies randomization jitter to a base sleep interval: the interval is spread by
       # +/- (base * jitter) and floored at 0. A jitter of zero yields a zero spread, so the
@@ -29,7 +24,7 @@ module HttpLoader
       # @param jitter [Float] the jitter factor (0 disables the spread)
       # @return [Float] the jittered, non-negative interval
       sig { params(base_seconds: Float, jitter: Float).returns(Float) }
-      def jittered_interval(base_seconds, jitter)
+      def self.jittered_interval(base_seconds, jitter)
         variance = base_seconds * jitter
         [0.0, base_seconds + rand(-variance..variance)].max
       end
@@ -42,7 +37,7 @@ module HttpLoader
       # @param start_time [Time] the connection's spawn timestamp
       # @return [Float, nil] remaining seconds, or nil if unbounded
       sig { params(timeout: Float, start_time: Time).returns(T.nilable(Float)) }
-      def budget_remaining(timeout, start_time)
+      def self.budget_remaining(timeout, start_time)
         return if timeout <= 0.0
 
         timeout - (Time.now - start_time)
@@ -53,8 +48,10 @@ module HttpLoader
       # @param remaining [Float, nil] remaining budget, or nil if unbounded
       # @return [Boolean] true once no time is left
       sig { params(remaining: T.nilable(Float)).returns(T::Boolean) }
-      def budget_spent?(remaining)
-        !remaining.nil? && remaining <= 0.0
+      def self.budget_spent?(remaining)
+        return false unless remaining
+
+        remaining <= 0.0
       end
 
       # Caps a computed sleep so it never sleeps past the remaining keep-alive budget.
@@ -63,7 +60,7 @@ module HttpLoader
       # @param remaining [Float, nil] remaining budget, or nil if unbounded
       # @return [Float] the capped sleep duration
       sig { params(base: Float, remaining: T.nilable(Float)).returns(Float) }
-      def cap_to_budget(base, remaining)
+      def self.cap_to_budget(base, remaining)
         return base unless remaining
 
         [base, remaining].min

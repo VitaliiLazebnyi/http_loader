@@ -14,7 +14,7 @@ All notable changes to this project are documented in this file. The format is b
   warning or deprecation. See `CONTRIBUTING.md`. Pinned, least-privilege GitHub Actions workflows; a hadolint-clean
   Dockerfile pinned to the newest `ruby:4.0.9` digest and scanned with Trivy.
 - Ruby 3.3+ is now supported (tested on 3.3.13, 3.4.12 and 4.0.9).
-- **Native numeric parameter validation (REQ-CLI-023).** `Client::Config#validate!` and `Harness::Config#validate!`
+- **Native numeric parameter validation (REQ-CLI-023).** `Client::Config#validate` and `Harness::Config#validate`
   reject out-of-bounds numeric flags (e.g. `--connections_count=0`, negative timing/jitter values) with a clean
   `Configuration Error` instead of hanging or crashing with an uncaught backtrace.
 - Shared best-effort `RLIMIT_NOFILE` bump applied by the standalone client as well as the harness.
@@ -23,12 +23,24 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Changed
 
-- Shared `Client::Pacing` mixin for the jittered-sleep and keep-alive-budget arithmetic that was previously duplicated
-  across the client engine and the HTTP/Slowloris sessions.
+- Shared `Client::Pacing` module functions for the jittered-sleep and keep-alive-budget arithmetic that was previously
+  duplicated across the client engine and the HTTP/Slowloris sessions.
 - Dropped the deprecated `Async::Task#sleep` in favor of the reactor-aware `Kernel#sleep`.
 - Dependencies updated to their newest releases (2026-11-07): rack 3.2.8, sorbet and sorbet-runtime 0.6.13645, rubocop
   1.92.2, rubocop-md 3.0.0, RSpec 3.13.x patch releases, Bundler 4.0.24, the `ruby:4.0.9` base image digest, Trivy
   0.76.2, and the pinned `ruby/setup-ruby`, `github/codeql-action` and `zizmorcore/zizmor-action` SHAs.
+- The code meets Reek's default configuration (every detector, default limits), Flay's default mass (16) and a Flog
+  limit of 20 per method, as the sibling gems do. The public API changed with it:
+  - `Server.new(https:)` chooses HTTPS (on 8443) or plain HTTP (on 8080), and `Server#start` takes no arguments.
+  - `Client::Config#request_headers` returns the headers of every request; a `--headers` header replaces a default of
+    the same name instead of being sent next to it by the Slowloris engine.
+  - `Harness::ResourceMonitor#process_stats` returns a `Harness::ProcessStats`, and the established connections of a
+    process are counted by `Harness::ConnectionCounter.count`.
+  - `Client::Logger#setup_files!` and `#flush_synchronously!` are `#prepare_files` and `#flush`;
+    `Harness::Telemetry#export!` and `#check_bottlenecks!` are `#export` and `#report_bottlenecks`, and the telemetry
+    tracks the run's start and peak connections itself; `CliArgs.split_list` is `CliArgs::List.parse`.
+  - The harness samples the client once per tick: it sampled it twice, recording two CPU samples per tick.
+  - Net::HTTP's own retries are disabled through the connection's start options.
 
 ### Fixed
 
