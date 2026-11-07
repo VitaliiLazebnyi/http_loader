@@ -73,11 +73,10 @@ check_editorconfig() { editorconfig-checker; }
 
 check_gitleaks() { gitleaks git --redact --verbose --exit-code 1 .; }
 
-# Every known vulnerability, of any severity, in every lockfile: the gems of both bundles, the npm and PyPI linters.
-# OSV-Scanner names a lockfile by its parser when the file name is not the conventional one.
+# Every known vulnerability, of any severity, in every committed lockfile: the gems, and the npm and PyPI linters.
 check_osv() {
-  osv-scanner scan source --lockfile Gemfile.lock --lockfile Gemfile.lock:typecheck.gemfile.lock \
-    --lockfile tools/package-lock.json --lockfile requirements.txt:tools/requirements.txt
+  osv-scanner scan source --lockfile Gemfile.lock --lockfile tools/package-lock.json \
+    --lockfile tools/requirements.txt
 }
 
 # npm's own advisory database at its lowest threshold, and the registry signatures and provenance attestations of
