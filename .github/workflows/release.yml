@@ -30,7 +30,7 @@ jobs:
         persist-credentials: false
 
     # No dependency cache in the release pipeline: a poisoned cache must never reach a published gem.
-    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+    - uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
       with:
         ruby-version: .ruby-version
         bundler-cache: false
@@ -52,7 +52,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+    - uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
       with:
         ruby-version: .ruby-version
         bundler-cache: false
