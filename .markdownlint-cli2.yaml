@@ -1,0 +1,33 @@
+# markdownlint-cli2 runs every rule (`default: true`) over every Markdown file; there are no inline
+# disable comments (script/forbidden_suppressions.sh). Settings below only tighten rules.
+config:
+  default: true
+  # Lists use dashes everywhere.
+  MD004:
+    style: dash
+  # No trailing spaces at all, not even the two-space hard line break.
+  MD009:
+    br_spaces: 0
+    strict: true
+  # Prose, code blocks and tables wrap at 120 columns, the width of the code (RuboCop Layout/LineLength).
+  MD013:
+    line_length: 120
+    code_blocks: true
+    tables: true
+    headings: true
+  # Code blocks are fenced with backticks.
+  MD046:
+    style: fenced
+  MD048:
+    style: backtick
+  # Emphasis uses underscores and strong emphasis uses asterisks.
+  MD049:
+    style: underscore
+  MD050:
+    style: asterisk
+ignores:
+  - 'coverage/**'
+  - 'doc/**'
+  - 'vendor/**'
+  - 'tmp/**'
+  - 'logs/**'

@@ -9,4 +9,5 @@ source 'https://rubygems.org'
 
 gemspec
 
+# Generates the RBI files of the bundled gems that Sorbet checks the code against.
 gem 'tapioca', '~> 0.20', require: false

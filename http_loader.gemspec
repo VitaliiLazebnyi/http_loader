@@ -29,7 +29,7 @@ Gem::Specification.new do |spec|
   # Signing is opt-in via GEM_SIGN=1 (set by the release workflow) so that ordinary
   # `gem build` on a maintainer machine or in CI never fails on a mismatched/absent key
   # and never silently ships an unsigned gem it believed to be signed. Both the cert
-  # chain and the signing key are gated together — declaring cert_chain without a
+  # chain and the signing key are gated together -- declaring cert_chain without a
   # matching key is what breaks `gem build`.
   gem_key = File.expand_path('~/.gem/gem-private_key.pem')
   if ENV['GEM_SIGN'] == '1' && File.exist?(gem_key)
