@@ -1,7 +1,10 @@
 # typed: strong
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'sorbet-runtime'
+require_relative 'pacing'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -31,7 +34,7 @@ module HttpLoader
       # @return [void]
       sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, start_time: Time).void }
       def run(client_index, uri, http, start_time)
-        return unless @config.slowloris_delay > 0.0
+        return if @config.slowloris_delay <= 0.0
 
         socket_wrapper = T.cast(http.instance_variable_get(:@socket), T.nilable(Net::BufferedIO))
         return unless socket_wrapper
@@ -89,6 +92,8 @@ module HttpLoader
           if remaining && remaining <= 0.0
             @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing Slowloris thread.")
             break
+          else
+            nil
           end
 
           io.write(rand(97..122).chr)

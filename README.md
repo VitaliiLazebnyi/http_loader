@@ -139,7 +139,11 @@ require 'fileutils'
 # test_endurance.rb
 
 start_time = Time.now
-pid = spawn("http_loader harness --connections_count=5 --url='https://example.com'", out: 'monitor.log', err: 'monitor.err')
+pid = spawn(
+  "http_loader harness --connections_count=5 --url='https://example.com'",
+  out: 'monitor.log',
+  err: 'monitor.err'
+)
 sleep 10 # Wait for native initialization
 
 loop do
@@ -149,9 +153,11 @@ loop do
   rescue StandardError
     ''
   end.split("\n").grep(/^\d{2}:\d{2}:\d{2}/)
-  if lines.any? && lines.last.split('|')[1].to_i.zero?
+  if lines.any? && Integer(lines.last.split('|')[1], 10).zero?
     puts "Server disconnected actively after #{(Time.now - start_time).round(2)} seconds."
     break
+  else
+    nil
   end
   sleep 4
 end

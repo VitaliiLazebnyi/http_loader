@@ -65,8 +65,12 @@ Cryptographic signing ensures end-to-end security and integrity verification of 
 
 - Inside the `http_loader.gemspec`:
 ```ruby
-spec.cert_chain  = ['certs/http_loader-public_cert.pem']
-spec.signing_key = File.expand_path('~/.gem/gem-private_key.pem') if $PROGRAM_NAME.end_with?('gem') && File.exist?(File.expand_path('~/.gem/gem-private_key.pem'))
+spec.cert_chain = ['certs/http_loader-public_cert.pem']
+if $PROGRAM_NAME.end_with?('gem') && File.exist?(File.expand_path('~/.gem/gem-private_key.pem'))
+    spec.signing_key = File.expand_path('~/.gem/gem-private_key.pem')
+else
+    nil
+end
 ```
 - The public certificate is distributed with the repository. 
 - The private key is securely stored in CI secrets and dynamically evaluated. It prevents the local `gem build` from failing for developers who do not possess the private key.

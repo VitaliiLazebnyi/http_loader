@@ -1,8 +1,10 @@
 # typed: strong
 # frozen_string_literal: true
 
-require 'sorbet-runtime'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'optparse'
+require 'sorbet-runtime'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -31,9 +33,13 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_core(opts, options)
-        opts.on('--connections_count=COUNT', Integer, 'Total connection count') { |v| options[:connections] = T.cast(v, Integer) }
+        opts.on('--connections_count=COUNT', Integer, 'Total connection count') do |v|
+          options[:connections] = T.cast(v, Integer)
+        end
         opts.on('--https', 'Use HTTPS natively') { options[:use_https] = true }
-        opts.on('--url=URL', 'Comma-separated target URLs') { |v| options[:target_urls] = split_list(T.cast(v, String)) }
+        opts.on('--url=URL', 'Comma-separated target URLs') do |v|
+          options[:target_urls] = split_list(T.cast(v, String))
+        end
         opts.on('--verbose', 'Verbose logging') { options[:verbose] = true }
       end
 
@@ -45,7 +51,9 @@ module HttpLoader
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_ping(opts, options)
         opts.on('--[no-]ping', 'Enable keep-alive pings') { |v| options[:ping] = T.cast(v, T::Boolean) }
-        opts.on('--ping_period=SECONDS', Float, 'Seconds between pings') { |v| options[:ping_period] = T.cast(v, Float) }
+        opts.on('--ping_period=SECONDS', Float, 'Seconds between pings') do |v|
+          options[:ping_period] = T.cast(v, Float)
+        end
       end
 
       # Parses timeout, rate-limiting, and concurrency thresholds.
@@ -55,9 +63,15 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_timeouts(opts, options)
-        opts.on('--http_loader_timeout=S', Float, 'Keep-alive budget in seconds') { |v| options[:http_loader_timeout] = T.cast(v, Float) }
-        opts.on('--connections_per_second=R', Integer, 'Connection ramp rate') { |v| options[:connections_per_second] = T.cast(v, Integer) }
-        opts.on('--max_concurrent_connections=C', Integer, 'Concurrency cap') { |v| options[:max_concurrent_connections] = T.cast(v, Integer) }
+        opts.on('--http_loader_timeout=S', Float, 'Keep-alive budget in seconds') do |v|
+          options[:http_loader_timeout] = T.cast(v, Float)
+        end
+        opts.on('--connections_per_second=R', Integer, 'Connection ramp rate') do |v|
+          options[:connections_per_second] = T.cast(v, Integer)
+        end
+        opts.on('--max_concurrent_connections=C', Integer, 'Concurrency cap') do |v|
+          options[:max_concurrent_connections] = T.cast(v, Integer)
+        end
         parse_advanced(opts, options)
       end
 
@@ -68,8 +82,12 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_advanced(opts, options)
-        opts.on('--reopen_closed_connections', 'Reopen closed connections') { options[:reopen_closed_connections] = true }
-        opts.on('--reopen_interval=S', Float, 'Delay before reopening') { |v| options[:reopen_interval] = T.cast(v, Float) }
+        opts.on('--reopen_closed_connections', 'Reopen closed connections') do
+          options[:reopen_closed_connections] = true
+        end
+        opts.on('--reopen_interval=S', Float, 'Delay before reopening') do |v|
+          options[:reopen_interval] = T.cast(v, Float)
+        end
         opts.on('--read_timeout=S', Float, 'Socket read timeout') { |v| options[:read_timeout] = T.cast(v, Float) }
         parse_tracking(opts, options)
       end
@@ -95,8 +113,12 @@ module HttpLoader
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_endpoints(opts, options)
         opts.on('--ramp_up=S', Float, 'Ramp-up window in seconds') { |v| options[:ramp_up] = T.cast(v, Float) }
-        opts.on('--bind_ips=IPS', 'Comma-separated source IPs') { |v| options[:bind_ips] = split_list(T.cast(v, String)) }
-        opts.on('--proxy_pool=U', 'Comma-separated proxy URIs') { |v| options[:proxy_pool] = split_list(T.cast(v, String)) }
+        opts.on('--bind_ips=IPS', 'Comma-separated source IPs') do |v|
+          options[:bind_ips] = split_list(T.cast(v, String))
+        end
+        opts.on('--proxy_pool=U', 'Comma-separated proxy URIs') do |v|
+          options[:proxy_pool] = split_list(T.cast(v, String))
+        end
         parse_slowloris(opts, options)
       end
 
@@ -118,7 +140,9 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_slowloris(opts, options)
-        opts.on('--qps_per_connection=R', Integer, 'Per-connection QPS cap') { |v| options[:qps_per_connection] = T.cast(v, Integer) }
+        opts.on('--qps_per_connection=R', Integer, 'Per-connection QPS cap') do |v|
+          options[:qps_per_connection] = T.cast(v, Integer)
+        end
         opts.on('--headers=L', 'Repeatable Key: Value header') { |v| parse_headers(T.cast(v, String), options) }
         parse_slowloris_delays(opts, options)
       end
@@ -189,9 +213,13 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_harness_core(opts, options)
-        opts.on('--connections_count=C', Integer, 'Total connection count') { |v| options[:connections] = T.cast(v, Integer) }
+        opts.on('--connections_count=C', Integer, 'Total connection count') do |v|
+          options[:connections] = T.cast(v, Integer)
+        end
         opts.on('--https', 'Use HTTPS natively') { options[:use_https] = true }
-        opts.on('--url=U', 'Comma-separated target URLs') { |v| options[:target_urls] = ClientParser.split_list(T.cast(v, String)) }
+        opts.on('--url=U', 'Comma-separated target URLs') do |v|
+          options[:target_urls] = ClientParser.split_list(T.cast(v, String))
+        end
       end
 
       # Parses extra settings for harness.
@@ -201,8 +229,12 @@ module HttpLoader
       # @return [void]
       sig { params(opts: OptionParser, options: T::Hash[Symbol, Object]).void }
       def self.parse_harness_extras(opts, options)
-        opts.on('--export_json=FILE', 'Write the JSON run report to FILE') { |v| options[:export_json] = T.cast(v, String) }
-        opts.on('--target_duration=S', Float, 'Stop after S seconds') { |v| options[:target_duration] = T.cast(v, Float) }
+        opts.on('--export_json=FILE', 'Write the JSON run report to FILE') do |v|
+          options[:export_json] = T.cast(v, String)
+        end
+        opts.on('--target_duration=S', Float, 'Stop after S seconds') do |v|
+          options[:target_duration] = T.cast(v, Float)
+        end
       end
 
       # Client-only flags the harness accepts but ignores: it forwards the original argv to the
@@ -210,10 +242,24 @@ module HttpLoader
       # extracts its own structural flags. Listing them as data (rather than one no-op handler
       # per flag) keeps the harness flag surface in one place with no duplicated method bodies.
       IGNORED_CLIENT_FLAGS = %w[
-        --verbose --[no-]ping --ping_period=S --http_loader_timeout=S --connections_per_second=R
-        --max_concurrent_connections=C --reopen_closed_connections --reopen_interval=S --read_timeout=S
-        --user_agent=A --jitter=F --track_status_codes --ramp_up=S --bind_ips=IPS --proxy_pool=U
-        --qps_per_connection=R --headers=LIST --slowloris_delay=S
+        --verbose
+        --[no-]ping
+        --ping_period=S
+        --http_loader_timeout=S
+        --connections_per_second=R
+        --max_concurrent_connections=C
+        --reopen_closed_connections
+        --reopen_interval=S
+        --read_timeout=S
+        --user_agent=A
+        --jitter=F
+        --track_status_codes
+        --ramp_up=S
+        --bind_ips=IPS
+        --proxy_pool=U
+        --qps_per_connection=R
+        --headers=LIST
+        --slowloris_delay=S
       ].freeze
 
       # Registers a discarding handler for every client-only flag so OptionParser tolerates

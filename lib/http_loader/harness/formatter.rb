@@ -1,6 +1,8 @@
 # typed: strong
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'sorbet-runtime'
 
 # Primary namespace for the load testing framework.
@@ -21,7 +23,7 @@ module HttpLoader
       # @return [void]
       sig { void }
       def print_startup_banner
-        puts "[Harness] Starting test with #{config.connections} connections to #{startup_target_msg}"
+        puts("[Harness] Starting test with #{config.connections} connections to #{startup_target_msg}")
       end
 
       # Yields formatted message describing targeted context
@@ -43,10 +45,10 @@ module HttpLoader
       sig { void }
       def print_table_header
         rule = '-' * 125
-        puts '[Harness] Monitoring resources (Press Ctrl+C to stop)...'
-        puts rule
-        puts 'Time (UTC) | Real Conns  | Srv CPU/Thrds    | Srv Mem        | Srv Mem/Conn   | Cli CPU/Thrds    | Cli Mem        | Cli Mem/Conn  '
-        puts rule
+        puts('[Harness] Monitoring resources (Press Ctrl+C to stop)...')
+        puts(rule)
+        puts('Time (UTC) | Real Conns  | Srv CPU/Thrds    | Srv Mem        | Srv Mem/Conn   | Cli CPU/Thrds    | Cli Mem        | Cli Mem/Conn  ')
+        puts(rule)
       end
 
       # Safely renders formatting table rows via string padding strategies.
@@ -55,10 +57,18 @@ module HttpLoader
       # @return [void]
       sig { params(params: T::Hash[Symbol, T.untyped]).void }
       def log_table_row(params)
-        puts format(
-          '%<t>-10s | %<ac>-11s | %<sc>-16s | %<sm>-14s | %<sk>-14s | %<cc>-16s | %<cm>-14s | %<ck>-14s',
-          t: params.fetch(:t), ac: params.fetch(:ac), sc: params.fetch(:sc), sm: params.fetch(:sm),
-          sk: params.fetch(:sk), cc: params.fetch(:cc), cm: params.fetch(:cm), ck: params.fetch(:ck)
+        puts(
+          format(
+            '%<t>-10s | %<ac>-11s | %<sc>-16s | %<sm>-14s | %<sk>-14s | %<cc>-16s | %<cm>-14s | %<ck>-14s',
+            t: params.fetch(:t),
+            ac: params.fetch(:ac),
+            sc: params.fetch(:sc),
+            sm: params.fetch(:sm),
+            sk: params.fetch(:sk),
+            cc: params.fetch(:cc),
+            cm: params.fetch(:cm),
+            ck: params.fetch(:ck)
+          )
         )
       end
 
@@ -90,9 +100,14 @@ module HttpLoader
         c_conn = format_kb_conn(c_kb, active, pm.client_pid)
 
         log_table_row(
-          t: Time.now.utc.strftime('%H:%M:%S'), ac: active,
-          sc: "#{s_cpu}% / #{s_th}", sm: s_mem, sk: s_conn,
-          cc: "#{c_cpu}% / #{c_th}", cm: c_m, ck: c_conn
+          t: Time.now.utc.strftime('%H:%M:%S'),
+          ac: active,
+          sc: "#{s_cpu}% / #{s_th}",
+          sm: s_mem,
+          sk: s_conn,
+          cc: "#{c_cpu}% / #{c_th}",
+          cm: c_m,
+          ck: c_conn
         )
       end
 

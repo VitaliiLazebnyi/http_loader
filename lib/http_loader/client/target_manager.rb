@@ -1,9 +1,11 @@
 # typed: strong
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
+require 'socket'
 require 'sorbet-runtime'
 require 'uri'
-require 'socket'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -111,7 +113,7 @@ module HttpLoader
         # PROXY_RE's `host` group is not optional, so a successful match always captures a host;
         # testing `match` alone is equivalent to also testing `match[:host]`.
         match = PROXY_RE.match(entry)
-        raise ArgumentError, "Invalid --proxy_pool entry: #{entry.inspect}" unless match
+        raise(ArgumentError, "Invalid --proxy_pool entry: #{entry.inspect}") unless match
 
         ProxyEndpoint.new(
           host: T.must(match[:host]), port: Integer(match[:port] || '80'), user: match[:user], pass: match[:pass]
@@ -154,12 +156,13 @@ module HttpLoader
       # @return [URI::Generic] instantiated parsed reference object
       sig { params(url: T.nilable(String)).returns(URI::Generic) }
       def parse_uri(url)
-        uri = if url
-                URI(url)
-              else
-                @config.use_https ? URI('https://localhost:8443') : URI('http://localhost:8080')
-              end
-        raise ArgumentError, "Invalid --url (missing host): #{url.inspect}" if uri.host.to_s.empty?
+        uri =
+          if url
+            URI(url)
+          else
+            @config.use_https ? URI('https://localhost:8443') : URI('http://localhost:8080')
+          end
+        raise(ArgumentError, "Invalid --url (missing host): #{url.inspect}") if uri.host.to_s.empty?
 
         uri
       end

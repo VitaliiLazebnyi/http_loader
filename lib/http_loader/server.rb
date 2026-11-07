@@ -1,16 +1,18 @@
 # typed: strong
 # frozen_string_literal: true
 
-require 'sorbet-runtime'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
+require 'async'
+require 'falcon/server'
+require 'io/endpoint/host_endpoint'
+require 'io/endpoint/ssl_endpoint'
+require 'openssl'
+require 'protocol/rack/adapter'
 require 'rack'
 require 'rackup'
 require 'rackup/handler/falcon'
-require 'openssl'
-require 'io/endpoint/host_endpoint'
-require 'io/endpoint/ssl_endpoint'
-require 'async'
-require 'falcon/server'
-require 'protocol/rack/adapter'
+require 'sorbet-runtime'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -20,9 +22,12 @@ module HttpLoader
 
     # The Rack application signature: a callable taking the env hash and returning the
     # `[status, headers, body]` triple. A static type, checked by `srb tc`.
-    RackApp = T.type_alias do
-      T.proc.params(arg0: T::Hash[String, T.untyped]).returns(T::Array[T.any(Integer, T::Hash[String, String], T.untyped)])
-    end
+    RackApp =
+      T.type_alias do
+        T.proc.params(
+          arg0: T::Hash[String, T.untyped]
+        ).returns(T::Array[T.any(Integer, T::Hash[String, String], T.untyped)])
+      end
 
     # Allocates the Rack mapped mock layer simulating an identical, ultra-efficient mock endpoint.
     #
@@ -59,7 +64,7 @@ module HttpLoader
     # @return [void]
     sig { params(port: Integer).void }
     def start_secure(port)
-      puts "[Server] Binding natively to HTTPS over port #{port}"
+      puts("[Server] Binding natively to HTTPS over port #{port}")
       ssl_context = generate_ssl_context
 
       Sync do |_raw_task|
@@ -92,9 +97,7 @@ module HttpLoader
       endpoint = IO::Endpoint.tcp('0.0.0.0', port)
       secure = IO::Endpoint::SSLEndpoint.new(endpoint, ssl_context: context)
       adapter = Protocol::Rack::Adapter.new(@app)
-      Falcon::Server.new(
-        adapter, secure, protocol: Async::HTTP::Protocol::HTTP1, scheme: 'https'
-      )
+      Falcon::Server.new(adapter, secure, protocol: Async::HTTP::Protocol::HTTP1, scheme: 'https')
     end
 
     # Initializes native Rack bindings strictly wrapping Rackup fallback mechanisms.
@@ -103,7 +106,7 @@ module HttpLoader
     # @return [void]
     sig { params(port: Integer).void }
     def start_plaintext(port)
-      puts "[Server] Binding natively to plaintext HTTP over port #{port}"
+      puts("[Server] Binding natively to plaintext HTTP over port #{port}")
       Rackup::Handler::Falcon.run(@app, Host: '0.0.0.0', Port: port) do |_server|
         setup_interrupt { exit(0) }
       end
@@ -116,7 +119,7 @@ module HttpLoader
     sig { params(blk: T.proc.void).void }
     def setup_interrupt(&blk)
       trap('INT') do |_signo|
-        puts "\n[Server] Shutting down immediately..."
+        puts("\n[Server] Shutting down immediately...")
         yield
       end
     end

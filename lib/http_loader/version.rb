@@ -1,6 +1,8 @@
 # typed: strong
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 # @author Vitalii Lazebnyi
 # @since 0.1.0
 # The primary namespace containing all load testing, server, and harness components.

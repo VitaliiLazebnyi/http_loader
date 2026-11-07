@@ -1,8 +1,10 @@
 # typed: strong
 # frozen_string_literal: true
 
-require 'sorbet-runtime'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'open3'
+require 'sorbet-runtime'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -85,7 +87,7 @@ module HttpLoader
       sig { params(pid: Integer).returns(Float) }
       def read_rss_kb(pid)
         rss_field = T.must(File.read("/proc/#{pid}/statm").split[1])
-        (rss_field.to_i * @page_size) / 1024.0
+        (Integer(rss_field, 10) * @page_size) / 1024.0
       end
 
       # Maps current elapsed execution loops into relative temporal performance representations accurately.
@@ -99,7 +101,7 @@ module HttpLoader
         # (e.g. "(Web Content)"), so a naive split shifts every later field. Slice
         # after the final ')' and re-base: utime/stime become indices [11]/[12].
         tail = T.must(raw[(T.must(raw.rindex(')')) + 1)..]).split
-        calculate_cpu(pid, T.must(tail[11]).to_f + T.must(tail[12]).to_f)
+        calculate_cpu(pid, Float(T.must(tail[11])) + Float(T.must(tail[12])))
       end
 
       # Scrapes raw `/proc/$PID/status` natively extracting precise context thread sizes directly via regex bindings.
@@ -121,7 +123,7 @@ module HttpLoader
       sig { params(name: String, fallback: Integer).returns(Integer) }
       def query_getconf(name, fallback)
         out, _s = Open3.capture2('getconf', name)
-        value = out.to_i
+        value = Integer(out, 10)
         value.positive? ? value : fallback
       rescue StandardError
         fallback
@@ -139,7 +141,7 @@ module HttpLoader
         return 0.0 unless prev
 
         time_diff = now - T.cast(prev[:time], Time)
-        return 0.0 unless time_diff > 0.0
+        return 0.0 if time_diff <= 0.0
 
         # `Numeric#round(1)` is statically typed `T.any(Integer, Float)`; the result is a Float at
         # runtime but the type checker needs narrowing. Binding the formula to a local keeps every
@@ -178,7 +180,7 @@ module HttpLoader
         # A header-only (or empty) ps result has no data row, so `fetch(1)` raises and the rescue
         # below returns the N/A tuple -- no separate size guard needed.
         cpu, rss_kb_str = out.lines.fetch(1).split
-        rss_kb_val = T.must(rss_kb_str).to_f
+        rss_kb_val = Float(T.must(rss_kb_str))
 
         [T.must(cpu), "#{(rss_kb_val / 1024.0).round(2)} MB", rss_kb_val, fallback_threads_count(pid)]
       rescue StandardError

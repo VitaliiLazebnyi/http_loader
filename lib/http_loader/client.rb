@@ -1,20 +1,22 @@
 # typed: strong
 # frozen_string_literal: true
 
-require 'sorbet-runtime'
-require 'net/http'
-require 'uri'
-require 'openssl'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'async'
 require 'async/semaphore'
+require 'net/http'
+require 'openssl'
+require 'sorbet-runtime'
 require 'time'
+require 'uri'
 require_relative 'client/config'
-require_relative 'client/pacing'
-require_relative 'client/logger'
-require_relative 'client/target_manager'
-require_relative 'client/slowloris'
-require_relative 'client/http_session'
 require_relative 'client/error_handler'
+require_relative 'client/http_session'
+require_relative 'client/logger'
+require_relative 'client/pacing'
+require_relative 'client/slowloris'
+require_relative 'client/target_manager'
 require_relative 'file_limits'
 
 # Primary namespace for the load testing framework.
@@ -88,8 +90,8 @@ module HttpLoader
     sig { void }
     def log_startup_message
       @logger.info("Starting #{@config.connections} #{@target_manager.protocol_label} connections")
-      puts "[Client] Starting #{@config.connections} #{@target_manager.protocol_label} connections to targeted urls..."
-      puts '[Client] Note: Output of individual pings is suppressed.' unless @config.verbose
+      puts("[Client] Starting #{@config.connections} #{@target_manager.protocol_label} connections to targeted urls...")
+      puts('[Client] Note: Output of individual pings is suppressed.') unless @config.verbose
     end
 
     # Calculates the sleep duration required for ramp-up. When both `--ramp_up` and

@@ -1,10 +1,12 @@
 # typed: strong
 # frozen_string_literal: true
 
-require 'sorbet-runtime'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'rbconfig'
-require 'socket'
 require 'shellwords'
+require 'socket'
+require 'sorbet-runtime'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -58,7 +60,7 @@ module HttpLoader
       sig { void }
       def spawn_processes
         FileUtils.mkdir_p(@log_dir)
-        spawn_server unless @config.target_urls.any?
+        spawn_server if @config.target_urls.none?
         spawn_client
       end
 
@@ -140,7 +142,7 @@ module HttpLoader
         args = ['server']
         args << '--https' if @config.use_https
         @pids[:server] = spawn_child(args, 'server.log', 'server.err')
-        puts "[Harness] Started server with PID #{server_pid}"
+        puts("[Harness] Started server with PID #{server_pid}")
         wait_for_server
       end
 
@@ -154,7 +156,7 @@ module HttpLoader
         client_args = @config.client_args
         extra = client_args.empty? ? ["--connections_count=#{@config.connections}"] : client_args
         @pids[:client] = spawn_child(['client'] + extra, 'client.stdout.log', 'client.stderr.log')
-        puts "[Harness] Started client with PID #{client_pid}"
+        puts("[Harness] Started client with PID #{client_pid}")
       end
 
       # Spawns `bin/http_loader <args>` redirecting streams. The command is assembled with
@@ -187,7 +189,7 @@ module HttpLoader
 
           sleep(0.1)
         end
-        warn "[Harness] Warning: server did not become ready on port #{port} within #{SERVER_BOOT_TIMEOUT}s."
+        warn("[Harness] Warning: server did not become ready on port #{port} within #{SERVER_BOOT_TIMEOUT}s.")
       end
 
       # Probes a local TCP port; a successful accept is a valid readiness proxy even for HTTPS.

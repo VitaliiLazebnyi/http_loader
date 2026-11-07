@@ -1,11 +1,13 @@
 # typed: strong
 # frozen_string_literal: true
 
-require 'sorbet-runtime'
-require 'fileutils'
-require 'time'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'async'
 require 'async/queue'
+require 'fileutils'
+require 'sorbet-runtime'
+require 'time'
 
 # Primary namespace for the load testing framework.
 module HttpLoader

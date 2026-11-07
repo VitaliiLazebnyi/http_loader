@@ -1,7 +1,10 @@
 # typed: strong
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'sorbet-runtime'
+require_relative 'pacing'
 require 'net/http'
 
 # Primary namespace for the load testing framework.
@@ -69,6 +72,8 @@ module HttpLoader
           if remaining && remaining <= 0.0
             @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing.")
             break
+          else
+            nil
           end
 
           break unless process_heartbeat?(client_index, uri, http, remaining)

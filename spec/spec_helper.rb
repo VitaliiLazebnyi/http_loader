@@ -1,5 +1,7 @@
-# typed: false
+# typed: true
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 # Opt out of only the "experimental feature" warning category. The async fiber scheduler
 # performs non-blocking file IO through Ruby's IO::Buffer, which Ruby 4.0 still flags as
@@ -19,18 +21,18 @@ SimpleCov.start do
 end
 
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
-require 'http_loader/server'
 require 'http_loader/client'
 require 'http_loader/harness'
+require 'http_loader/server'
 
 Dir[File.join(__dir__, 'support', '**', '*.rb')].each { |f| require f }
 
 RSpec.configure do |config|
-  config.expect_with :rspec do |expectations|
+  config.expect_with(:rspec) do |expectations|
     expectations.include_chain_clauses_in_custom_matcher_descriptions = true
   end
 
-  config.mock_with :rspec do |mocks|
+  config.mock_with(:rspec) do |mocks|
     mocks.verify_partial_doubles = true
   end
 
@@ -60,9 +62,10 @@ require 'sorbet-runtime'
 # for real Net::HTTP*/Async::Task collaborators, and those are a test-only construct, so a
 # cast that only "fails" because it received a double is allowed through. Any other type
 # mismatch (a real object of the wrong class) still raises and fails the example.
-T::Configuration.inline_type_error_handler = lambda do |error, _opts|
-  raise error unless error.message.include?('RSpec::Mocks')
-end
+T::Configuration.inline_type_error_handler =
+  lambda do |error, _opts|
+    raise(error) unless error.message.include?('RSpec::Mocks')
+  end
 # The method-signature validator stays relaxed for the same double-substitution reason.
 T::Configuration.call_validation_error_handler = ->(_signature, _opts) {}
 
@@ -79,10 +82,12 @@ module SigResolver
   end
 
   def self.methods_of(mod)
-    instance = (mod.instance_methods(false) + mod.private_instance_methods(false))
-               .map { |name| mod.instance_method(name) }
-    singleton = (mod.methods(false) + mod.singleton_class.private_instance_methods(false))
-                .map { |name| mod.method(name) }
+    instance =
+      (mod.instance_methods(false) + mod.private_instance_methods(false))
+      .map { |name| mod.instance_method(name) }
+    singleton =
+      (mod.methods(false) + mod.singleton_class.private_instance_methods(false))
+      .map { |name| mod.method(name) }
     instance + singleton
   end
 end

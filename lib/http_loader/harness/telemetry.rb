@@ -1,8 +1,10 @@
 # typed: strong
 # frozen_string_literal: true
 
-require 'sorbet-runtime'
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require 'json'
+require 'sorbet-runtime'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
@@ -49,7 +51,7 @@ module HttpLoader
         accumulate!
         payload = generate_payload(peak_connections, start_time, @counts)
         File.write(@export_json, JSON.generate(payload))
-        puts "[Harness] Telemetry JSON securely sinked to #{@export_json}."
+        puts("[Harness] Telemetry JSON securely sinked to #{@export_json}.")
       end
 
       # Verifies local file output queues alerting std-out upon bottleneck OS detections actively.
@@ -59,7 +61,7 @@ module HttpLoader
       def check_bottlenecks!
         accumulate!
         errors = build_bottleneck_messages(@counts)
-        puts format('   => BOTTLENECK ACTIVE: %s', errors.join(' | ')) if errors.any?
+        puts(format('   => BOTTLENECK ACTIVE: %s', errors.join(' | '))) if errors.any?
       rescue StandardError
         nil
       end
@@ -75,9 +77,11 @@ module HttpLoader
       sig { params(peak: Integer, start: Time, counts: Counts).returns(T::Hash[Symbol, T.untyped]) }
       def generate_payload(peak, start, counts)
         {
-          peak_connections: peak, test_duration_seconds: (Time.now - start).round(2),
+          peak_connections: peak,
+          test_duration_seconds: (Time.now - start).round(2),
           errors: {
-            emfile: counts.fetch(:emfile), eaddrnotavail: counts.fetch(:eaddr_count),
+            emfile: counts.fetch(:emfile),
+            eaddrnotavail: counts.fetch(:eaddr_count),
             thread_limit: counts.fetch(:thread_errors)
           }
         }

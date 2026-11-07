@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require_relative 'lib/http_loader/version'
 
 Gem::Specification.new do |spec|
@@ -33,6 +35,8 @@ Gem::Specification.new do |spec|
   if ENV['GEM_SIGN'] == '1' && File.exist?(gem_key)
     spec.cert_chain  = ['certs/http_loader-public_cert.pem']
     spec.signing_key = gem_key
+  else
+    nil
   end
 
   spec.files = %w[
@@ -51,32 +55,32 @@ Gem::Specification.new do |spec|
   spec.executables   = ['http_loader']
   spec.require_paths = ['lib']
 
-  spec.add_dependency 'async', '~> 2.39'
-  spec.add_dependency 'async-http', '~> 0.95'
-  spec.add_dependency 'falcon', '~> 0.55'
-  spec.add_dependency 'rack', '~> 3.2'
-  spec.add_dependency 'rackup', '~> 2.3'
-  spec.add_dependency 'sorbet-runtime', '~> 0.6'
+  spec.add_dependency('async', '~> 2.39')
+  spec.add_dependency('async-http', '~> 0.95')
+  spec.add_dependency('falcon', '~> 0.55')
+  spec.add_dependency('rack', '~> 3.2')
+  spec.add_dependency('rackup', '~> 2.3')
+  spec.add_dependency('sorbet-runtime', '~> 0.6')
 
-  spec.add_development_dependency 'bundler-audit', '~> 0.9'
-  spec.add_development_dependency 'flay', '~> 2.14'
-  spec.add_development_dependency 'memory_profiler', '~> 1.1'
-  spec.add_development_dependency 'mutant', '~> 0.17'
-  spec.add_development_dependency 'mutant-rspec', '~> 0.17'
-  spec.add_development_dependency 'rake', '~> 13.3'
-  spec.add_development_dependency 'reek', '~> 6.6'
-  spec.add_development_dependency 'rspec', '~> 3.13'
-  spec.add_development_dependency 'rubocop', '~> 1.86'
-  spec.add_development_dependency 'rubocop-ai', '~> 0.1'
-  spec.add_development_dependency 'rubocop-md', '~> 3.0'
-  spec.add_development_dependency 'rubocop-performance', '~> 1.26'
-  spec.add_development_dependency 'rubocop-rake', '~> 0.7'
-  spec.add_development_dependency 'rubocop-rspec', '~> 3.9'
-  spec.add_development_dependency 'rubocop-sorbet', '~> 0.17'
-  spec.add_development_dependency 'rubocop-thread_safety', '~> 0.7'
-  spec.add_development_dependency 'ruby-prof', '~> 2.0'
-  spec.add_development_dependency 'simplecov', '~> 1.3'
-  spec.add_development_dependency 'sorbet', '~> 0.6'
-  spec.add_development_dependency 'yard', '~> 0.9'
-  spec.add_development_dependency 'yard-sorbet', '~> 0.9'
+  spec.add_development_dependency('bundler-audit', '~> 0.9')
+  spec.add_development_dependency('flay', '~> 2.14')
+  spec.add_development_dependency('memory_profiler', '~> 1.1')
+  spec.add_development_dependency('mutant', '~> 0.17')
+  spec.add_development_dependency('mutant-rspec', '~> 0.17')
+  spec.add_development_dependency('rake', '~> 13.3')
+  spec.add_development_dependency('reek', '~> 6.6')
+  spec.add_development_dependency('rspec', '~> 3.13')
+  spec.add_development_dependency('rubocop', '~> 1.86')
+  spec.add_development_dependency('rubocop-ai', '~> 0.1')
+  spec.add_development_dependency('rubocop-md', '~> 3.0')
+  spec.add_development_dependency('rubocop-performance', '~> 1.26')
+  spec.add_development_dependency('rubocop-rake', '~> 0.7')
+  spec.add_development_dependency('rubocop-rspec', '~> 3.9')
+  spec.add_development_dependency('rubocop-sorbet', '~> 0.17')
+  spec.add_development_dependency('rubocop-thread_safety', '~> 0.7')
+  spec.add_development_dependency('ruby-prof', '~> 2.0')
+  spec.add_development_dependency('simplecov', '~> 1.3')
+  spec.add_development_dependency('sorbet', '~> 0.6')
+  spec.add_development_dependency('yard', '~> 0.9')
+  spec.add_development_dependency('yard-sorbet', '~> 0.9')
 end
