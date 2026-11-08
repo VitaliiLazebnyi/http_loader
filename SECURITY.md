@@ -29,3 +29,4 @@ CI runs bundler-audit, OSV-Scanner, `npm audit`, dependency review, gitleaks, Co
 Docker image and the OpenSSF Scorecard; every job runs behind a network egress allow list
 (`step-security/harden-runner`). Every GitHub Action is pinned to a full commit SHA, every downloaded tool to its
 SHA-256, and Dependabot proposes updates after a one-week cooldown.
+
