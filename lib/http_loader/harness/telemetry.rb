@@ -5,154 +5,106 @@
 
 require 'json'
 require 'sorbet-runtime'
+require_relative 'error_tally'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
   class Harness
-    # Exports telemetry and logs bottlenecks asynchronously and synchronously at termination.
+    # Tracks a run (its start, its peak connection count and the client's errors), reports bottlenecks while it
+    # runs and exports the JSON report at its end.
     class Telemetry
       extend T::Sig
 
-      # The error-token table: metric name => log token. A static type, checked by `srb tc`.
-      Tokens = T.type_alias { T::Hash[Symbol, String] }
-      private_constant :Tokens
-      # The running per-metric error tallies. A static type, checked by `srb tc`.
-      Counts = T.type_alias { T::Hash[Symbol, Integer] }
-      public_constant :Counts
-      # The per-file byte offsets consumed so far. A static type, checked by `srb tc`.
-      Offsets = T.type_alias { T::Hash[String, Integer] }
-      private_constant :Offsets
+      sig { returns(Integer) }
+      attr_reader :peak_connections
 
-      # Error tokens harvested from the client logs, keyed by the payload metric name.
-      ERROR_TOKENS = T.let(
-        { emfile: 'ERROR_EMFILE', eaddr_count: 'ERROR_EADDRNOTAVAIL', thread_errors: 'ERROR_THREADLIMIT' }.freeze,
-        Tokens
-      )
-      public_constant :ERROR_TOKENS
-
-      # Mounts the telemetry sub-engine mapping disk outputs transparently tracking boundaries.
+      # The bottleneck messages of the error metrics that occurred.
       #
-      # @param log_dir [String] physical absolute path targeting output payload maps
-      # @param export_json [String, nil] absolute file destination serializing end report dynamically
+      # @param counts [Hash{Symbol => Integer}] the count of every error metric
+      # @return [Array<String>] one message per metric with a positive count
+      sig { params(counts: ErrorTally::Counts).returns(T::Array[String]) }
+      def self.bottleneck_messages(counts)
+        counts.filter_map do |name, count|
+          format(ErrorTally::METRICS.fetch(name).bottleneck, count: count) if count.positive?
+        end
+      end
+
+      # @param log_dir [String] the directory of the client logs
+      # @param export_json [String, nil] where to write the JSON report, or nil for none
       # @return [void]
       sig { params(log_dir: String, export_json: T.nilable(String)).void }
       def initialize(log_dir, export_json)
-        @log_dir = log_dir
         @export_json = export_json
-        @counts = T.let({ emfile: 0, eaddr_count: 0, thread_errors: 0 }, Counts)
-        @offsets = T.let({}, Offsets)
+        @errors = T.let(ErrorTally.new(log_dir), ErrorTally)
+        # Only elapsed-second deltas are taken from the start (`Time#-` is instant-based), so the Time's zone
+        # never surfaces -- no `.utc`.
+        @started = T.let(Time.now, Time)
+        @peak_connections = T.let(0, Integer)
       end
 
-      # Serializes a comprehensive analysis payload upon successful OS termination manually.
-      #
-      # @param peak_connections [Integer] the high watermark metric for total alive states recorded
-      # @param start_time [Time] chronological tracking root reference explicitly
-      # @return [void]
-      sig { params(peak_connections: Integer, start_time: Time).void }
-      def export!(peak_connections, start_time)
-        return unless @export_json
-
-        accumulate!
-        payload = generate_payload(peak_connections, start_time, @counts)
-        File.write(@export_json, JSON.generate(payload))
-        puts("[Harness] Telemetry JSON securely sinked to #{@export_json}.")
-      end
-
-      # Verifies local file output queues alerting std-out upon bottleneck OS detections actively.
+      # Restarts the run's clock: the duration counts from now.
       #
       # @return [void]
       sig { void }
-      def check_bottlenecks!
-        accumulate!
-        errors = build_bottleneck_messages(@counts)
-        puts(format('   => BOTTLENECK ACTIVE: %s', errors.join(' | '))) if errors.any?
+      def restart
+        @started = Time.now
+      end
+
+      # @return [Float] the seconds since the run's start
+      sig { returns(Float) }
+      def elapsed
+        Time.now - @started
+      end
+
+      # Records a connection count, keeping the peak.
+      #
+      # @param connections [Integer] the established connections of the client now
+      # @return [void]
+      sig { params(connections: Integer).void }
+      def observe(connections)
+        @peak_connections = [@peak_connections, connections].max
+      end
+
+      # Writes the JSON report, when a path was given.
+      #
+      # @return [void]
+      sig { void }
+      def export
+        path = @export_json
+        return unless path
+
+        File.write(path, JSON.generate(payload))
+        puts("[Harness] Telemetry JSON securely sinked to #{path}.")
+      end
+
+      # Prints the bottlenecks the client logged so far, if any.
+      #
+      # @return [void]
+      sig { void }
+      def report_bottlenecks
+        messages = Telemetry.bottleneck_messages(@errors.counts)
+        puts(format('   => BOTTLENECK ACTIVE: %<messages>s', messages: messages.join(' | '))) if messages.any?
       rescue StandardError
         nil
       end
 
       private
 
-      # Formats an agnostic JSON hash representation mapping performance and anomalies universally.
+      # The JSON report: the peak connections, the duration and the error counts.
       #
-      # @param peak [Integer] logical max connections integer evaluation
-      # @param start [Time] process baseline boot parameter mapping
-      # @param counts [Hash] dictionary capturing parsed string evaluations tracking OS limits natively
-      # @return [Hash] JSON translatable dataset mapping
-      sig { params(peak: Integer, start: Time, counts: Counts).returns(T::Hash[Symbol, Object]) }
-      def generate_payload(peak, start, counts)
+      # @return [Hash{Symbol => Object}] the report
+      sig { returns(T::Hash[Symbol, Object]) }
+      def payload
+        counts = @errors.counts
         {
-          peak_connections: peak,
-          test_duration_seconds: (Time.now - start).round(2),
+          peak_connections: @peak_connections,
+          test_duration_seconds: elapsed.round(2),
           errors: {
             emfile: counts.fetch(:emfile),
             eaddrnotavail: counts.fetch(:eaddr_count),
             thread_limit: counts.fetch(:thread_errors)
           }
         }
-      end
-
-      # Reads only the newly-appended tail of each client log since the previous tick and
-      # folds any error tokens into the running totals. This keeps per-tick cost proportional
-      # to fresh output rather than re-reading unbounded logs into memory every ~2 seconds.
-      #
-      # @return [void]
-      sig { void }
-      def accumulate!
-        %w[client.log client.err].each { |name| consume_tail(File.join(@log_dir, name)) }
-      end
-
-      # Consumes complete lines appended to a single file since the last offset, tolerating
-      # truncation/rotation (offset reset) and never splitting an error token across reads.
-      # Reading from the stored offset to EOF keeps each tick's cost proportional to the freshly
-      # appended bytes rather than to the (unbounded) log size; when nothing new has been written
-      # the read yields an empty string and the offset is left untouched.
-      #
-      # @param path [String] absolute file path
-      # @return [void]
-      sig { params(path: String).void }
-      def consume_tail(path)
-        return unless File.exist?(path)
-
-        size = File.size(path)
-        offset = @offsets[path] || 0
-        offset = 0 if size < offset
-        # `size` as the length caps the read at the current end of file; starting from `offset`
-        # that yields exactly the freshly appended bytes. A length-limited `File.read` returns the
-        # raw bytes (ASCII-8BIT), so arbitrary log bytes never trip UTF-8 validation, and `nil` at
-        # EOF (nothing new appended), which `to_s` folds into the empty string.
-        data = File.read(path, size, offset).to_s
-        @offsets[path] = offset + tally_complete_lines(data)
-      end
-
-      # Tallies error tokens from whole lines only, returning the number of bytes consumed
-      # (up to and including the final newline); a trailing partial line is left for next time.
-      #
-      # @param data [String] freshly read bytes
-      # @return [Integer] bytes consumed
-      sig { params(data: String).returns(Integer) }
-      def tally_complete_lines(data)
-        last_nl = data.rindex("\n")
-        return 0 unless last_nl
-
-        chunk = T.must(data[0..last_nl])
-        ERROR_TOKENS.each { |metric, token| @counts[metric] = @counts.fetch(metric) + chunk.scan(token).size }
-        chunk.bytesize
-      end
-
-      # Translates generic error logs into explicit formatting tuples suitable for interactive terminals locally.
-      #
-      # @param counts [Hash] quantitative mapping metrics describing error boundaries natively
-      # @return [Array<String>] textual output logs targeting stderr mapped explicitly
-      sig { params(counts: Counts).returns(T::Array[String]) }
-      def build_bottleneck_messages(counts)
-        emfile = counts.fetch(:emfile)
-        eaddr = counts.fetch(:eaddr_count)
-        threads = counts.fetch(:thread_errors)
-        errors = []
-        errors << "[OS FDs Limit: #{emfile} EMFILE]" if emfile.positive?
-        errors << "[OS Ports Limit: #{eaddr} EADDRNOTAVAIL]" if eaddr.positive?
-        errors << "[OS Thread Limit: #{threads} ThreadError]" if threads.positive?
-        errors
       end
     end
   end

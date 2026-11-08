@@ -63,11 +63,25 @@ module HttpLoader
     # @return [Integer] the process exit status
     sig { params(argv: T::Array[String]).returns(Integer) }
     def run_client(argv)
-      options =
-        parse(argv, 'client', CliArgs::ClientOptions.defaults) do |opts, values|
-          CliArgs::ClientParser.parse(opts, values)
-        end
-      Client.new(CliArgs::ClientOptions.config(options)).start
+      configured { Client.new(CliArgs::ClientOptions.parse(argv)).start }
+    end
+
+    # Parses the harness flags and runs the harness. The client subprocess receives the same flags.
+    #
+    # @param argv [Array<String>] the harness flags
+    # @return [Integer] the process exit status
+    sig { params(argv: T::Array[String]).returns(Integer) }
+    def run_harness(argv)
+      configured { Harness.new(CliArgs::HarnessOptions.parse(argv)).start }
+    end
+
+    # Runs a parsed subcommand, turning an invalid flag or configuration into a Configuration Error.
+    #
+    # @yield parses the flags and runs the subcommand
+    # @return [Integer] the process exit status
+    sig { params(block: T.proc.void).returns(Integer) }
+    def configured(&block)
+      yield
       0
     rescue ArgumentError, OptionParser::ParseError, URI::Error, TypeError => error
       configuration_error(error)
@@ -79,55 +93,10 @@ module HttpLoader
     # @return [Integer] the process exit status
     sig { params(argv: T::Array[String]).returns(Integer) }
     def run_server(argv)
-      use_https = T.let(false, T::Boolean)
-      parse(argv, 'server', {}) do |opts, _values|
-        opts.on('--https', 'Serve over HTTPS with an ephemeral self-signed certificate') { use_https = true }
-      end
-      Server.new.start(use_https: use_https, port: use_https ? 8443 : 8080)
+      Server.new(https: CliArgs.server_https?(argv)).start
       0
     rescue OptionParser::ParseError => error
       configuration_error(error)
-    end
-
-    # Parses the harness flags and runs the harness. The client subprocess receives the same flags.
-    #
-    # @param argv [Array<String>] the harness flags
-    # @return [Integer] the process exit status
-    sig { params(argv: T::Array[String]).returns(Integer) }
-    def run_harness(argv)
-      client_args = argv.dup
-      options =
-        parse(argv, 'harness', CliArgs::HarnessOptions::DEFAULTS) do |opts, values|
-          CliArgs::HarnessParser.parse(opts, values)
-        end
-      Harness.new(CliArgs::HarnessOptions.config(options, client_args)).start
-      0
-    rescue ArgumentError, OptionParser::ParseError, URI::Error, TypeError => error
-      configuration_error(error)
-    end
-
-    # Parses the flags of one subcommand into a copy of its default option values.
-    #
-    # @param argv [Array<String>] the flags; parsed flags are removed
-    # @param command [String] the subcommand, for the usage banner
-    # @param defaults [Hash{Symbol => Object}] the option values before any flag is parsed
-    # @yieldparam opts [OptionParser] the parser to declare the flags on
-    # @yieldparam values [Hash{Symbol => Object}] the option values the flags write to
-    # @return [Hash{Symbol => Object}] the option values
-    sig do
-      params(
-        argv: T::Array[String],
-        command: String,
-        defaults: T::Hash[Symbol, Object],
-        block: T.proc.params(opts: OptionParser, values: T::Hash[Symbol, Object]).void
-      ).returns(T::Hash[Symbol, Object])
-    end
-    def parse(argv, command, defaults, &block)
-      values = defaults.dup
-      parser = OptionParser.new("Usage: http_loader #{command} [options]")
-      yield(parser, values)
-      parser.parse!(argv)
-      values
     end
 
     # Reports an invalid invocation.

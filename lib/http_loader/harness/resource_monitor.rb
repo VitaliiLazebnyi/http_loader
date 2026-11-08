@@ -5,108 +5,54 @@
 
 require 'open3'
 require 'sorbet-runtime'
-require_relative 'connection_counter'
+require_relative 'process_stats'
 
 # Primary namespace for the load testing framework.
 module HttpLoader
   class Harness
-    # Monitors CPU, memory, and established connections for running processes.
+    # Monitors the CPU, memory and threads of running processes: from `/proc` on Linux, from `ps` elsewhere.
     class ResourceMonitor
       extend T::Sig
-      include ConnectionCounter
 
       # Upper bound on the per-PID CPU-history map (defensive; the harness tracks 2 PIDs).
       CPU_HISTORY_LIMIT = 128
       public_constant :CPU_HISTORY_LIMIT
 
+      # The stats of a process the harness did not start.
+      EXTERNAL = ProcessStats.new(cpu: 'EXTERNAL', memory: 'EXTERNAL', kilobytes: 0.0, threads: 0, external: true)
+      public_constant :EXTERNAL
+
+      # The stats of a process neither `/proc` nor `ps` could read.
+      UNKNOWN = ProcessStats.new(cpu: 'N/A', memory: 'N/A', kilobytes: 0.0, threads: 0)
+      public_constant :UNKNOWN
+
       # One CPU observation of a process: its cumulative jiffies and when they were read.
       class CpuSample < T::Struct
+        extend T::Sig
+
         const :ticks, Float
         const :time, Time
+
+        # The CPU usage between an earlier sample and this one.
+        #
+        # @param previous [CpuSample] the earlier sample of the same process
+        # @param clock_tick [Integer] the jiffies per second (CLK_TCK)
+        # @return [Float] the usage in percent, rounded to one decimal; 0.0 when no time has passed
+        sig { params(previous: CpuSample, clock_tick: Integer).returns(Float) }
+        def percent_since(previous, clock_tick)
+          elapsed = time - previous.time
+          return 0.0 if elapsed <= 0.0
+
+          # `Numeric#round(1)` is statically typed `T.any(Integer, Float)`; the result is a Float at
+          # runtime, and `T.cast` narrows it for the type checker.
+          T.cast((((ticks - previous.ticks) / clock_tick) / elapsed * 100).round(1), Float)
+        end
       end
-      private_constant :CpuSample
+      public_constant :CpuSample
 
       # Per-PID CPU sampling history (the previous observation of each process). A static type.
       CpuHistory = T.type_alias { T::Hash[Integer, CpuSample] }
       private_constant :CpuHistory
-
-      # Connects system resource metrics trackers mapping natively OS limits. The immutable kernel
-      # constants are resolved once here (falling back on any getconf failure) rather than lazily,
-      # so they are never nil and the `/proc` paths read them straight off the instance.
-      #
-      # @return [void]
-      sig { void }
-      def initialize
-        @cpu_prev = T.let({}, CpuHistory)
-        @page_size = T.let(query_getconf('PAGE_SIZE', 4096), Integer)
-        @clock_tick = T.let(query_getconf('CLK_TCK', 100), Integer)
-      end
-
-      # Generates fully mapped array structure containing instantaneous memory, threads, and cpu overhead natively.
-      #
-      # @param pid [Integer, nil] mapped external system trace identifier
-      # @return [Array<String, String, Float, Integer>] combined telemetry matrix structurally evaluating overhead
-      sig { params(pid: T.nilable(Integer)).returns([String, String, Float, Integer]) }
-      def process_stats(pid)
-        return ['EXTERNAL', 'EXTERNAL', 0.0, 0] if pid.nil?
-        return fallback_ps_stats(pid) unless File.exist?("/proc/#{pid}/stat") && File.exist?("/proc/#{pid}/statm")
-
-        # Only the native `/proc` parse can raise (a since-exited pid, a short read); `fallback_ps_stats`
-        # rescues internally, so scoping the rescue to the native path keeps the ps fallback's pid argument
-        # observable rather than re-supplied by a broad method-level rescue.
-        begin
-          native_linux_stats(pid)
-        rescue StandardError
-          fallback_ps_stats(pid)
-        end
-      end
-
-      private
-
-      # Reads extremely fast native `/proc/` structures uniquely optimized against Linux kernel metrics organically.
-      #
-      # @param pid [Integer] targeted local subsystem identifier explicitly queried
-      # @return [Array<String, String, Float, Integer>] Linux optimal explicit mapping payload explicitly formatted
-      sig { params(pid: Integer).returns([String, String, Float, Integer]) }
-      def native_linux_stats(pid)
-        rss_kb = read_rss_kb(pid)
-        cpu_perc = read_cpu_perc(pid)
-        [cpu_perc.to_s, "#{(rss_kb / 1024.0).round(2)} MB", rss_kb, read_threads(pid)]
-      end
-
-      # Pulls explicit paging metric memory utilization representing unswapped allocation statically.
-      #
-      # @param pid [Integer] system explicit tracked application structure
-      # @return [Float] calculated unbuffered resident kilobyte limits accurately
-      sig { params(pid: Integer).returns(Float) }
-      def read_rss_kb(pid)
-        rss_field = T.must(File.read("/proc/#{pid}/statm").split[1])
-        (Integer(rss_field, 10) * @page_size) / 1024.0
-      end
-
-      # Maps current elapsed execution loops into relative temporal performance representations accurately.
-      #
-      # @param pid [Integer] physical subsystem integer map
-      # @return [Float] percentage scale explicitly normalized natively
-      sig { params(pid: Integer).returns(Float) }
-      def read_cpu_perc(pid)
-        raw = File.read("/proc/#{pid}/stat")
-        # Field 2 (comm) is parenthesised and may itself contain spaces or parens
-        # (e.g. "(Web Content)"), so a naive split shifts every later field. Slice
-        # after the final ')' and re-base: utime/stime become indices [11]/[12].
-        tail = T.must(raw[(T.must(raw.rindex(')')) + 1)..]).split
-        calculate_cpu(pid, Float(T.must(tail[11])) + Float(T.must(tail[12])))
-      end
-
-      # Scrapes raw `/proc/$PID/status` natively extracting precise context thread sizes directly via regex bindings.
-      #
-      # @param pid [Integer] process index executed explicitly
-      # @return [Integer] count describing parallel subsystem bindings organically
-      sig { params(pid: Integer).returns(Integer) }
-      def read_threads(pid)
-        threads = File.read("/proc/#{pid}/status")[/Threads:\s+(\d+)/, 1]
-        threads ? Integer(threads, 10) : 1
-      end
 
       # Queries an immutable `getconf` system constant, falling back on any failure (the jiffy
       # fields in `/proc/<pid>/stat` are counted in CLK_TCK ticks, so assuming a literal 100
@@ -116,86 +62,140 @@ module HttpLoader
       # @param fallback [Integer] the value to use when getconf is unavailable or invalid
       # @return [Integer] the resolved positive integer, or the fallback
       sig { params(name: String, fallback: Integer).returns(Integer) }
-      def query_getconf(name, fallback)
-        out, _s = Open3.capture2('getconf', name)
+      def self.getconf(name, fallback)
+        out, _status = Open3.capture2('getconf', name)
         value = Integer(out, 10)
         value.positive? ? value : fallback
       rescue StandardError
         fallback
       end
 
-      # Performs numerical differentials tracking performance deviations over discrete timelines.
+      # The stats of a process from `ps`. `ps` reports `%cpu` as a decaying average over the process lifetime,
+      # whereas the `/proc` path computes the usage since the previous sample, so the two CPU figures mean
+      # slightly different things.
       #
-      # @param pid [Integer] specific tracked executable index bound to the process.
-      # @param total_ticks [Float] sum evaluation counting unscaled processing metric counts effectively
-      # @return [Float] finalized percentage representing consumption exactly.
-      sig { params(pid: Integer, total_ticks: Float).returns(Float) }
-      def calculate_cpu(pid, total_ticks)
-        now = Time.now
-        prev = record_cpu_sample(pid, total_ticks, now)
-        return 0.0 unless prev
-
-        time_diff = now - prev.time
-        return 0.0 if time_diff <= 0.0
-
-        # `Numeric#round(1)` is statically typed `T.any(Integer, Float)`; the result is a Float at
-        # runtime but the type checker needs narrowing. Binding the formula to a local keeps every
-        # arithmetic mutation observable, then `T.cast` narrows the return (its runtime-noop coercion
-        # is covered by the documented `cast` ignore rather than a coercion mutant can silently drop).
-        pct = (((total_ticks - prev.ticks) / @clock_tick) / time_diff * 100).round(1)
-        T.cast(pct, Float)
+      # @param pid [Integer] the process
+      # @return [ProcessStats] its stats, or UNKNOWN when `ps` has no row for it
+      sig { params(pid: Integer).returns(ProcessStats) }
+      def self.ps_stats(pid)
+        out, _status = Open3.capture2('ps', '-o', '%cpu,rss', '-p', pid.to_s)
+        # A header-only (or empty) ps result has no data row, so `fetch(1)` raises and the rescue
+        # below returns UNKNOWN -- no separate size guard needed.
+        cpu, rss = out.lines.fetch(1).split
+        ProcessStats.measured(T.must(cpu), Float(T.must(rss)), ps_threads(pid))
+      rescue StandardError
+        UNKNOWN
       end
 
-      # Stores the latest tick/time sample for a PID and returns the previous one (or nil).
+      # Resolves the immutable kernel constants once (falling back on any getconf failure), so they are
+      # never nil and the `/proc` paths read them straight off the instance.
+      #
+      # @return [void]
+      sig { void }
+      def initialize
+        @cpu_prev = T.let({}, CpuHistory)
+        @page_size = T.let(ResourceMonitor.getconf('PAGE_SIZE', 4096), Integer)
+        @clock_tick = T.let(ResourceMonitor.getconf('CLK_TCK', 100), Integer)
+      end
+
+      # The current stats of a process: from `/proc` when it has them, else from `ps`.
+      #
+      # @param pid [Integer, nil] the process, or nil for an external one
+      # @return [ProcessStats] its stats; EXTERNAL for nil
+      sig { params(pid: T.nilable(Integer)).returns(ProcessStats) }
+      def process_stats(pid)
+        return EXTERNAL unless pid
+
+        native_stats(pid) || ResourceMonitor.ps_stats(pid)
+      end
+
+      # The thread count of a process from `ps -M`, which prints one header row plus one row per thread.
+      #
+      # @param pid [Integer] the process
+      # @return [Integer] the thread count (0 for an empty result), or 1 when `ps` fails
+      sig { params(pid: Integer).returns(Integer) }
+      def self.ps_threads(pid)
+        out, _status = Open3.capture2('ps', '-M', '-p', pid.to_s)
+        [out.count("\n") - 1, 0].max
+      rescue StandardError
+        1
+      end
+
+      private_class_method :ps_threads
+
+      private
+
+      # The stats of a process from `/proc`.
+      #
+      # @param pid [Integer] the process
+      # @return [ProcessStats, nil] its stats, or nil when `/proc` has no (complete) entry for it
+      sig { params(pid: Integer).returns(T.nilable(ProcessStats)) }
+      def native_stats(pid)
+        return unless File.exist?("/proc/#{pid}/stat") && File.exist?("/proc/#{pid}/statm")
+
+        ProcessStats.measured(read_cpu_perc(pid).to_s, read_rss_kb(pid), read_threads(pid))
+      rescue StandardError
+        nil
+      end
+
+      # The resident memory of a process from `/proc/<pid>/statm` (in pages).
+      #
+      # @param pid [Integer] the process
+      # @return [Float] the resident memory in kilobytes
+      sig { params(pid: Integer).returns(Float) }
+      def read_rss_kb(pid)
+        rss_pages = File.read("/proc/#{pid}/statm").split.fetch(1)
+        (Integer(rss_pages, 10) * @page_size) / 1024.0
+      end
+
+      # The CPU usage of a process since its previous sample, from `/proc/<pid>/stat`.
+      #
+      # @param pid [Integer] the process
+      # @return [Float] the usage in percent
+      sig { params(pid: Integer).returns(Float) }
+      def read_cpu_perc(pid)
+        # Field 2 (comm) is parenthesised and may itself contain spaces or parens
+        # (e.g. "(Web Content)"), so a naive split shifts every later field. Split
+        # after the final ')': utime and stime are then fields 11 and 12.
+        fields = File.read("/proc/#{pid}/stat").rpartition(')').last.split
+        calculate_cpu(pid, Float(fields.fetch(11)) + Float(fields.fetch(12)))
+      end
+
+      # The thread count of a process from `/proc/<pid>/status`.
+      #
+      # @param pid [Integer] the process
+      # @return [Integer] the thread count, or 1 when the file has none
+      sig { params(pid: Integer).returns(Integer) }
+      def read_threads(pid)
+        threads = File.read("/proc/#{pid}/status")[/Threads:\s+(\d+)/, 1]
+        threads ? Integer(threads, 10) : 1
+      end
+
+      # Records a CPU sample of a process and computes the usage since the previous one.
+      #
+      # @param pid [Integer] the process
+      # @param total_ticks [Float] its cumulative jiffies
+      # @return [Float] the usage in percent; 0.0 on the first sample
+      sig { params(pid: Integer, total_ticks: Float).returns(Float) }
+      def calculate_cpu(pid, total_ticks)
+        sample = CpuSample.new(ticks: total_ticks, time: Time.now)
+        previous = record_cpu_sample(pid, sample)
+        previous ? sample.percent_since(previous, @clock_tick) : 0.0
+      end
+
+      # Stores the latest sample of a PID and returns the previous one (or nil).
       # Bounds the history so it cannot grow without limit if the monitor is ever reused
       # across many PIDs (this app only tracks the server + client, so it never trips).
       #
       # @param pid [Integer] tracked process id
-      # @param total_ticks [Float] current cumulative jiffies
-      # @param now [Time] sample timestamp
+      # @param sample [CpuSample] the new sample
       # @return [CpuSample, nil] the previous sample, or nil on the first observation
-      sig { params(pid: Integer, total_ticks: Float, now: Time).returns(T.nilable(CpuSample)) }
-      def record_cpu_sample(pid, total_ticks, now)
-        prev = @cpu_prev[pid]
-        @cpu_prev[pid] = CpuSample.new(ticks: total_ticks, time: now)
+      sig { params(pid: Integer, sample: CpuSample).returns(T.nilable(CpuSample)) }
+      def record_cpu_sample(pid, sample)
+        previous = @cpu_prev[pid]
+        @cpu_prev[pid] = sample
         @cpu_prev.shift if @cpu_prev.size > CPU_HISTORY_LIMIT
-        prev
-      end
-
-      # Evaluates older fallback UNIX command line execution structures safely yielding basic analysis outputs.
-      #
-      # @param pid [Integer] tracked internal map universally evaluated.
-      # @return [Array<String, String, Float, Integer>] subset output simulating mapped natively structures dynamically.
-      # NOTE: `ps` reports `%cpu` as a decaying recent average over the process lifetime,
-      # whereas the /proc path computes an instantaneous delta between ticks. The two CPU
-      # figures therefore mean slightly different things across platforms.
-      sig { params(pid: Integer).returns([String, String, Float, Integer]) }
-      def fallback_ps_stats(pid)
-        out, _s = Open3.capture2('ps', '-o', '%cpu,rss', '-p', pid.to_s)
-        # A header-only (or empty) ps result has no data row, so `fetch(1)` raises and the rescue
-        # below returns the N/A tuple -- no separate size guard needed.
-        cpu, rss_kb_str = out.lines.fetch(1).split
-        rss_kb_val = Float(T.must(rss_kb_str))
-
-        [T.must(cpu), "#{(rss_kb_val / 1024.0).round(2)} MB", rss_kb_val, fallback_threads_count(pid)]
-      rescue StandardError
-        ['N/A', 'N/A', 0.0, 0]
-      end
-
-      # Inspects process lists securely filtering exact instances cleanly.
-      #
-      # @param pid [Integer] target
-      # @return [Integer] thread size safely
-      sig { params(pid: Integer).returns(Integer) }
-      def fallback_threads_count(pid)
-        out, _s = Open3.capture2('ps', '-M', '-p', pid.to_s)
-        # `ps -M` prints one newline-terminated header row plus one row per thread, so the newline
-        # count is (threads + 1); subtract the header and floor at zero for an empty result. Counting
-        # newlines (rather than `strip.split("\n")`) avoids a leading/trailing-whitespace-sensitive
-        # parse whose result `split("\n")` would collapse identically anyway.
-        [out.count("\n") - 1, 0].max
-      rescue StandardError
-        1
+        previous
       end
     end
   end

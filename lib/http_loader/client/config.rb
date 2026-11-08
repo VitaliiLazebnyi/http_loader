@@ -13,6 +13,33 @@ module HttpLoader
     class Config < T::Struct
       extend T::Sig
 
+      # The lower bound of a numeric setting, and the flag that sets it.
+      class Bound < T::Struct
+        extend T::Sig
+
+        const :flag, String
+        # Whether zero is valid: for these settings, zero disables the feature.
+        const :zero_allowed, T::Boolean
+
+        # Rejects a value below the bound.
+        #
+        # @param value [Numeric] the value of the setting
+        # @raise [ArgumentError] if the value is below the bound
+        # @return [void]
+        sig { params(value: Numeric).void }
+        def check(value)
+          return if value.positive? || (zero_allowed && value.zero?)
+
+          raise(ArgumentError, "--#{flag} #{requirement} (got #{value})")
+        end
+
+        # @return [String] what the bound requires of a value
+        sig { returns(String) }
+        def requirement
+          zero_allowed ? 'must not be negative' : 'must be greater than 0'
+        end
+      end
+
       const :connections, Integer
       const :target_urls, T::Array[String], default: []
       const :use_https, T::Boolean, default: false
@@ -35,6 +62,25 @@ module HttpLoader
       const :headers, T::Hash[String, String], default: {}
       const :slowloris_delay, Float, default: 0.0
 
+      # The bound of every numeric setting, checked by #validate in this order.
+      BOUNDS = T.let(
+        {
+          connections: Bound.new(flag: 'connections_count', zero_allowed: false),
+          max_concurrent_connections: Bound.new(flag: 'max_concurrent_connections', zero_allowed: false),
+          ping_period: Bound.new(flag: 'ping_period', zero_allowed: false),
+          http_loader_timeout: Bound.new(flag: 'http_loader_timeout', zero_allowed: true),
+          connections_per_second: Bound.new(flag: 'connections_per_second', zero_allowed: true),
+          reopen_interval: Bound.new(flag: 'reopen_interval', zero_allowed: true),
+          read_timeout: Bound.new(flag: 'read_timeout', zero_allowed: true),
+          ramp_up: Bound.new(flag: 'ramp_up', zero_allowed: true),
+          jitter: Bound.new(flag: 'jitter', zero_allowed: true),
+          qps_per_connection: Bound.new(flag: 'qps_per_connection', zero_allowed: true),
+          slowloris_delay: Bound.new(flag: 'slowloris_delay', zero_allowed: true)
+        }.freeze,
+        T::Hash[Symbol, Bound]
+      )
+      public_constant :BOUNDS
+
       # Enforces the REQ-CLI-023 numeric bounds beyond Sorbet's type checks, raising
       # ArgumentError so the CLI entrypoint can render a clean "Configuration Error"
       # fast-fail instead of hanging or crashing with an uncaught backtrace.
@@ -42,62 +88,21 @@ module HttpLoader
       # @raise [ArgumentError] if any numeric parameter is out of bounds
       # @return [void]
       sig { void }
-      def validate!
-        validate_positive_bounds
-        validate_non_negative_bounds
+      def validate
+        BOUNDS.each { |name, bound| bound.check(T.cast(public_send(name), Numeric)) }
         warn_on_oversubscription
       end
 
+      # The headers of every request: keep-alive, the User-Agent, then the `--headers` ones, which
+      # replace a default of the same name.
+      #
+      # @return [Hash{String => String}] the header names and values, in sending order
+      sig { returns(T::Hash[String, String]) }
+      def request_headers
+        { 'Connection' => 'keep-alive', 'User-Agent' => user_agent }.merge(headers)
+      end
+
       private
-
-      # Rejects the parameters that must be strictly greater than zero.
-      #
-      # @return [void]
-      sig { void }
-      def validate_positive_bounds
-        require_positive!(:connections_count, connections)
-        require_positive!(:max_concurrent_connections, max_concurrent_connections)
-        require_positive!(:ping_period, ping_period)
-      end
-
-      # Rejects the parameters that must not be negative (zero disables the feature).
-      #
-      # @return [void]
-      sig { void }
-      def validate_non_negative_bounds
-        require_non_negative!(:http_loader_timeout, http_loader_timeout)
-        require_non_negative!(:connections_per_second, connections_per_second)
-        require_non_negative!(:reopen_interval, reopen_interval)
-        require_non_negative!(:read_timeout, read_timeout)
-        require_non_negative!(:ramp_up, ramp_up)
-        require_non_negative!(:jitter, jitter)
-        require_non_negative!(:qps_per_connection, qps_per_connection)
-        require_non_negative!(:slowloris_delay, slowloris_delay)
-      end
-
-      # Rejects a parameter that must be strictly greater than zero.
-      #
-      # @param name [Symbol] the user-facing flag name
-      # @param value [Numeric] the supplied value
-      # @return [void]
-      sig { params(name: Symbol, value: Numeric).void }
-      def require_positive!(name, value)
-        return if value > 0.0
-
-        raise(ArgumentError, "--#{name} must be greater than 0 (got #{value})")
-      end
-
-      # Rejects a parameter that must not be negative (zero is a valid "disabled" sentinel).
-      #
-      # @param name [Symbol] the user-facing flag name
-      # @param value [Numeric] the supplied value
-      # @return [void]
-      sig { params(name: Symbol, value: Numeric).void }
-      def require_non_negative!(name, value)
-        return if value >= 0.0
-
-        raise(ArgumentError, "--#{name} must not be negative (got #{value})")
-      end
 
       # Warns when more connections are requested than the concurrency semaphore permits.
       # In keep-alive modes each permit is held for the connection's lifetime, so the

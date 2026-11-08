@@ -23,6 +23,11 @@ check() {
 
 check 'RuboCop directive' 'rubocop:(disable|enable|todo)'
 check 'Reek suppression' ':reek:'
+check 'Reek detector disabled or narrowed' 'enabled: *false|exclude:|max_[a-z_]+:' '\.reek\.yml'
+# Flay's default mass (16) and a Flog limit of 20, the strictest settings of the sibling gems.
+above_16='(1[7-9]|[2-9][0-9]|[0-9]{3,})'
+above_20='(2[1-9]|[3-9][0-9]|[0-9]{3,})'
+check 'Flay mass or Flog limit raised' "FLAY_MASS = ${above_16}|FLOG_METHOD_THRESHOLD = ${above_20}" 'Rakefile'
 check 'SimpleCov exclusion' ':nocov:|nocov_token|(add_filter|skip)\b.*(lib|exe)\b'
 check 'mutant suppression' 'mutant:disable'
 check 'YARD exclusion' ':nodoc:|@!visibility +private|@private'
@@ -37,6 +42,8 @@ check 'markdownlint directive' 'markdownlint-(disable|enable|capture|restore|con
 check 'typos directive' 'typos: ?(ignore|off|disable)|spellchecker: ?(disable|ignore)'
 check 'LGTM/CodeQL suppression' 'lgtm\[|codeql\[|codeql-disable|lgtm: ?ignore'
 check 'nosec / noqa' 'nosec|noqa'
+check 'npm audit threshold above low' 'audit-level[= ]*(moderate|high|critical)|npm audit.*--omit'
+check 'OSV-Scanner ignore' 'IgnoredVulns|\[\[PackageOverrides\]\]'
 check 'warning silencing' '[$]VERBOSE *= *(nil|false)|Warning\.ignore|Warning\[:[a-z_]+\] *= *false|silence_warnings'
 check 'warning silencing' '[$]stderr *= *File::NULL|RUBYOPT=[^ ]*-W0|-W0\b|-W:no-'
 check 'real network access in specs' 'allow_net_connect!|WebMock\.disable!' 'spec/'

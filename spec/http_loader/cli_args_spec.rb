@@ -6,17 +6,48 @@
 require 'spec_helper'
 
 RSpec.describe(HttpLoader::CliArgs) do
-  describe '.split_list' do
+  describe HttpLoader::CliArgs::List do
     it 'splits on commas, trims surrounding whitespace, and drops empty tokens' do
-      expect(HttpLoader::CliArgs.split_list(' a , b ,, c,')).to(eq(%w[a b c]))
+      expect(HttpLoader::CliArgs::List.parse(' a , b ,, c,')).to(eq(%w[a b c]))
     end
 
     it 'returns an empty array for a blank value' do
-      expect(HttpLoader::CliArgs.split_list('')).to(eq([]))
+      expect(HttpLoader::CliArgs::List.parse('')).to(eq([]))
     end
 
     it 'keeps a single token intact' do
-      expect(HttpLoader::CliArgs.split_list('http://only')).to(eq(['http://only']))
+      expect(HttpLoader::CliArgs::List.parse('http://only')).to(eq(['http://only']))
+    end
+  end
+
+  describe '.parse' do
+    it 'parses the flags declared by the block, removing them from argv', :aggregate_failures do
+      argv = ['--x=1', 'rest']
+      seen = []
+      HttpLoader::CliArgs.parse(argv, 'tool') { |opts| opts.on('--x=V') { |value| seen << value } }
+      expect(seen).to(eq(['1']))
+      expect(argv).to(eq(['rest']))
+    end
+
+    it 'names the subcommand in the usage banner' do
+      expect { HttpLoader::CliArgs.parse(['--help'], 'tool') { |_opts| nil } }
+        .to(output(/\AUsage: http_loader tool \[options\]\n/).to_stdout.and(raise_error(SystemExit)))
+    end
+  end
+
+  describe '.server_https?' do
+    it('is false without --https') { expect(HttpLoader::CliArgs.server_https?([])).to(be(false)) }
+    it('is true with --https') { expect(HttpLoader::CliArgs.server_https?(['--https'])).to(be(true)) }
+
+    it 'rejects another flag' do
+      expect { HttpLoader::CliArgs.server_https?(['--bogus']) }
+        .to(raise_error(OptionParser::InvalidOption))
+    end
+
+    it 'documents --https in the server usage' do
+      help = /\AUsage: http_loader server \[options\]\n.*--https +Serve over HTTPS with an ephemeral self-signed/m
+      expect { HttpLoader::CliArgs.server_https?(['--help']) }
+        .to(output(help).to_stdout.and(raise_error(SystemExit)))
     end
   end
 
@@ -157,6 +188,27 @@ RSpec.describe(HttpLoader::CliArgs) do
           .to(output(%r{CR/LF}).to_stderr)
       end
 
+      it 'trims a leading CR from the key before the CR/LF check' do
+        expect(CliParsing.headers_for("\rX: v")).to(eq('X' => 'v'))
+      end
+
+      it 'trims a trailing CR from the key before the CR/LF check' do
+        expect(CliParsing.headers_for("X\r: v")).to(eq('X' => 'v'))
+      end
+
+      it 'trims a leading CR from the value before the CR/LF check' do
+        expect(CliParsing.headers_for("X:\rv")).to(eq('X' => 'v'))
+      end
+
+      it 'trims a trailing CR from the value before the CR/LF check' do
+        expect(CliParsing.headers_for("X: v\r")).to(eq('X' => 'v'))
+      end
+
+      it 'checks the whole value for a CR/LF, past a second colon', :aggregate_failures do
+        expect { expect(CliParsing.headers_for("X: a:\rb")).to(eq({})) }
+          .to(output(%r{CR/LF}).to_stderr)
+      end
+
       it 'rejects a lone CR', :aggregate_failures do
         expect { expect(CliParsing.headers_for("X: a\rb")).to(eq({})) }
           .to(output(%r{CR/LF}).to_stderr)
@@ -218,6 +270,20 @@ RSpec.describe(HttpLoader::CliArgs) do
   end
 
   describe HttpLoader::CliArgs::ClientOptions do
+    describe '.parse' do
+      it 'builds the configuration from the flags, removing them from argv', :aggregate_failures do
+        argv = ['--connections_count=3', '--headers=A: 1', 'rest']
+        config = HttpLoader::CliArgs::ClientOptions.parse(argv)
+        expect(config.serialize).to(eq(ConfigFactory.client(connections: 3, headers: { 'A' => '1' }).serialize))
+        expect(argv).to(eq(['rest']))
+      end
+
+      it 'names the client subcommand in its usage banner' do
+        expect { HttpLoader::CliArgs::ClientOptions.parse(['--help']) }
+          .to(output(/\AUsage: http_loader client \[options\]\n/).to_stdout.and(raise_error(SystemExit)))
+      end
+    end
+
     it 'gives each parse its own header map' do
       first = HttpLoader::CliArgs::ClientOptions.defaults
       expect(first.fetch(:headers)).not_to(be(HttpLoader::CliArgs::ClientOptions.defaults.fetch(:headers)))
@@ -252,6 +318,27 @@ RSpec.describe(HttpLoader::CliArgs) do
   end
 
   describe HttpLoader::CliArgs::HarnessOptions do
+    describe '.parse' do
+      it 'builds the configuration from the flags, forwarding all of them to the client', :aggregate_failures do
+        argv = ['--connections_count=4', '--verbose']
+        config = HttpLoader::CliArgs::HarnessOptions.parse(argv)
+        expect(config.serialize).to(
+          eq(
+            ConfigFactory.harness(
+              { connections: 4 },
+              ['--connections_count=4', '--verbose']
+            ).serialize
+          )
+        )
+        expect(argv).to(eq([]))
+      end
+
+      it 'names the harness subcommand in its usage banner' do
+        expect { HttpLoader::CliArgs::HarnessOptions.parse(['--help']) }
+          .to(output(/\AUsage: http_loader harness \[options\]\n/).to_stdout.and(raise_error(SystemExit)))
+      end
+    end
+
     it 'builds the configuration from the options and the forwarded client flags' do
       options = HttpLoader::CliArgs::HarnessOptions::DEFAULTS.merge(connections: 9, export_json: 'run.json')
       expect(HttpLoader::CliArgs::HarnessOptions.config(options, ['--verbose']).serialize)

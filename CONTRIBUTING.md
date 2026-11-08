@@ -33,9 +33,9 @@ on any finding and on any warning in the output of any of them:
   - `rake typecheck`: Tapioca generates the gem RBIs, then `srb tc` reports no errors; `lib/` is `# typed: strong`,
     the scripts and spec support modules `# typed: strict`, the specs `# typed: true` (with Sorbet's RSpec support);
   - `rake yard`: YARD reports 100% documented, private methods included, without warnings;
-  - `rake reek`, `rake flay`, `rake flog`, `rake debride`: no code smell (`.reek.yml`), no structural duplication
-    (Flay mass 24), no method with a Flog score above 25, and no method without a caller, in `lib/`, `bin/`,
-    `script/` and the `Rakefile`;
+  - `rake reek`, `rake flay`, `rake flog`, `rake debride`: no code smell (Reek's default configuration, every
+    detector), no structural duplication (Flay's default mass, 16), no method with a Flog score above 20, and no
+    method without a caller, in `lib/`, `bin/`, `script/` and the `Rakefile`;
   - `rake audit`: bundler-audit: no dependency with a known vulnerability;
 - `rake outdated`: every gem at its newest release, except the holds in `script/outdated_holds.yml`;
 - `gem build --strict` and the executable itself;
@@ -54,7 +54,10 @@ on any finding and on any warning in the output of any of them:
     (`.hadolint.yaml`);
   - [editorconfig-checker](https://github.com/editorconfig-checker/editorconfig-checker): every tracked file against
     `.editorconfig`;
-  - [gitleaks](https://github.com/gitleaks/gitleaks): the full git history, for committed secrets.
+  - [gitleaks](https://github.com/gitleaks/gitleaks): the full git history, for committed secrets;
+  - [OSV-Scanner](https://github.com/google/osv-scanner): every committed lockfile (the gems, and the npm and PyPI
+    linters of `tools/`), failing on any known vulnerability of any severity;
+  - `npm audit` at its lowest threshold (`low`), and `npm audit signatures`: the npm linters of `tools/`.
 
 CI runs the same checks, the RSpec suite on every supported Ruby, the Docker image build with a Trivy scan that fails
 on any fixable vulnerability of any severity, and the GitHub services: CodeQL, the OpenSSF Scorecard of this

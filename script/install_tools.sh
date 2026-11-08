@@ -4,7 +4,7 @@
 #     yamllint, zizmor;
 #   - from npm (tools/package-lock.json, verified against its integrity hashes): markdownlint-cli2;
 #   - from their GitHub releases (each file verified against its published SHA-256 first): actionlint,
-#     editorconfig-checker, gitleaks and hadolint.
+#     editorconfig-checker, gitleaks, hadolint and OSV-Scanner.
 # Dependabot keeps tools/ current; the release versions below are kept current by hand.
 # Usage: script/install_tools.sh   (prints the PATH entries to use)
 set -euo pipefail
@@ -26,6 +26,8 @@ case "${platform}" in
       551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb)
     hadolint=(hadolint-linux-x86_64
       c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507)
+    osv_scanner=(osv-scanner_linux_amd64
+      160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b)
     ;;
   Darwin-arm64)
     actionlint=(actionlint_1.7.12_darwin_arm64.tar.gz
@@ -36,6 +38,8 @@ case "${platform}" in
       b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5)
     hadolint=(hadolint-macos-arm64
       5c09f3213f8e40406abe048233d985eebef336d4a6a20021be47fadb6cf480a2)
+    osv_scanner=(osv-scanner_darwin_arm64
+      d4926ef8da134332543be276dff157e4c170f99ad91fc48e89448a8816bdf70b)
     ;;
   *)
     echo "script/install_tools.sh has no pinned binaries for ${platform}" >&2
@@ -58,12 +62,18 @@ release https://github.com/editorconfig-checker/editorconfig-checker/releases/do
   editorconfig-checker
 release https://github.com/gitleaks/gitleaks/releases/download/v8.30.1 "${gitleaks[@]}" gitleaks
 
-# hadolint is released as a bare executable, not an archive.
-hadolint_file="${tools}/bin/hadolint"
-curl --fail --silent --show-error --location --output "${hadolint_file}" \
-  "https://github.com/hadolint/hadolint/releases/download/v2.15.1/${hadolint[0]}"
-printf '%s  %s\n' "${hadolint[1]}" "${hadolint_file}" | shasum --algorithm 256 --check --strict --status
-chmod +x "${hadolint_file}"
+# Downloads a release that is a bare executable, not an archive, verifies it and installs it into tmp/tools/bin.
+# Arguments: release URL prefix, asset name, SHA-256, name of the installed executable.
+executable() {
+  local base=$1 asset=$2 sha256=$3 name=$4
+  local file="${tools}/bin/${name}"
+  curl --fail --silent --show-error --location --output "${file}" "${base}/${asset}"
+  printf '%s  %s\n' "${sha256}" "${file}" | shasum --algorithm 256 --check --strict --status
+  chmod +x "${file}"
+}
+
+executable https://github.com/hadolint/hadolint/releases/download/v2.15.1 "${hadolint[@]}" hadolint
+executable https://github.com/google/osv-scanner/releases/download/v2.7.0 "${osv_scanner[@]}" osv-scanner
 
 python3 -m venv --clear "${tools}/venv"
 "${tools}/venv/bin/pip" install --quiet --disable-pip-version-check --require-hashes --only-binary :all: \

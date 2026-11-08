@@ -6,15 +6,14 @@
 require 'spec_helper'
 
 RSpec.describe(HttpLoader::Harness::ConnectionCounter) do
-  # The connection counter is mixed into the resource monitor, whose getconf constants are resolved at construction.
-  let(:counter) { HttpLoader::Harness::ResourceMonitor.new }
+  let(:counter) { HttpLoader::Harness::ConnectionCounter }
 
-  before { allow(Open3).to(receive(:capture2).with('getconf', anything).and_return(["4096\n", nil])) }
+  before { allow(Open3).to(receive(:capture2).and_call_original) }
 
-  describe '#count_established_connections' do
+  describe '.count' do
     it 'returns zero for a nil pid without probing /proc or lsof', :aggregate_failures do
       allow(File).to(receive(:directory?).and_call_original)
-      expect(counter.count_established_connections(nil)).to(eq(0))
+      expect(counter.count(nil)).to(eq(0))
       expect(File).not_to(have_received(:directory?))
       expect(Open3).not_to(have_received(:capture2).with('lsof', any_args))
     end
@@ -41,22 +40,22 @@ RSpec.describe(HttpLoader::Harness::ConnectionCounter) do
       end
 
       it 'counts the socket fds whose inode is ESTABLISHED in net/tcp or net/tcp6' do
-        expect(counter.count_established_connections(123)).to(eq(2))
+        expect(counter.count(123)).to(eq(2))
       end
 
       it 'does not count a listening socket' do
         allow(File).to(receive(:readlink).with('/proc/123/fd/2').and_return('socket:[999]'))
-        expect(counter.count_established_connections(123)).to(eq(1))
+        expect(counter.count(123)).to(eq(1))
       end
 
       it 'reads only the net files that exist (tcp6 absent) rather than failing' do
         allow(File).to(receive(:exist?).with('/proc/123/net/tcp6').and_return(false))
-        expect(counter.count_established_connections(123)).to(eq(1))
+        expect(counter.count(123)).to(eq(1))
       end
 
       it 'finds no connections when neither net file exists' do
         allow(File).to(receive(:exist?).with(%r{\A/proc/123/net/tcp6?\z}).and_return(false))
-        expect(counter.count_established_connections(123)).to(eq(0))
+        expect(counter.count(123)).to(eq(0))
       end
     end
 
@@ -65,19 +64,18 @@ RSpec.describe(HttpLoader::Harness::ConnectionCounter) do
       lsof = "COMMAND PID\nruby 123 TCP *:8080 (ESTABLISHED)\nruby 123 TCP *:9 (LISTEN)\n" \
         "ruby 123 TCP *:7 (ESTABLISHED)\n"
       allow(Open3).to(receive(:capture2).with('lsof', '-p', '123', '-n', '-P').and_return([lsof, nil]))
-      expect(counter.count_established_connections(123)).to(eq(2))
+      expect(counter.count(123)).to(eq(2))
     end
 
     it 'rescues any error and returns zero' do
       allow(File).to(receive(:directory?).with('/proc/123/fd').and_raise(StandardError))
-      expect(counter.count_established_connections(123)).to(eq(0))
+      expect(counter.count(123)).to(eq(0))
     end
   end
 
-  describe '#established_inodes (private)' do
+  describe '.established_inodes (private)' do
     before do
       allow(File).to(receive(:exist?).with('/proc/9/net/tcp').and_return(true))
-      allow(File).to(receive(:exist?).with('/proc/9/net/tcp6').and_return(false))
       allow(File).to(
         receive(:read).with('/proc/9/net/tcp').and_return(
           "  sl local rem st ... inode\n  " \
@@ -87,22 +85,18 @@ RSpec.describe(HttpLoader::Harness::ConnectionCounter) do
       )
     end
 
-    it 'collects state-01 inodes from tcp, skipping non-ESTABLISHED rows and a missing proto file' do
-      expect(counter.__send__(:established_inodes, 9)).to(eq(['555']))
+    it 'collects the state-01 inodes, skipping the header and the rows in another state' do
+      expect(counter.__send__(:established_inodes, '/proc/9/net/tcp')).to(eq(['555']))
     end
 
-    it 'merges inodes from both proto files, in tcp-then-tcp6 order, when both are present' do
-      allow(File).to(receive(:exist?).with('/proc/9/net/tcp6').and_return(true))
-      allow(File).to(
-        receive(:read).with('/proc/9/net/tcp6').and_return(
-          "  sl local rem st ... inode\n  0: ::1:1F90 ::1:C000 01 00:00 00 00 0 0 777 1\n"
-        )
-      )
-      expect(counter.__send__(:established_inodes, 9)).to(eq(%w[555 777]))
+    it 'is empty for a missing table, without reading it', :aggregate_failures do
+      allow(File).to(receive(:exist?).with('/proc/9/net/tcp6').and_return(false))
+      expect(counter.__send__(:established_inodes, '/proc/9/net/tcp6')).to(eq([]))
+      expect(File).not_to(have_received(:read).with('/proc/9/net/tcp6'))
     end
   end
 
-  describe '#socket_inode (private)' do
+  describe '.socket_inode (private)' do
     it 'extracts the inode from a bare socket symlink target' do
       allow(File).to(receive(:readlink).with('/proc/9/fd/3').and_return('socket:[12345]'))
       expect(counter.__send__(:socket_inode, '/proc/9/fd/3')).to(eq('12345'))
@@ -119,7 +113,7 @@ RSpec.describe(HttpLoader::Harness::ConnectionCounter) do
     end
   end
 
-  describe '#fd_socket_inodes (private)' do
+  describe '.fd_socket_inodes (private)' do
     it 'maps socket fds to inodes, dropping non-sockets and descriptors that vanish mid-walk' do
       allow(Dir).to(receive(:glob).with('/proc/9/fd/*').and_return(%w[/proc/9/fd/1 /proc/9/fd/2 /proc/9/fd/3]))
       allow(File).to(receive(:readlink).with('/proc/9/fd/1').and_return('socket:[100]'))
@@ -129,11 +123,12 @@ RSpec.describe(HttpLoader::Harness::ConnectionCounter) do
     end
   end
 
-  describe '#count_linux_connections (private)' do
-    it 'counts only the fd inodes that appear in the established set' do
-      allow(counter).to(receive(:established_inodes).with(9).and_return(%w[100 300]))
+  describe '.count_linux (private)' do
+    it 'counts only the fd inodes that appear in the established set of tcp and tcp6', :aggregate_failures do
+      allow(counter).to(receive(:established_inodes).with('/proc/9/net/tcp').and_return(%w[100]))
+      allow(counter).to(receive(:established_inodes).with('/proc/9/net/tcp6').and_return(%w[300]))
       allow(counter).to(receive(:fd_socket_inodes).with(9).and_return(%w[100 200 300]))
-      expect(counter.__send__(:count_linux_connections, 9)).to(eq(2))
+      expect(counter.__send__(:count_linux, 9)).to(eq(2))
     end
   end
 end

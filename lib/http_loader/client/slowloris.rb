@@ -5,6 +5,7 @@
 
 require 'openssl'
 require 'sorbet-runtime'
+require_relative 'connection'
 require_relative 'pacing'
 
 # Primary namespace for the load testing framework.
@@ -13,7 +14,34 @@ module HttpLoader
     # Handles deliberate thread-hogging Slowloris tactics.
     class Slowloris
       extend T::Sig
-      include Pacing
+
+      # The connection's socket (TLS-wrapped for HTTPS).
+      Socket = T.type_alias { T.any(IO, OpenSSL::SSL::SSLSocket) }
+      private_constant :Socket
+
+      # The raw text of an HTTP/1.1 GET request whose last header is deliberately left unfinished.
+      #
+      # @param uri [URI::Generic] the target
+      # @param headers [Hash{String => String}] the request headers, after Host
+      # @return [String] the incomplete request
+      sig { params(uri: URI::Generic, headers: T::Hash[String, String]).returns(String) }
+      def self.payload(uri, headers)
+        lines = ["GET #{request_target(uri)} HTTP/1.1", "Host: #{uri.host}"]
+        lines.concat(headers.map { |name, value| "#{name}: #{value}" })
+        "#{lines.join("\r\n")}\r\nX-Slowloris: "
+      end
+
+      # The request target of a URI: its path, `/` when empty, and its query.
+      #
+      # @param uri [URI::Generic] the target
+      # @return [String] e.g. "/search?q=1"
+      sig { params(uri: URI::Generic).returns(String) }
+      def self.request_target(uri)
+        path = T.must(uri.path)
+        path = '/' if path.empty?
+        query = uri.query
+        query ? "#{path}?#{query}" : path
+      end
 
       # Builds the slowloris execution strategy instance.
       #
@@ -28,75 +56,63 @@ module HttpLoader
 
       # Engages the slowloris thread hold directly manipulating the raw socket bypassing HTTP standards.
       #
-      # @param client_index [Integer] numeric unique identifier for this virtual client
-      # @param uri [URI::Generic] the parsed target destination
-      # @param http [Net::HTTP] instantiated http connection payload
-      # @param start_time [Time] context timestamp determining lifespan violations
+      # @param connection [Connection] the open connection
       # @return [void]
-      sig { params(client_index: Integer, uri: URI::Generic, http: Net::HTTP, start_time: Time).void }
-      def run(client_index, uri, http, start_time)
+      sig { params(connection: Connection).void }
+      def run(connection)
         return if @config.slowloris_delay <= 0.0
 
-        socket_wrapper = T.cast(http.instance_variable_get(:@socket), T.nilable(Net::BufferedIO))
-        return unless socket_wrapper
+        io = T.cast(connection.http.instance_variable_get(:@socket), T.nilable(Net::BufferedIO))&.io
+        return unless io
 
-        io = socket_wrapper.io
-        fire_initial_payload(io, uri)
-        maintain_hold(client_index, io, start_time)
+        trickle(io, Slowloris.payload(connection.uri, @config.request_headers))
+        hold(connection, io)
       end
 
       private
 
-      # Writes the HTTP payload character by character with configurable artificial delay constraints.
+      # Writes the payload one character at a time, pacing before each but the first, so that no pause
+      # follows the final character (#hold paces its own bytes).
       #
-      # @param io [IO, OpenSSL::SSL::SSLSocket] the connection's socket (TLS-wrapped for HTTPS)
-      # @param uri [URI::Generic] the targeted request identifier
+      # @param io [IO, OpenSSL::SSL::SSLSocket] the connection's socket
+      # @param payload [String] the incomplete request
       # @return [void]
-      sig { params(io: T.any(IO, OpenSSL::SSL::SSLSocket), uri: URI::Generic).void }
-      def fire_initial_payload(io, uri)
-        build_payload_headers(uri).chars.each_with_index do |char, index|
-          # Pace *before* each byte except the first: this spaces the stream identically while
-          # leaving no trailing pause after the final byte (maintain_hold paces the keep-alive
-          # bytes itself), without a redundant last-index calculation.
-          sleep(jittered_interval(@config.slowloris_delay, @config.jitter)) if index.positive?
+      sig { params(io: Socket, payload: String).void }
+      def trickle(io, payload)
+        payload.chars.each_with_index do |char, index|
+          sleep(Pacing.jittered_interval(@config.slowloris_delay, @config.jitter)) if index.positive?
           io.write(char)
           io.flush
         end
       end
 
-      # Crafts the raw text representing a completely viable HTTP/1.1 payload excluding finalizing line-breaks.
+      # Keeps the socket occupied with a random letter every (jittered) delay until the keep-alive budget is
+      # spent.
       #
-      # @param uri [URI::Generic] the targeted parameters identifier
-      # @return [String] the string representation of an artificially incomplete payload request
-      sig { params(uri: URI::Generic).returns(String) }
-      def build_payload_headers(uri)
-        path = T.must(uri.path).empty? ? '/' : uri.path
-        target = uri.query ? "#{path}?#{uri.query}" : path
-        payload = "GET #{target} HTTP/1.1\r\n" \
-          "Host: #{uri.host}\r\n" \
-          "Connection: keep-alive\r\n" \
-          "User-Agent: #{@config.user_agent}\r\n"
-        @config.headers.each { |name, value| payload += "#{name}: #{value}\r\n" }
-        # The trailing header is deliberately left unfinished.
-        "#{payload}X-Slowloris: "
+      # @param connection [Connection] the open connection
+      # @param io [IO, OpenSSL::SSL::SSLSocket] the connection's socket
+      # @return [void]
+      sig { params(connection: Connection, io: Socket).void }
+      def hold(connection, io)
+        loop do
+          remaining = Pacing.budget_remaining(@config.http_loader_timeout, connection.started)
+          break if Pacing.budget_spent?(remaining)
+
+          nudge(io, remaining)
+        end
+        @logger.info("#{connection.label} Keep-alive timeout reached, closing Slowloris thread.")
       end
 
-      # Keeps an ongoing socket indefinitely occupied via sporadic random byte injection.
+      # Writes one random letter, then waits one (jittered) delay, capped to the remaining budget.
       #
-      # @param client_index [Integer] numeric connection index used by logging
-      # @param io [IO, OpenSSL::SSL::SSLSocket] the connection's socket (TLS-wrapped for HTTPS)
-      # @param start_time [Time] lifecycle origination period
+      # @param io [IO, OpenSSL::SSL::SSLSocket] the connection's socket
+      # @param remaining [Float, nil] the remaining keep-alive budget in seconds, or nil if unbounded
       # @return [void]
-      sig { params(client_index: Integer, io: T.any(IO, OpenSSL::SSL::SSLSocket), start_time: Time).void }
-      def maintain_hold(client_index, io, start_time)
-        remaining = budget_remaining(@config.http_loader_timeout, start_time)
-        until budget_spent?(remaining)
-          io.write(rand(97..122).chr)
-          io.flush
-          sleep(cap_to_budget(jittered_interval(@config.slowloris_delay, @config.jitter), remaining))
-          remaining = budget_remaining(@config.http_loader_timeout, start_time)
-        end
-        @logger.info("[Client #{client_index}] Keep-alive timeout reached, closing Slowloris thread.")
+      sig { params(io: Socket, remaining: T.nilable(Float)).void }
+      def nudge(io, remaining)
+        io.write(rand(97..122).chr)
+        io.flush
+        sleep(Pacing.cap_to_budget(Pacing.jittered_interval(@config.slowloris_delay, @config.jitter), remaining))
       end
     end
   end

@@ -34,11 +34,26 @@ module HttpLoader
     BIND_ADDRESS = T.let(IPAddr.new(Socket::INADDR_ANY, Socket::AF_INET).to_s, String)
     private_constant :BIND_ADDRESS
 
+    # A self-signed TLS context for localhost, with a new 2048-bit RSA key.
+    #
+    # @return [OpenSSL::SSL::SSLContext] the context
+    sig { returns(OpenSSL::SSL::SSLContext) }
+    def self.ssl_context
+      rsa = T.cast(OpenSSL::PKey::RSA.new(2048), OpenSSL::PKey::RSA)
+      context = OpenSSL::SSL::SSLContext.new
+      context.cert = certificate(rsa)
+      context.key = rsa
+      context
+    end
+
     # Allocates the Rack mapped mock layer simulating an identical, ultra-efficient mock endpoint.
     #
+    # @param https [Boolean] whether to serve HTTPS (on 8443, with an ephemeral self-signed certificate) rather
+    #   than plain HTTP (on 8080)
     # @return [void]
-    sig { void }
-    def initialize
+    sig { params(https: T::Boolean).void }
+    def initialize(https:)
+      @https = https
       @app = T.let(
         proc do |_env|
           [200, { 'content-type' => 'text/plain', 'content-length' => '2' }, ['OK']]
@@ -47,19 +62,50 @@ module HttpLoader
       )
     end
 
-    # Hooks native asynchronous server to bound TCP ports.
+    # Serves until interrupted: HTTPS on 8443, or plain HTTP on 8080.
     #
-    # @param use_https [Boolean] enables OpenSSL validation mapping natively
-    # @param port [Integer] targeted OS listen port
     # @return [void]
-    sig { params(use_https: T::Boolean, port: Integer).void }
-    def start(use_https: false, port: 8080)
-      if use_https
-        start_secure(port)
-      else
-        start_plaintext(port)
-      end
+    sig { void }
+    def start
+      @https ? start_secure(8443) : start_plaintext(8080)
     end
+
+    # A certificate for localhost, valid for a year from now, self-signed with the key.
+    #
+    # @param rsa [OpenSSL::PKey::RSA] the key
+    # @return [OpenSSL::X509::Certificate] the signed certificate
+    sig { params(rsa: OpenSSL::PKey::RSA).returns(OpenSSL::X509::Certificate) }
+    def self.certificate(rsa)
+      cert = OpenSSL::X509::Certificate.new
+      identify(cert)
+      validity(cert, Time.now)
+      cert.public_key = rsa.public_key
+      T.cast(cert.sign(rsa, OpenSSL::Digest.new('SHA256')), OpenSSL::X509::Certificate)
+    end
+
+    # Names localhost as the subject and the issuer of a certificate, an X.509 v3 one with serial number 1.
+    #
+    # @param cert [OpenSSL::X509::Certificate] the certificate
+    # @return [void]
+    sig { params(cert: OpenSSL::X509::Certificate).void }
+    def self.identify(cert)
+      cert.subject = cert.issuer = OpenSSL::X509::Name.parse('/CN=localhost')
+      cert.serial = 1
+      cert.version = 2
+    end
+
+    # Makes a certificate valid for a year (365 days) from a time.
+    #
+    # @param cert [OpenSSL::X509::Certificate] the certificate
+    # @param now [Time] the start of the validity
+    # @return [void]
+    sig { params(cert: OpenSSL::X509::Certificate, now: Time).void }
+    def self.validity(cert, now)
+      cert.not_before = now
+      cert.not_after = now + (365 * 24 * 60 * 60)
+    end
+
+    private_class_method :certificate, :identify, :validity
 
     private
 
@@ -70,7 +116,7 @@ module HttpLoader
     sig { params(port: Integer).void }
     def start_secure(port)
       puts("[Server] Binding natively to HTTPS over port #{port}")
-      ssl_context = generate_ssl_context
+      ssl_context = Server.ssl_context
 
       Sync do |_raw_task|
         run_falcon(port, ssl_context)
@@ -127,53 +173,6 @@ module HttpLoader
         puts("\n[Server] Shutting down immediately...")
         yield
       end
-    end
-
-    # Assembles an ephemeral RSA asymmetric signing layer satisfying secure validation without CA
-    # dependencies naturally.
-    #
-    # @return [OpenSSL::SSL::SSLContext] fully integrated validation context mapping
-    sig { returns(OpenSSL::SSL::SSLContext) }
-    def generate_ssl_context
-      rsa = T.cast(OpenSSL::PKey::RSA.new(2048), OpenSSL::PKey::RSA)
-      cert = build_cert(rsa)
-
-      ssl_context = OpenSSL::SSL::SSLContext.new
-      ssl_context.cert = cert
-      ssl_context.key = rsa
-      ssl_context
-    end
-
-    # Implements strict OpenSSL x509 bindings to dynamically minted, single-use keys safely.
-    #
-    # @param rsa [OpenSSL::PKey::RSA] private token implementation map
-    # @return [OpenSSL::X509::Certificate] signed local payload identity matrix
-    sig { params(rsa: OpenSSL::PKey::RSA).returns(OpenSSL::X509::Certificate) }
-    def build_cert(rsa)
-      cert = OpenSSL::X509::Certificate.new
-      parse_cert_info(cert)
-      cert.public_key = rsa.public_key
-      # RFC 5280 section 4.1.2.2 requires a positive serial number; 0 is rejected by strict clients.
-      cert.serial = 1
-      cert.version = 2
-      # `OpenSSL::X509::Certificate#sign` finalises and returns the (now signed) certificate, so it is
-      # the method's return value; signing must stay last, after every field is set. The RBI types
-      # `#sign` as untyped, so `T.cast` restores the declared return type.
-      T.cast(cert.sign(rsa, OpenSSL::Digest.new('SHA256')), OpenSSL::X509::Certificate)
-    end
-
-    # Mutates metadata associated with x509 structures natively verifying localhost assertions.
-    #
-    # @param cert [OpenSSL::X509::Certificate] target instance mapped internally
-    # @return [void]
-    sig { params(cert: OpenSSL::X509::Certificate).void }
-    def parse_cert_info(cert)
-      # OpenSSL serialises certificate times as UTC regardless of the Time's zone, so a plain
-      # `Time.now` fixes the same validity instant; the window below is what matters.
-      now = Time.now
-      cert.subject = cert.issuer = OpenSSL::X509::Name.parse('/CN=localhost')
-      cert.not_before = now
-      cert.not_after = now + (365 * 24 * 60 * 60)
     end
   end
 end

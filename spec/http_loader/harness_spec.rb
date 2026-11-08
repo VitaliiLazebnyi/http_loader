@@ -21,8 +21,8 @@ RSpec.describe(HttpLoader::Harness) do
     allow(pm).to(receive(:spawn_processes))
     allow(pm).to(receive(:cleanup))
     allow(pm).to(receive(:missing_process?).and_return(false))
-    allow(telemetry).to(receive(:export!))
-    allow(telemetry).to(receive(:check_bottlenecks!))
+    allow(telemetry).to(receive(:export))
+    allow(telemetry).to(receive(:report_bottlenecks))
   end
 
   describe '#initialize' do
@@ -32,9 +32,8 @@ RSpec.describe(HttpLoader::Harness) do
         .to(raise_error(ArgumentError))
     end
 
-    it 'retains the config and starts peak connections at zero', :aggregate_failures do
+    it 'retains the config' do
       expect(harness.config).to(eq(config))
-      expect(harness.instance_variable_get(:@peak_connections)).to(eq(0))
     end
 
     context 'when wiring its collaborators' do
@@ -58,16 +57,12 @@ RSpec.describe(HttpLoader::Harness) do
     it 'builds a resource monitor' do
       expect(harness.monitor.is_a?(HttpLoader::Harness::ResourceMonitor)).to(be(true))
     end
-
-    it 'stamps a UTC start time' do
-      expect(harness.instance_variable_get(:@start_time)).to(be_within(5).of(Time.now.utc))
-    end
   end
 
   describe '#start' do
     before do
       allow(harness).to(receive(:print_startup_banner))
-      allow(harness).to(receive(:bump_file_limits))
+      allow(HttpLoader::FileLimits).to(receive(:bump!))
       allow(harness).to(receive(:run_lifecycle))
     end
 
@@ -79,8 +74,11 @@ RSpec.describe(HttpLoader::Harness) do
 
       it('enables synchronous stdout') { expect($stdout).to(have_received(:sync=).with(true)) }
       it('prints the banner') { expect(harness).to(have_received(:print_startup_banner)) }
-      it('bumps the file limits') { expect(harness).to(have_received(:bump_file_limits)) }
       it('runs the lifecycle') { expect(harness).to(have_received(:run_lifecycle)) }
+
+      it 'raises the open file limit toward the connection count plus headroom' do
+        expect(HttpLoader::FileLimits).to(have_received(:bump!).with(1025, label: '[Harness]'))
+      end
     end
   end
 
@@ -104,7 +102,6 @@ RSpec.describe(HttpLoader::Harness) do
     context 'when monitoring raises' do
       before do
         allow(harness).to(receive(:monitor_resources).and_raise(StandardError))
-        harness.instance_variable_set(:@peak_connections, 7)
         harness.__send__(:run_lifecycle)
       rescue StandardError
         nil
@@ -115,8 +112,8 @@ RSpec.describe(HttpLoader::Harness) do
           .to(raise_error(StandardError))
       end
 
-      it 'still exports telemetry with the peak connections and the start time' do
-        expect(telemetry).to(have_received(:export!).with(7, harness.instance_variable_get(:@start_time)))
+      it 'still exports telemetry' do
+        expect(telemetry).to(have_received(:export))
       end
 
       it('still cleans up') { expect(pm).to(have_received(:cleanup)) }
@@ -149,30 +146,29 @@ RSpec.describe(HttpLoader::Harness) do
     before do
       allow(harness).to(receive(:print_table_header))
       allow(harness).to(receive(:sleep))
+      allow(telemetry).to(receive(:restart))
     end
 
-    it 'prints the header and resets the start time to now', :aggregate_failures do
+    it 'prints the header and restarts the clock of the run', :aggregate_failures do
       allow(harness).to(receive(:duration_exceeded?).and_return(true))
-      # a stale start time to be reset
-      harness.instance_variable_set(:@start_time, Time.now - 10_000)
       harness.__send__(:monitor_resources)
-      expect(harness).to(have_received(:print_table_header))
-      expect(harness.instance_variable_get(:@start_time)).to(be_within(5).of(Time.now))
+      expect(harness).to(have_received(:print_table_header).ordered)
+      expect(telemetry).to(have_received(:restart).ordered)
     end
 
-    it 'checks bottlenecks and sleeps 2s each tick until the duration is exceeded', :aggregate_failures do
+    it 'reports bottlenecks and sleeps 2s each tick until the duration is exceeded', :aggregate_failures do
       allow(harness).to(receive(:duration_exceeded?).and_return(false, true))
       allow(harness).to(receive(:tick_failed?).and_return(false))
       harness.__send__(:monitor_resources)
-      expect(telemetry).to(have_received(:check_bottlenecks!).once)
+      expect(telemetry).to(have_received(:report_bottlenecks).once)
       expect(harness).to(have_received(:sleep).with(2).once)
     end
 
-    it 'breaks immediately (no bottleneck check or sleep) when a tick fails', :aggregate_failures do
+    it 'breaks immediately (no bottleneck report or sleep) when a tick fails', :aggregate_failures do
       allow(harness).to(receive_messages(duration_exceeded?: false, tick_failed?: true))
       harness.__send__(:monitor_resources)
       expect(harness).to(have_received(:tick_failed?).once)
-      expect(telemetry).not_to(have_received(:check_bottlenecks!))
+      expect(telemetry).not_to(have_received(:report_bottlenecks))
       expect(harness).not_to(have_received(:sleep))
     end
   end
@@ -180,96 +176,64 @@ RSpec.describe(HttpLoader::Harness) do
   describe '#duration_exceeded?' do
     it 'is false for a negative target duration' do
       harness.instance_variable_get(:@config).instance_variable_set(:@target_duration, -1.0)
-      harness.instance_variable_set(:@start_time, Time.now.utc - 10)
+      allow(telemetry).to(receive(:elapsed).and_return(10.0))
       expect(harness.__send__(:duration_exceeded?)).to(be(false))
     end
 
     it 'is false when no target duration is configured (target not > 0)' do
       harness.instance_variable_get(:@config).instance_variable_set(:@target_duration, 0.0)
-      harness.instance_variable_set(:@start_time, Time.now.utc - 10)
+      allow(telemetry).to(receive(:elapsed).and_return(10.0))
       expect(harness.__send__(:duration_exceeded?)).to(be(false))
     end
 
     it 'is false while the elapsed time is below the target' do
-      harness.instance_variable_set(:@start_time, Time.now.utc)
+      allow(telemetry).to(receive(:elapsed).and_return(0.9))
       expect(harness.__send__(:duration_exceeded?)).to(be(false))
     end
 
-    it 'announces auto-shutdown and is true once elapsed reaches the target', :aggregate_failures do
-      harness.instance_variable_set(:@start_time, Time.now - 10)
+    it 'announces auto-shutdown and is true once elapsed passes the target', :aggregate_failures do
+      allow(telemetry).to(receive(:elapsed).and_return(10.0))
       expect { expect(harness.__send__(:duration_exceeded?)).to(be(true)) }
         .to(output(/Target duration mathematically reached \(1\.0s\)\. auto-shutdown\./).to_stdout)
     end
 
     it 'fires at exactly the target (>=, not >)', :aggregate_failures do
-      t0 = Time.now
-      harness.instance_variable_set(:@start_time, t0)
-      # elapsed == target (1.0)
-      allow(Time).to(receive(:now).and_return(t0 + 1.0))
+      allow(telemetry).to(receive(:elapsed).and_return(1.0))
       expect { expect(harness.__send__(:duration_exceeded?)).to(be(true)) }
         .to(output(/auto-shutdown/).to_stdout)
     end
   end
 
   describe '#tick_failed?' do
+    let(:stats) { StatsFactory.stats }
+
     before { allow(harness).to(receive(:print_combined_stats)) }
 
-    it 'records the running peak of active connections' do
-      allow(harness).to(receive_messages(extract_client_stats: [5, '0.0', 1, '1 MB'], missing_socket?: false))
-      harness.instance_variable_set(:@peak_connections, 3)
+    it 'records the active connections as an observation of the run' do
+      allow(telemetry).to(receive(:observe))
+      allow(harness).to(receive_messages(extract_client_stats: [5, stats], missing_socket?: false))
       harness.__send__(:tick_failed?)
-      expect(harness.instance_variable_get(:@peak_connections)).to(eq(5))
+      expect(telemetry).to(have_received(:observe).with(5))
     end
 
-    it 'keeps the previous peak when the current active count is lower' do
-      allow(harness).to(receive_messages(extract_client_stats: [2, '0.0', 1, '1 MB'], missing_socket?: false))
-      harness.instance_variable_set(:@peak_connections, 9)
-      harness.__send__(:tick_failed?)
-      expect(harness.instance_variable_get(:@peak_connections)).to(eq(9))
-    end
-
-    it 'fails when the socket disappears, passing the client stats to missing_socket?', :aggregate_failures do
-      allow(harness).to(receive(:extract_client_stats).and_return([0, '1.5', 4, '2 MB']))
-      allow(harness).to(receive(:missing_socket?).with(0, '1.5', 4, '2 MB').and_return(true))
+    it 'fails when the socket disappears, passing the client sample to missing_socket?', :aggregate_failures do
+      allow(harness).to(receive(:extract_client_stats).and_return([0, stats]))
+      allow(harness).to(receive(:missing_socket?).with(0, stats).and_return(true))
       expect(harness.__send__(:tick_failed?)).to(be(true))
       expect(harness).not_to(have_received(:print_combined_stats))
     end
 
     it 'fails when a child process is missing', :aggregate_failures do
-      allow(harness).to(receive_messages(extract_client_stats: [1, '0.0', 1, '1 MB'], missing_socket?: false))
+      allow(harness).to(receive_messages(extract_client_stats: [1, stats], missing_socket?: false))
       allow(pm).to(receive(:missing_process?).and_return(true))
       expect(harness.__send__(:tick_failed?)).to(be(true))
       expect(harness).not_to(have_received(:print_combined_stats))
     end
 
     it 'otherwise prints the combined stats and does not fail', :aggregate_failures do
-      allow(harness).to(receive_messages(extract_client_stats: [1, '0.0', 2, '1 MB'], missing_socket?: false))
+      allow(harness).to(receive_messages(extract_client_stats: [1, stats], missing_socket?: false))
       expect(harness.__send__(:tick_failed?)).to(be(false))
-      expect(harness).to(have_received(:print_combined_stats).with(1, '0.0', 2, '1 MB'))
-    end
-  end
-
-  describe '#bump_file_limits' do
-    it 'raises only the soft limit toward connections+1024, preserving the hard ceiling' do
-      allow(Process).to(receive(:getrlimit).with(Process::RLIMIT_NOFILE).and_return([256, 4096]))
-      allow(Process).to(receive(:setrlimit))
-      harness.__send__(:bump_file_limits)
-      expect(Process).to(have_received(:setrlimit).with(Process::RLIMIT_NOFILE, 1025, 4096))
-    end
-
-    it 'clamps the requested soft limit to the existing hard ceiling (never raising it)' do
-      allow(Process).to(receive(:getrlimit).with(Process::RLIMIT_NOFILE).and_return([256, 512]))
-      allow(Process).to(receive(:setrlimit))
-      harness.__send__(:bump_file_limits)
-      # desired 1025 exceeds the hard limit 512, so the soft limit is clamped to 512; hard stays 512.
-      expect(Process).to(have_received(:setrlimit).with(Process::RLIMIT_NOFILE, 512, 512))
-    end
-
-    it 'warns (without raising) when the OS rejects the change' do
-      allow(Process).to(receive(:getrlimit).and_return([256, 4096]))
-      allow(Process).to(receive(:setrlimit).and_raise(Errno::EPERM))
-      expect { harness.__send__(:bump_file_limits) }
-        .to(output(/\[Harness\].*Could not set RLIMIT_NOFILE/).to_stderr)
+      expect(harness).to(have_received(:print_combined_stats).with(1, stats))
     end
   end
 
@@ -280,31 +244,29 @@ RSpec.describe(HttpLoader::Harness) do
       # 17:34:56 UTC
       allow(Time).to(receive(:now).and_return(Time.new(2020, 1, 2, 12, 34, 56, '-05:00')))
       # exactly at the > 0 boundary
-      harness.instance_variable_set(:@peak_connections, 1)
-      expect { expect(harness.__send__(:missing_socket?, 0, '7.5', 3, '2 MB')).to(be(true)) }
+      telemetry.observe(1)
+      client = StatsFactory.stats(cpu: '7.5', memory: '2 MB', threads: 3)
+      expect { expect(harness.__send__(:missing_socket?, 0, client)).to(be(true)) }
         .to(output("\n[Harness] ⚠️ EXTERNAL SERVER DISCONNECTED!\n").to_stdout)
       expect(harness).to(
-        have_received(:log_table_row).with(
-          t: '17:34:56', ac: 0, sc: 'EXTERNAL', sm: 'N/A', sk: 'N/A', cc: '7.5% / 3T', cm: '2 MB', ck: 'N/A'
-        )
+        have_received(:log_table_row).with(['17:34:56', 0, 'EXTERNAL', 'N/A', 'N/A', '7.5% / 3T', '2 MB', 'N/A'])
       )
     end
 
     it 'is false while connections are still active' do
-      harness.instance_variable_set(:@peak_connections, 100)
-      expect(harness.__send__(:missing_socket?, 1, '0', 1, 'M')).to(be(false))
+      telemetry.observe(100)
+      expect(harness.__send__(:missing_socket?, 1, StatsFactory.stats)).to(be(false))
     end
 
     it 'is false before any connection has ever been established (peak still zero)' do
-      harness.instance_variable_set(:@peak_connections, 0)
-      expect(harness.__send__(:missing_socket?, 0, '0', 1, 'M')).to(be(false))
+      expect(harness.__send__(:missing_socket?, 0, StatsFactory.stats)).to(be(false))
     end
 
     it 'is false when no external target is configured' do
       cfg = HttpLoader::Harness::Config.new(connections: 1, target_urls: [], export_json: nil)
       local = HttpLoader::Harness.new(cfg)
-      local.instance_variable_set(:@peak_connections, 100)
-      expect(local.__send__(:missing_socket?, 0, '0', 1, 'M')).to(be(false))
+      local.instance_variable_get(:@telemetry).observe(100)
+      expect(local.__send__(:missing_socket?, 0, StatsFactory.stats)).to(be(false))
     end
   end
 end

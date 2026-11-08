@@ -7,9 +7,9 @@ require 'http_loader/client'
 require 'spec_helper'
 
 RSpec.describe(HttpLoader::Client::Pacing) do
-  let(:pacer) { Class.new.include(HttpLoader::Client::Pacing).new }
+  let(:pacer) { HttpLoader::Client::Pacing }
 
-  describe '#jittered_interval' do
+  describe '.jittered_interval' do
     it 'returns the base unchanged when jitter is zero' do
       expect(pacer.jittered_interval(10.0, 0.0)).to(eq(10.0))
     end
@@ -33,14 +33,14 @@ RSpec.describe(HttpLoader::Client::Pacing) do
     end
   end
 
-  describe '#budget_spent?' do
+  describe '.budget_spent?' do
     it('is false for an unbounded (nil) budget') { expect(pacer.budget_spent?(nil)).to(be(false)) }
     it('is false while time is left') { expect(pacer.budget_spent?(0.1)).to(be(false)) }
     it('is true once exactly no time is left') { expect(pacer.budget_spent?(0.0)).to(be(true)) }
     it('is true once the budget is overrun') { expect(pacer.budget_spent?(-0.1)).to(be(true)) }
   end
 
-  describe '#budget_remaining' do
+  describe '.budget_remaining' do
     it 'treats a zero timeout as unbounded (nil)' do
       expect(pacer.budget_remaining(0.0, Time.now).nil?).to(be(true))
     end
@@ -67,7 +67,7 @@ RSpec.describe(HttpLoader::Client::Pacing) do
     end
   end
 
-  describe '#cap_to_budget' do
+  describe '.cap_to_budget' do
     it 'returns the base unchanged when the budget is unbounded' do
       expect(pacer.cap_to_budget(2.5, nil)).to(eq(2.5))
     end

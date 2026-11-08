@@ -11,6 +11,7 @@ require 'sorbet-runtime'
 require 'time'
 require 'uri'
 require_relative 'client/config'
+require_relative 'client/connection'
 require_relative 'client/error_handler'
 require_relative 'client/http_session'
 require_relative 'client/logger'
@@ -25,14 +26,24 @@ module HttpLoader
   class Client
     extend T::Sig
     include ErrorHandler
-    include Pacing
 
-    # The spawned per-connection worker tasks. A static type, checked by `srb tc`.
-    ConnTasks = T.type_alias { T::Array[Async::Task] }
-    private_constant :ConnTasks
+    # The protocol a connection speaks once open. A static type, checked by `srb tc`.
+    Session = T.type_alias { T.any(HttpSession, Slowloris) }
+    private_constant :Session
 
     sig { returns(HttpLoader::Client::Logger) }
     attr_reader :logger
+
+    # Opens a Net::HTTP connection and yields it.
+    #
+    # @param uri [URI::Generic] the target
+    # @param opts [Hash{Symbol => Object}] the Net::HTTP start options
+    # @param block [Proc] receives the open connection
+    # @return [void]
+    sig { params(uri: URI::Generic, opts: TargetManager::HttpArgs, block: T.proc.params(arg: Net::HTTP).void).void }
+    def self.start_http(uri, opts, &block)
+      Net::HTTP.start(T.must(uri.host), uri.port, **opts, &block)
+    end
 
     # Initializes a new Client instance.
     #
@@ -40,12 +51,14 @@ module HttpLoader
     # @return [void]
     sig { params(config: Config).void }
     def initialize(config)
-      config.validate!
+      config.validate
       @config = config
       @logger = T.let(Logger.new(config.verbose), Logger)
       @target_manager = T.let(TargetManager.new(config), TargetManager)
-      @slow_sess = T.let(Slowloris.new(config, @logger), Slowloris)
-      @http_sess = T.let(HttpSession.new(config, @logger), HttpSession)
+      @session = T.let(
+        config.slowloris_delay > 0.0 ? Slowloris.new(config, @logger) : HttpSession.new(config, @logger),
+        Session
+      )
     end
 
     # Starts the load generation engine and applies trap handlers.
@@ -53,17 +66,24 @@ module HttpLoader
     # @return [void]
     sig { void }
     def start
-      log_startup_message
-      trap('INT') { exit(0) }
-      FileLimits.bump!(@config.connections + 1024, label: '[Client]')
-      @logger.setup_files!
-
+      prepare
       Async { |raw_task| run_engine(T.cast(raw_task, Async::Task)) }
     ensure
-      @logger.flush_synchronously!
+      @logger.flush
     end
 
     private
+
+    # Announces the run, makes Ctrl+C exit, raises the open file limit and empties the log files.
+    #
+    # @return [void]
+    sig { void }
+    def prepare
+      log_startup_message
+      trap('INT') { exit(0) }
+      FileLimits.bump!(@config.connections + 1024, label: '[Client]')
+      @logger.prepare_files
+    end
 
     # Runs the asynchronous task engine spawning connections.
     #
@@ -71,18 +91,24 @@ module HttpLoader
     # @return [void]
     sig { params(task: Async::Task).void }
     def run_engine(task)
-      logger_t = @logger.run_task(task)
-      sem = Async::Semaphore.new(@config.max_concurrent_connections, parent: task)
+      logger_task = @logger.run_task(task)
+      spawn_connections(Async::Semaphore.new(@config.max_concurrent_connections, parent: task)).each(&:wait)
+      logger_task.stop
+    end
 
-      conn_tasks = T.let([], ConnTasks)
-      @config.connections.times do |index|
-        ramp = calc_ramp
-        perform_sleep(ramp) if index.positive? && ramp > 0.0
-        conn_tasks << sem.async { exec_conn(index) }
+    # Spawns one worker task per connection, through the concurrency semaphore, pausing between them by the
+    # ramp-up interval. Inside the Async reactor `Kernel#sleep` is fiber-aware (it suspends this fiber and
+    # yields to the scheduler), so it paces the ramp without blocking the reactor.
+    #
+    # @param semaphore [Async::Semaphore] the concurrency cap
+    # @return [Array<Async::Task>] the worker tasks
+    sig { params(semaphore: Async::Semaphore).returns(T::Array[Async::Task]) }
+    def spawn_connections(semaphore)
+      ramp = calc_ramp
+      Array.new(@config.connections) do |index|
+        sleep(ramp) if index.positive? && ramp > 0.0
+        semaphore.async { exec_conn(index) }
       end
-
-      conn_tasks.each(&:wait)
-      logger_t.stop
     end
 
     # Prints the initialization banner to stdout.
@@ -90,8 +116,9 @@ module HttpLoader
     # @return [void]
     sig { void }
     def log_startup_message
-      @logger.info("Starting #{@config.connections} #{@target_manager.protocol_label} connections")
-      puts("[Client] Starting #{@config.connections} #{@target_manager.protocol_label} connections to targeted urls...")
+      summary = "#{@config.connections} #{@target_manager.protocol_label} connections"
+      @logger.info("Starting #{summary}")
+      puts("[Client] Starting #{summary} to targeted urls...")
       puts('[Client] Note: Output of individual pings is suppressed.') unless @config.verbose
     end
 
@@ -101,24 +128,11 @@ module HttpLoader
     # @return [Float] the calculated ramp sleep duration
     sig { returns(Float) }
     def calc_ramp
-      if @config.ramp_up > 0.0
-        @config.ramp_up / @config.connections
-      elsif @config.connections_per_second.positive?
-        1.0 / @config.connections_per_second
-      else
-        0.0
-      end
-    end
+      ramp_up = @config.ramp_up
+      rate = @config.connections_per_second
+      return ramp_up / @config.connections if ramp_up > 0.0
 
-    # Executes sleep logic during ramp-up phases. Inside the Async reactor `Kernel#sleep` is
-    # fiber-aware (it suspends this fiber and yields to the scheduler), so it paces the ramp
-    # without blocking the reactor and without the deprecated `Async::Task#sleep`.
-    #
-    # @param dur [Float] the duration to sleep
-    # @return [void]
-    sig { params(dur: Float).void }
-    def perform_sleep(dur)
-      sleep(dur)
+      rate.positive? ? 1.0 / rate : 0.0
     end
 
     # Continuously attempts connection runs per fiber worker.
@@ -131,64 +145,35 @@ module HttpLoader
         run_session(idx, Time.now)
         break unless @config.reopen_closed_connections
 
-        sleep(jittered_interval(@config.reopen_interval, @config.jitter))
+        sleep(Pacing.jittered_interval(@config.reopen_interval, @config.jitter))
       end
     end
 
-    # Sets up a single HTTP session to the target uri.
+    # Runs one connection of a worker, from opening to closing, logging any error.
     #
     # @param idx [Integer] the connection identifier
-    # @param start_t [Time] the invocation timestamp
+    # @param started [Time] when the connection is opened
     # @return [void]
-    sig { params(idx: Integer, start_t: Time).void }
-    def run_session(idx, start_t)
-      target = @target_manager.context_for(idx)
-      uri = target.uri
-
-      start_http(uri, fetch_opts(idx, target)) do |http|
-        http.max_retries = 0 if http.respond_to?(:max_retries=)
-        @logger.info("[Client #{idx}] Connection established to #{uri.host}.")
-        dispatch_sess(idx, uri, http, start_t)
-      end
+    sig { params(idx: Integer, started: Time).void }
+    def run_session(idx, started)
+      connect(idx, @target_manager.context_for(idx), started)
       @logger.info("[Client #{idx}] Connection gracefully closed.")
     rescue StandardError => error
       handle_err(idx, error)
     end
 
-    # Fetches final connection contexts from TargetManager.
+    # Opens the connection to the worker's target and runs the session on it.
     #
     # @param idx [Integer] the connection identifier
     # @param target [TargetManager::Target] the endpoint the connection goes to
-    # @return [Hash{Symbol => Object}] the fully resolved HTTP start arguments
-    sig { params(idx: Integer, target: TargetManager::Target).returns(TargetManager::HttpArgs) }
-    def fetch_opts(idx, target)
-      @target_manager.http_opts_for(idx, target.http_args)
-    end
-
-    # Wraps the synchronous net-http start call with a block closure.
-    #
-    # @param uri [URI::Generic] the target generic uri
-    # @param opts [Hash] injected configuration options for HTTP
-    # @param block [Proc] yieldable closure receiving HTTP connection instantiated
+    # @param started [Time] when the connection is opened
     # @return [void]
-    sig { params(uri: URI::Generic, opts: TargetManager::HttpArgs, block: T.proc.params(arg: Net::HTTP).void).void }
-    def start_http(uri, opts, &block)
-      Net::HTTP.start(T.must(uri.host), uri.port, **opts, &block)
-    end
-
-    # Dispatches the authenticated connection stream to the active protocol implementation.
-    #
-    # @param idx [Integer] the connection identifier
-    # @param uri [URI::Generic] the generic target uri
-    # @param http [Net::HTTP] the instantiated active connection session
-    # @param start_t [Time] the lifecycle timestamp of the execution block
-    # @return [void]
-    sig { params(idx: Integer, uri: URI::Generic, http: Net::HTTP, start_t: Time).void }
-    def dispatch_sess(idx, uri, http, start_t)
-      if @config.slowloris_delay > 0.0
-        @slow_sess.run(idx, uri, http, start_t)
-      else
-        @http_sess.run(idx, uri, http, start_t)
+    sig { params(idx: Integer, target: TargetManager::Target, started: Time).void }
+    def connect(idx, target, started)
+      uri = target.uri
+      Client.start_http(uri, @target_manager.http_opts_for(idx, target.http_args)) do |http|
+        @logger.info("[Client #{idx}] Connection established to #{uri.host}.")
+        @session.run(Connection.new(index: idx, uri: uri, http: http, started: started))
       end
     end
   end
