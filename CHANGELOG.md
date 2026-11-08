@@ -18,6 +18,8 @@ All notable changes to this project are documented in this file. The format is b
   reject out-of-bounds numeric flags (e.g. `--connections_count=0`, negative timing/jitter values) with a clean
   `Configuration Error` instead of hanging or crashing with an uncaught backtrace.
 - Shared best-effort `RLIMIT_NOFILE` bump applied by the standalone client as well as the harness.
+- `HttpLoader::CLI` runs the `client`, `server` and `harness` subcommands (`bin/http_loader` only calls it), and
+  `CliArgs::ClientOptions` / `CliArgs::HarnessOptions` build type-checked configurations from parsed flags.
 - Bounded TCP readiness poll for the spawned server, replacing a fixed `sleep`.
 - Always-on status channel so `--track_status_codes` no longer silently requires `--verbose`.
 
@@ -26,6 +28,8 @@ All notable changes to this project are documented in this file. The format is b
 - Shared `Client::Pacing` module functions for the jittered-sleep and keep-alive-budget arithmetic that was previously
   duplicated across the client engine and the HTTP/Slowloris sessions.
 - Dropped the deprecated `Async::Task#sleep` in favor of the reactor-aware `Kernel#sleep`.
+- The mock server sends Rack 3 (lowercase) response header names, as the Rack SPEC requires.
+- The CLI drops only Ruby's "IO::Buffer is experimental" notice instead of every experimental-feature warning.
 - Dependencies updated to their newest releases (2026-11-07): rack 3.2.8, sorbet and sorbet-runtime 0.6.13645, rubocop
   1.92.2, rubocop-md 3.0.0, RSpec 3.13.x patch releases, Bundler 4.0.24, the `ruby:4.0.9` base image digest, Trivy
   0.76.2, and the pinned `ruby/setup-ruby`, `github/codeql-action` and `zizmorcore/zizmor-action` SHAs.
@@ -44,6 +48,8 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Fixed
 
+- Slowloris mode against an HTTPS target raised `TypeError` on its first write: the socket was typed as `IO`, but
+  over TLS it is an `OpenSSL::SSL::SSLSocket`.
 - CI gates: RuboCop offenses and Sorbet `--typed strong` errors now pass (added a prism RBI shim).
 - Credentialed proxy URLs (`user:pass@host`) are parsed tolerantly instead of raising.
 - Malformed / hostless `--url` values fail fast with a clear error.
