@@ -3,7 +3,7 @@
 # (not -slim) is used deliberately: it already ships the toolchain the native gem
 # extensions (io-event and friends) compile against, so no apt layer is needed.
 # Pinned by digest to the newest 4.0.9 release; `rake outdated` and Dependabot flag drift.
-FROM ruby:4.0.9@sha256:07042b74555ff2eef7365abd72d39cba6e499ab63e2d2942fd34d4778338495b
+FROM ruby:4.0.9@sha256:ac9b27edd4382328460376335b40bcc294c756be117ba93179cf0317f5e86bec
 
 # BUNDLE_PATH keeps gems inside the project tree; CI=true turns on the 100% coverage gate.
 ENV LANG=C.UTF-8 \
