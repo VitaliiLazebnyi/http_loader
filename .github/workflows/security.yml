@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Harden the runner (egress limited to the endpoints below)
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
         with:
           allowed-endpoints: >-
             *.actions.githubusercontent.com:443
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199  # v1.338.0
+      - uses: ruby/setup-ruby@20eb24b0d509e2b9ed9b6d42ddfeb992915e0564  # v1.341.0
         with:
           bundler-cache: true
           ruby-version: .ruby-version
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Harden the runner (egress limited to the endpoints below)
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
         with:
           allowed-endpoints: >-
             *.actions.githubusercontent.com:443
@@ -75,11 +75,11 @@ jobs:
           persist-credentials: false
       # Vulnerabilities, licenses and denied packages; the configuration file explains the Scorecard settings.
       - id: review
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294  # v5.0.0
+        uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec  # v5.0.1
         with:
           config-file: ./.github/dependency-review.yml
       # The OpenSSF Scorecard of every added dependency, with the per-package allowances of the configuration file.
-      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199  # v1.338.0
+      - uses: ruby/setup-ruby@20eb24b0d509e2b9ed9b6d42ddfeb992915e0564  # v1.341.0
         with:
           ruby-version: .ruby-version
           rubygems: latest
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Harden the runner (egress limited to the endpoints below)
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
         with:
           allowed-endpoints: >-
             api.github.com:443
@@ -133,7 +133,7 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Harden the runner (egress limited to the endpoints below)
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
         with:
           allowed-endpoints: >-
             api.github.com:443
@@ -171,7 +171,7 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Harden the runner (egress limited to the endpoints below)
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
         with:
           allowed-endpoints: >-
             *.blob.core.windows.net:443

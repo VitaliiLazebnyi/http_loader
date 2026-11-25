@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Harden the runner (egress limited to the endpoints below)
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
         with:
           allowed-endpoints: >-
             *.actions.githubusercontent.com:443
@@ -42,7 +42,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199  # v1.338.0
+      - uses: ruby/setup-ruby@20eb24b0d509e2b9ed9b6d42ddfeb992915e0564  # v1.341.0
         with:
           bundler-cache: false
           ruby-version: .ruby-version
@@ -115,7 +115,7 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Harden the runner (egress limited to the endpoints below)
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
         with:
           allowed-endpoints: >-
             *.blob.core.windows.net:443
@@ -142,7 +142,7 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Harden the runner (egress limited to the endpoints below)
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
         with:
           allowed-endpoints: >-
             *.actions.githubusercontent.com:443
@@ -159,7 +159,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199  # v1.338.0
+      - uses: ruby/setup-ruby@20eb24b0d509e2b9ed9b6d42ddfeb992915e0564  # v1.341.0
         with:
           bundler-cache: false
           ruby-version: .ruby-version
@@ -183,7 +183,7 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Harden the runner (egress limited to the endpoints below)
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
         with:
           allowed-endpoints: >-
             *.blob.core.windows.net:443
